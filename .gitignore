@@ -1,0 +1,11 @@
+.env
+*.db
+*.sqlite
+__pycache__/
+.venv/
+venv/
+dist/
+build/
+*.log
+exports/
+backups/
