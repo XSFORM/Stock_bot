@@ -1,0 +1,15 @@
+[Unit]
+Description=Stock Bot (Telegram)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/stock_bot
+EnvironmentFile=/opt/stock_bot/.env
+ExecStart=/opt/stock_bot/venv/bin/python -m app.main
+Restart=always
+RestartSec=2
+User=root
+
+[Install]
+WantedBy=multi-user.target
