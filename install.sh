@@ -1,9 +1,3 @@
-
----
-
-# 2) `install.sh` (в корне)
-
-```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
