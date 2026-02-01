@@ -1,273 +1,462 @@
-from __future__ import annotations
-
 import os
 import sqlite3
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Optional, List, Dict, Any
 
-from app.config import settings
-from app.constants import WAREHOUSES
-from app.services.invoice_pdf import generate_invoice_pdf
+WAREHOUSES = ["CHINA_DEPOT", "WAREHOUSE", "SHOP"]
+
+
+def _db_path() -> str:
+    # Default path used by install.sh on server
+    return os.getenv("DB_PATH", "/opt/stock_bot/app/db/stock.db")
+
 
 def _connect() -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(settings.db_path), exist_ok=True)
-    conn = sqlite3.connect(settings.db_path)
+    db_path = _db_path()
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
     return conn
+
 
 def init_db() -> None:
     conn = _connect()
     try:
-        with open(os.path.join(os.path.dirname(__file__), "schema.sql"), "r", encoding="utf-8") as f:
-            conn.executescript(f.read())
+        # Clients
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS clients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+        """)
+
+        # Products
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                brand TEXT NOT NULL,
+                model TEXT NOT NULL,
+                name TEXT NOT NULL,
+                wholesale_price REAL NOT NULL,
+                UNIQUE(brand, model)
+            );
+        """)
+
+        # Stock (qty by warehouse & product)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS stock (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                warehouse TEXT NOT NULL,
+                product_id INTEGER NOT NULL,
+                qty INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(warehouse, product_id),
+                FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+            );
+        """)
+
+        # Movements log
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS movements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dt TEXT NOT NULL DEFAULT (datetime('now')),
+                w_from TEXT NOT NULL,
+                w_to TEXT NOT NULL,
+                product_id INTEGER NOT NULL,
+                qty INTEGER NOT NULL,
+                FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+            );
+        """)
+
+        # Cart (single active cart at a time, for simplicity)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS carts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_name TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                is_active INTEGER NOT NULL DEFAULT 1
+            );
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS cart_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cart_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                qty INTEGER NOT NULL,
+                price_mode TEXT NOT NULL,
+                price REAL NOT NULL,
+                UNIQUE(cart_id, product_id),
+                FOREIGN KEY(cart_id) REFERENCES carts(id) ON DELETE CASCADE,
+                FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+            );
+        """)
+
+        # Invoices
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS invoices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                number INTEGER NOT NULL UNIQUE,
+                client_name TEXT NOT NULL,
+                dt TEXT NOT NULL DEFAULT (datetime('now')),
+                total REAL NOT NULL,
+                debt INTEGER NOT NULL DEFAULT 1
+            );
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS invoice_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                qty INTEGER NOT NULL,
+                price REAL NOT NULL,
+                line_total REAL NOT NULL,
+                FOREIGN KEY(invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+                FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+            );
+        """)
+
         conn.commit()
     finally:
         conn.close()
 
-def ensure_admin() -> None:
-    # просто гарантируем, что БД создана
-    init_db()
+
+def _row_to_dict(r: sqlite3.Row) -> Dict[str, Any]:
+    return {k: r[k] for k in r.keys()}
+
 
 def add_client(name: str) -> None:
+    init_db()
     conn = _connect()
     try:
-        conn.execute("INSERT OR IGNORE INTO clients(name) VALUES(?)", (name,))
+        conn.execute("INSERT INTO clients(name) VALUES (?)", (name,))
         conn.commit()
     finally:
         conn.close()
 
+
 def list_clients() -> List[Dict[str, Any]]:
+    init_db()
     conn = _connect()
     try:
-        rows = conn.execute("SELECT id, name FROM clients ORDER BY name").fetchall()
-        return [dict(r) for r in rows]
+        rows = conn.execute("SELECT id, name, created_at FROM clients ORDER BY name").fetchall()
+        return [_row_to_dict(r) for r in rows]
     finally:
         conn.close()
 
-def get_client_by_name(name: str) -> Optional[Dict[str, Any]]:
-    conn = _connect()
-    try:
-        row = conn.execute("SELECT id, name FROM clients WHERE name = ?", (name,)).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
 
-def add_product(brand: str, model: str, name: str, wh_price: float) -> None:
-    wh10 = round(wh_price * 1.10, settings.decimals)
+def add_product(brand: str, model: str, name: str, wholesale_price: float) -> None:
+    init_db()
     conn = _connect()
     try:
         conn.execute(
-            "INSERT OR REPLACE INTO products(brand, model, name, wh_price, wh10_price) VALUES(?,?,?,?,?)",
-            (brand, model, name, wh_price, wh10),
+            "INSERT OR REPLACE INTO products(brand, model, name, wholesale_price) VALUES (?,?,?,?)",
+            (brand, model, name, float(wholesale_price)),
         )
         conn.commit()
     finally:
         conn.close()
 
+
 def list_products() -> List[Dict[str, Any]]:
+    init_db()
     conn = _connect()
     try:
-        rows = conn.execute(
-            "SELECT brand, model, name, wh_price, wh10_price FROM products ORDER BY brand, model"
-        ).fetchall()
-        return [dict(r) for r in rows]
+        rows = conn.execute("""
+            SELECT id, brand, model, name, wholesale_price
+            FROM products
+            ORDER BY brand, model
+        """).fetchall()
+        return [_row_to_dict(r) for r in rows]
     finally:
         conn.close()
 
-def find_product(brand: str, model: str) -> Optional[Dict[str, Any]]:
-    conn = _connect()
-    try:
-        row = conn.execute(
-            "SELECT id, brand, model, name, wh_price, wh10_price FROM products WHERE brand=? AND model=?",
-            (brand, model),
-        ).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
 
-def _get_stock_qty(conn: sqlite3.Connection, warehouse: str, product_id: int) -> float:
-    row = conn.execute(
-        "SELECT qty FROM stock WHERE warehouse=? AND product_id=?",
-        (warehouse, product_id),
+def _get_product_id(conn: sqlite3.Connection, brand: str, model: str) -> int:
+    r = conn.execute(
+        "SELECT id FROM products WHERE brand=? AND model=?",
+        (brand, model),
     ).fetchone()
-    return float(row["qty"]) if row else 0.0
+    if not r:
+        raise ValueError(f"Товар не найден: {brand} {model}. Добавь через /product_add")
+    return int(r["id"])
 
-def _set_stock_qty(conn: sqlite3.Connection, warehouse: str, product_id: int, qty: float) -> None:
+
+def _ensure_stock_row(conn: sqlite3.Connection, warehouse: str, product_id: int) -> None:
     conn.execute(
-        "INSERT INTO stock(warehouse, product_id, qty) VALUES(?,?,?) "
-        "ON CONFLICT(warehouse, product_id) DO UPDATE SET qty=excluded.qty",
-        (warehouse, product_id, qty),
+        "INSERT OR IGNORE INTO stock(warehouse, product_id, qty) VALUES (?,?,0)",
+        (warehouse, product_id),
     )
 
-def get_stock_text(warehouse: Optional[str] = None) -> str:
+
+def get_stock(warehouse: Optional[str] = None) -> List[Dict[str, Any]]:
+    init_db()
     conn = _connect()
     try:
         if warehouse:
-            whs = [warehouse]
-        else:
-            whs = WAREHOUSES
-
-        lines = []
-        for wh in whs:
-            rows = conn.execute(
-                """
-                SELECT s.warehouse, p.brand, p.model, p.name, s.qty
+            warehouse = warehouse.upper()
+            rows = conn.execute("""
+                SELECT s.warehouse, p.brand, p.model, s.qty
                 FROM stock s
                 JOIN products p ON p.id = s.product_id
-                WHERE s.warehouse = ?
+                WHERE s.warehouse=?
                 ORDER BY p.brand, p.model
-                """,
-                (wh,),
-            ).fetchall()
-
-            lines.append(f"<b>{wh}</b>:")
-            if not rows:
-                lines.append("  (пусто)")
-            else:
-                for r in rows:
-                    lines.append(f"  • {r['brand']} {r['model']} — {r['name']} | {float(r['qty']):.2f}")
-            lines.append("")
-        return "\n".join(lines).strip()
+            """, (warehouse,)).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT s.warehouse, p.brand, p.model, s.qty
+                FROM stock s
+                JOIN products p ON p.id = s.product_id
+                ORDER BY s.warehouse, p.brand, p.model
+            """).fetchall()
+        return [_row_to_dict(r) for r in rows]
     finally:
         conn.close()
 
-def move_stock(src: str, dst: str, brand: str, model: str, qty: float) -> Tuple[bool, str]:
+
+def move_stock(w_from: str, w_to: str, brand: str, model: str, qty: int) -> None:
+    init_db()
+    w_from = w_from.upper()
+    w_to = w_to.upper()
+    if w_from not in WAREHOUSES or w_to not in WAREHOUSES:
+        raise ValueError(f"Склады только: {', '.join(WAREHOUSES)}")
     if qty <= 0:
-        return False, "qty должно быть > 0"
-    if src == dst:
-        return False, "src и dst одинаковые"
-
-    prod = find_product(brand, model)
-    if not prod:
-        return False, "товар не найден"
+        raise ValueError("Количество должно быть > 0")
 
     conn = _connect()
     try:
-        conn.execute("BEGIN")
-        pid = int(prod["id"])
-        src_qty = _get_stock_qty(conn, src, pid)
-        if src_qty < qty:
-            conn.execute("ROLLBACK")
-            return False, f"на {src} недостаточно: есть {src_qty:.2f}, нужно {qty:.2f}"
+        pid = _get_product_id(conn, brand, model)
+        _ensure_stock_row(conn, w_from, pid)
+        _ensure_stock_row(conn, w_to, pid)
 
-        dst_qty = _get_stock_qty(conn, dst, pid)
-        _set_stock_qty(conn, src, pid, src_qty - qty)
-        _set_stock_qty(conn, dst, pid, dst_qty + qty)
+        cur_qty = conn.execute(
+            "SELECT qty FROM stock WHERE warehouse=? AND product_id=?",
+            (w_from, pid),
+        ).fetchone()["qty"]
 
+        if int(cur_qty) < qty:
+            raise ValueError(f"Недостаточно на {w_from}: есть {cur_qty}, нужно {qty}")
+
+        conn.execute(
+            "UPDATE stock SET qty = qty - ? WHERE warehouse=? AND product_id=?",
+            (qty, w_from, pid),
+        )
+        conn.execute(
+            "UPDATE stock SET qty = qty + ? WHERE warehouse=? AND product_id=?",
+            (qty, w_to, pid),
+        )
+        conn.execute(
+            "INSERT INTO movements(w_from, w_to, product_id, qty) VALUES (?,?,?,?)",
+            (w_from, w_to, pid, qty),
+        )
         conn.commit()
-        return True, "ok"
-    except Exception as e:
-        conn.execute("ROLLBACK")
-        return False, str(e)
     finally:
         conn.close()
 
-def create_invoice_from_cart(cart) -> Tuple[bool, Any]:
-    """
-    Делает:
-    - проверка остатков на SHOP
-    - списание из SHOP
-    - запись invoices + invoice_items
-    - запись ledger (invoice)
-    - генерация PDF
-    """
+
+def cart_start(client_name: str) -> None:
+    init_db()
     conn = _connect()
     try:
-        conn.execute("BEGIN")
+        # Deactivate any old cart
+        conn.execute("UPDATE carts SET is_active=0 WHERE is_active=1")
+        conn.execute("INSERT INTO carts(client_name, is_active) VALUES (?,1)", (client_name,))
+        conn.commit()
+    finally:
+        conn.close()
 
-        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+def _get_active_cart_id(conn: sqlite3.Connection) -> int:
+    r = conn.execute("SELECT id FROM carts WHERE is_active=1 ORDER BY id DESC LIMIT 1").fetchone()
+    if not r:
+        raise ValueError("Нет активной корзины. Сначала: /cart_start CLIENT_NAME")
+    return int(r["id"])
+
+
+def cart_add(brand: str, model: str, qty: int, price_mode: str = "wh", custom_price: Optional[float] = None) -> None:
+    init_db()
+    if qty <= 0:
+        raise ValueError("Количество должно быть > 0")
+
+    price_mode = (price_mode or "wh").lower()
+    if price_mode not in ("wh", "wh10", "custom"):
+        raise ValueError("price должен быть: wh / wh10 / custom")
+
+    conn = _connect()
+    try:
+        cart_id = _get_active_cart_id(conn)
+        pid = _get_product_id(conn, brand, model)
+
+        wh = conn.execute("SELECT wholesale_price FROM products WHERE id=?", (pid,)).fetchone()["wholesale_price"]
+        wh = float(wh)
+
+        if price_mode == "wh":
+            price = wh
+        elif price_mode == "wh10":
+            price = round(wh * 1.10, 2)
+        else:
+            if custom_price is None:
+                raise ValueError("Для custom надо указать custom_price")
+            price = float(custom_price)
+
+        # Insert or update qty
+        exists = conn.execute(
+            "SELECT qty FROM cart_items WHERE cart_id=? AND product_id=?",
+            (cart_id, pid),
+        ).fetchone()
+        if exists:
+            conn.execute(
+                "UPDATE cart_items SET qty = qty + ?, price_mode=?, price=? WHERE cart_id=? AND product_id=?",
+                (qty, price_mode, price, cart_id, pid),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO cart_items(cart_id, product_id, qty, price_mode, price) VALUES (?,?,?,?,?)",
+                (cart_id, pid, qty, price_mode, price),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def cart_show() -> str:
+    init_db()
+    conn = _connect()
+    try:
+        cart_id = _get_active_cart_id(conn)
+        cart = conn.execute("SELECT client_name, created_at FROM carts WHERE id=?", (cart_id,)).fetchone()
+        rows = conn.execute("""
+            SELECT p.brand, p.model, p.name, ci.qty, ci.price
+            FROM cart_items ci
+            JOIN products p ON p.id = ci.product_id
+            WHERE ci.cart_id=?
+            ORDER BY p.brand, p.model
+        """, (cart_id,)).fetchall()
+
+        if not rows:
+            return "Корзина пустая. Добавь: /cart_add BRAND MODEL QTY ..."
+
         total = 0.0
+        lines = [f"🧺 Корзина: <b>{cart['client_name']}</b>"]
+        for r in rows:
+            line_total = float(r["qty"]) * float(r["price"])
+            total += line_total
+            lines.append(f"• {r['brand']} {r['model']} x{r['qty']} = {line_total:.2f}$ (цена {float(r['price']):.2f}$)")
 
-        # 1) проверить, что всё есть в магазине
-        for it in cart.items:
-            prod = conn.execute(
-                "SELECT id, name FROM products WHERE brand=? AND model=?",
-                (it.brand, it.model),
-            ).fetchone()
-            if not prod:
-                conn.execute("ROLLBACK")
-                return False, f"Товар не найден: {it.brand} {it.model}"
-            pid = int(prod["id"])
-            shop_qty = _get_stock_qty(conn, "SHOP", pid)
-            if shop_qty < it.qty:
-                conn.execute("ROLLBACK")
-                return False, f"В SHOP мало {it.brand} {it.model}: есть {shop_qty:.2f}, нужно {it.qty:.2f}"
+        lines.append(f"\n<b>Итого:</b> {total:.2f}$")
+        return "\n".join(lines)
+    finally:
+        conn.close()
 
-        # 2) создать invoice
+
+def cart_remove(brand: str, model: str) -> None:
+    init_db()
+    conn = _connect()
+    try:
+        cart_id = _get_active_cart_id(conn)
+        pid = _get_product_id(conn, brand, model)
+        conn.execute("DELETE FROM cart_items WHERE cart_id=? AND product_id=?", (cart_id, pid))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def cart_finish() -> Dict[str, Any]:
+    """
+    списывает из SHOP, создает инвойс, возвращает структуру:
+    {
+      "invoice": {"number":..., "client":..., "date":..., "items":[...], "total":...},
+      "total": float,
+      "debt": bool
+    }
+    """
+    init_db()
+    conn = _connect()
+    try:
+        cart_id = _get_active_cart_id(conn)
+        cart = conn.execute("SELECT client_name, created_at FROM carts WHERE id=?", (cart_id,)).fetchone()
+        items = conn.execute("""
+            SELECT ci.product_id, p.brand, p.model, p.name, ci.qty, ci.price
+            FROM cart_items ci
+            JOIN products p ON p.id = ci.product_id
+            WHERE ci.cart_id=?
+            ORDER BY p.brand, p.model
+        """, (cart_id,)).fetchall()
+
+        if not items:
+            raise ValueError("Корзина пустая.")
+
+        # Check stock in SHOP first
+        for it in items:
+            _ensure_stock_row(conn, "SHOP", int(it["product_id"]))
+            have = conn.execute(
+                "SELECT qty FROM stock WHERE warehouse='SHOP' AND product_id=?",
+                (int(it["product_id"]),),
+            ).fetchone()["qty"]
+            if int(have) < int(it["qty"]):
+                raise ValueError(f"Недостаточно в SHOP для {it['brand']} {it['model']}: есть {have}, нужно {it['qty']}")
+
+        # Determine next invoice number
+        rnum = conn.execute("SELECT COALESCE(MAX(number), 0) + 1 AS next_num FROM invoices").fetchone()
+        inv_number = int(rnum["next_num"])
+
+        total = 0.0
+        inv_items = []
+        for it in items:
+            qty = int(it["qty"])
+            price = float(it["price"])
+            line_total = qty * price
+            total += line_total
+            inv_items.append({
+                "brand": it["brand"],
+                "model": it["model"],
+                "name": it["name"],
+                "qty": qty,
+                "price": price,
+                "line_total": round(line_total, 2),
+            })
+
+        total = round(total, 2)
+        debt = True  # пока всегда "долг: да" (как ты просил)
+
+        # Create invoice
         conn.execute(
-            "INSERT INTO invoices(client_id, created_at, total, currency) VALUES(?,?,?,?)",
-            (cart.client_id, created_at, 0.0, settings.currency),
+            "INSERT INTO invoices(number, client_name, total, debt) VALUES (?,?,?,?)",
+            (inv_number, cart["client_name"], total, 1 if debt else 0),
         )
-        invoice_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+        inv_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
 
-        # 3) списать со склада + записать items
-        for it in cart.items:
-            prod = conn.execute(
-                "SELECT id FROM products WHERE brand=? AND model=?",
-                (it.brand, it.model),
-            ).fetchone()
-            pid = int(prod["id"])
+        # Write invoice items + deduct stock from SHOP
+        for it in items:
+            pid = int(it["product_id"])
+            qty = int(it["qty"])
+            price = float(it["price"])
+            line_total = round(qty * price, 2)
 
-            shop_qty = _get_stock_qty(conn, "SHOP", pid)
-            _set_stock_qty(conn, "SHOP", pid, shop_qty - it.qty)
-
-            line_total = round(it.qty * it.price, settings.decimals)
-            total = round(total + line_total, settings.decimals)
+            conn.execute("""
+                INSERT INTO invoice_items(invoice_id, product_id, qty, price, line_total)
+                VALUES (?,?,?,?,?)
+            """, (inv_id, pid, qty, price, line_total))
 
             conn.execute(
-                """
-                INSERT INTO invoice_items(invoice_id, product_id, brand, model, name, qty, price, line_total)
-                VALUES(?,?,?,?,?,?,?,?)
-                """,
-                (invoice_id, pid, it.brand, it.model, it.name, it.qty, it.price, line_total),
+                "UPDATE stock SET qty = qty - ? WHERE warehouse='SHOP' AND product_id=?",
+                (qty, pid),
             )
 
-        # 4) обновить total
-        conn.execute("UPDATE invoices SET total=? WHERE id=?", (total, invoice_id))
-
-        # 5) ledger invoice
-        conn.execute(
-            "INSERT INTO ledger(client_id, type, amount, created_at, note) VALUES(?,?,?,?,?)",
-            (cart.client_id, "invoice", total, created_at, f"invoice#{invoice_id}"),
-        )
-
+        # Close cart
+        conn.execute("UPDATE carts SET is_active=0 WHERE id=?", (cart_id,))
         conn.commit()
 
-        # 6) PDF
-        pdf_path = generate_invoice_pdf(invoice_id)
+        invoice = {
+            "number": inv_number,
+            "client": cart["client_name"],
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "items": inv_items,
+            "total": total,
+            "currency": "USD",
+        }
 
-        return True, (invoice_id, pdf_path, total)
-    except Exception as e:
-        conn.execute("ROLLBACK")
-        return False, str(e)
-    finally:
-        conn.close()
-
-def add_payment(client_id: int, amount: float) -> None:
-    if amount <= 0:
-        raise ValueError("amount must be > 0")
-    conn = _connect()
-    try:
-        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        conn.execute(
-            "INSERT INTO ledger(client_id, type, amount, created_at, note) VALUES(?,?,?,?,?)",
-            (client_id, "payment", float(amount), created_at, "payment"),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-def get_debt_usd(client_id: int) -> float:
-    conn = _connect()
-    try:
-        inv = conn.execute(
-            "SELECT COALESCE(SUM(amount),0) as s FROM ledger WHERE client_id=? AND type='invoice'",
-            (client_id,),
-        ).fetchone()["s"]
-        pay = conn.execute(
-            "SELECT COALESCE(SUM(amount),0) as s FROM ledger WHERE client_id=? AND type='payment'",
-            (client_id,),
-        ).fetchone()["s"]
-        return round(float(inv) - float(pay), settings.decimals)
+        return {"invoice": invoice, "total": total, "debt": debt}
     finally:
         conn.close()
