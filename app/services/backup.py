@@ -1,25 +1,27 @@
-import os
+import shutil
 import zipfile
 from datetime import datetime
+from pathlib import Path
 
-from app.config import settings
+DB_PATH = Path(__file__).resolve().parents[1] / "db" / "stock.db"
+BACKUP_DIR = Path("/opt/stock_bot_backups")
+
 
 def make_backup_zip() -> str:
-    os.makedirs(settings.backup_dir, exist_ok=True)
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_path = os.path.join(settings.backup_dir, f"backup_{ts}.zip")
+    zip_path = BACKUP_DIR / f"stockbot_backup_{ts}.zip"
 
-    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as z:
-        # db
-        if os.path.exists(settings.db_path):
-            z.write(settings.db_path, arcname="data/stock.db")
-        # exports (pdf)
-        if os.path.isdir(settings.export_dir):
-            for root, _, files in os.walk(settings.export_dir):
-                for f in files:
-                    full = os.path.join(root, f)
-                    rel = os.path.relpath(full, os.path.dirname(settings.export_dir))
-                    z.write(full, arcname=f"exports/{rel}")
+    if not DB_PATH.exists():
+        raise FileNotFoundError(f"DB не найдена: {DB_PATH}")
 
-    return out_path
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        z.write(DB_PATH, arcname="stock.db")
+
+    return str(zip_path)
+
+
+# Для совместимости со старым импортом
+def make_backup() -> str:
+    return make_backup_zip()
