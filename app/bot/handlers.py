@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import sqlite3
+
 from aiogram import Router
 from aiogram.filters import Command
+from aiogram.filters.command import CommandObject
 from aiogram.types import Message
 
 from app.config import settings
@@ -109,16 +112,30 @@ async def cmd_clients(message: Message):
 
 
 @router.message(Command("client_add"))
-async def cmd_client_add(message: Message):
+async def cmd_client_add(message: Message, command: CommandObject):
     if not _is_admin(message):
         return
-    parts = message.text.split(maxsplit=1) if message.text else []
-    if len(parts) < 2:
-        await message.answer("Формат: /client_add Имя")
+
+    name = (command.args or "").strip()
+
+    # если человек случайно нажал /client_add без имени
+    if not name:
+        await message.answer("Формат: /client_add Имя\nПример: /client_add ali")
         return
-    name = parts[1].strip()
-    add_client(name)
-    await message.answer(f"✅ Клиент добавлен: {name}")
+
+    # можно чуть подчистить пробелы
+    name = " ".join(name.split())
+
+    try:
+        add_client(name)
+    except sqlite3.IntegrityError:
+        await message.answer(f"⚠️ Клиент уже существует: {name}\nПроверь список: /clients")
+        return
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при добавлении клиента: {e}")
+        return
+
+    await message.answer(f"✅ Клиент добавлен: {name}\nПроверить: /clients")
 
 
 @router.message(Command("products"))
@@ -131,7 +148,9 @@ async def cmd_products(message: Message):
         return
     lines = []
     for r in rows:
-        lines.append(f"• <b>{r['brand']}</b> {r['model']} — {r['name']} | wh={r['wh_price']:.2f} | wh10={r['wh10_price']:.2f}")
+        lines.append(
+            f"• <b>{r['brand']}</b> {r['model']} — {r['name']} | wh={r['wh_price']:.2f} | wh10={r['wh10_price']:.2f}"
+        )
     await message.answer("<b>Товары:</b>\n" + "\n".join(lines))
 
 
@@ -301,7 +320,9 @@ async def cmd_cart_show(message: Message):
         total += line
         lines.append(f"• {it.brand} {it.model} — {it.name} | {it.qty} x {it.price:.2f} = {line:.2f} ({it.price_mode})")
     await message.answer(
-        f"<b>Корзина</b> для <b>{cart.client_name}</b>:\n" + "\n".join(lines) + f"\n\n<b>Итого:</b> {total:.2f} {settings.currency}"
+        f"<b>Корзина</b> для <b>{cart.client_name}</b>:\n"
+        + "\n".join(lines)
+        + f"\n\n<b>Итого:</b> {total:.2f} {settings.currency}"
     )
 
 
