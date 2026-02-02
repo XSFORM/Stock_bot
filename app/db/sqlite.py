@@ -1,14 +1,15 @@
 from __future__ import annotations
-
+import os
 import sqlite3
 from pathlib import Path
 from typing import Optional, Tuple, Any
 
 from app.constants import WAREHOUSES
 
-
 BASE_DIR = Path(__file__).resolve().parents[1]  # .../app
-DB_PATH = BASE_DIR / "db" / "stock.db"
+
+# ✅ берём из .env, иначе fallback
+DB_PATH = Path(os.getenv("DB_PATH", str(BASE_DIR / "db" / "stock.db")))
 SCHEMA_PATH = BASE_DIR / "db" / "schema.sql"
 
 
