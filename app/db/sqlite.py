@@ -1,199 +1,345 @@
-import os
+from __future__ import annotations
+
 import sqlite3
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, Tuple, Any
 
-BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_DB_PATH = BASE_DIR / "stock.db"
-SCHEMA_PATH = BASE_DIR / "schema.sql"
+from app.constants import WAREHOUSES
 
 
-def _connect(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
-    conn = sqlite3.connect(str(db_path))
+BASE_DIR = Path(__file__).resolve().parents[1]  # .../app
+DB_PATH = BASE_DIR / "db" / "stock.db"
+SCHEMA_PATH = BASE_DIR / "db" / "schema.sql"
+
+
+def _connect() -> sqlite3.Connection:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
 
-def init_db(db_path: str | Path = DEFAULT_DB_PATH) -> None:
-    db_path = Path(db_path)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    schema = SCHEMA_PATH.read_text(encoding="utf-8")
-    if not schema.strip():
-        raise RuntimeError("schema.sql пустой — таблицы не будут созданы.")
-
-    with _connect(db_path) as conn:
-        conn.executescript(schema)
+def init_db() -> None:
+    conn = _connect()
+    try:
+        if SCHEMA_PATH.exists():
+            conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        # Warehouses seed
+        for code, title in WAREHOUSES.items():
+            conn.execute(
+                "INSERT OR IGNORE INTO warehouses(code, title) VALUES(?, ?)",
+                (code, title),
+            )
         conn.commit()
+    finally:
+        conn.close()
 
 
-def add_client(name: str, db_path: str | Path = DEFAULT_DB_PATH) -> int:
-    name = (name or "").strip()
+def ensure_admin() -> None:
+    # просто гарантируем, что таблицы точно есть
+    init_db()
+
+
+# -------- clients --------
+
+def add_client(name: str) -> None:
+    name = name.strip()
     if not name:
-        raise ValueError("Имя клиента пустое")
+        raise ValueError("empty name")
 
-    with _connect(db_path) as conn:
-        cur = conn.execute("INSERT INTO clients(name) VALUES(?)", (name,))
+    conn = _connect()
+    try:
+        conn.execute("INSERT OR IGNORE INTO clients(name) VALUES(?)", (name,))
         conn.commit()
-        return int(cur.lastrowid)
+    finally:
+        conn.close()
 
 
-def list_clients(db_path: str | Path = DEFAULT_DB_PATH) -> List[str]:
-    with _connect(db_path) as conn:
-        rows = conn.execute("SELECT name FROM clients ORDER BY name").fetchall()
-        return [r["name"] for r in rows]
+def list_clients() -> list[dict[str, Any]]:
+    conn = _connect()
+    try:
+        rows = conn.execute("SELECT id, name FROM clients ORDER BY name").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 
-def add_product(
-    brand: str,
-    model: str,
-    name: str,
-    wholesale_price: float,
-    db_path: str | Path = DEFAULT_DB_PATH,
-) -> int:
-    brand = (brand or "").strip().lower()
-    model = (model or "").strip().lower()
-    name = (name or "").strip()
-    if not (brand and model and name):
-        raise ValueError("brand/model/name обязательны")
-
-    with _connect(db_path) as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO products(brand, model, name, wholesale_price)
-            VALUES(?,?,?,?)
-            ON CONFLICT(brand, model) DO UPDATE SET
-              name=excluded.name,
-              wholesale_price=excluded.wholesale_price
-            """,
-            (brand, model, name, float(wholesale_price)),
-        )
-        # если был конфликт — lastrowid может быть 0, поэтому найдём id
-        row = conn.execute(
-            "SELECT id FROM products WHERE brand=? AND model=?",
-            (brand, model),
+def get_client_by_name(name: str) -> Optional[dict[str, Any]]:
+    conn = _connect()
+    try:
+        r = conn.execute(
+            "SELECT id, name FROM clients WHERE lower(name)=lower(?)",
+            (name.strip(),),
         ).fetchone()
-        conn.commit()
-        return int(row["id"])
+        return dict(r) if r else None
+    finally:
+        conn.close()
 
 
-def list_products(db_path: str | Path = DEFAULT_DB_PATH) -> List[Tuple[str, str, str, float]]:
-    with _connect(db_path) as conn:
-        rows = conn.execute(
-            "SELECT brand, model, name, wholesale_price FROM products ORDER BY brand, model"
-        ).fetchall()
-        return [(r["brand"], r["model"], r["name"], float(r["wholesale_price"])) for r in rows]
+# -------- products --------
 
-
-def _get_product_id(brand: str, model: str, db_path: str | Path = DEFAULT_DB_PATH) -> int:
+def add_product(brand: str, model: str, name: str, wh_price: float) -> None:
     brand = brand.strip().lower()
     model = model.strip().lower()
-    with _connect(db_path) as conn:
-        row = conn.execute(
-            "SELECT id FROM products WHERE brand=? AND model=?",
-            (brand, model),
-        ).fetchone()
-        if not row:
-            raise ValueError(f"Товар не найден: {brand} {model}")
-        return int(row["id"])
+    name = name.strip()
+    wh_price = float(wh_price)
 
-
-def _ensure_stock_row(warehouse: str, product_id: int, db_path: str | Path = DEFAULT_DB_PATH) -> None:
-    with _connect(db_path) as conn:
+    conn = _connect()
+    try:
         conn.execute(
-            "INSERT OR IGNORE INTO stock(warehouse, product_id, qty) VALUES(?,?,0)",
-            (warehouse, product_id),
+            """
+            INSERT OR REPLACE INTO products(brand, model, name, wh_price)
+            VALUES(?, ?, ?, ?)
+            """,
+            (brand, model, name, wh_price),
         )
         conn.commit()
+    finally:
+        conn.close()
 
 
-def change_stock(
-    warehouse: str,
-    brand: str,
-    model: str,
-    qty_delta: int,
-    db_path: str | Path = DEFAULT_DB_PATH,
-) -> None:
-    pid = _get_product_id(brand, model, db_path)
-    _ensure_stock_row(warehouse, pid, db_path)
+def list_products() -> list[dict[str, Any]]:
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT id, brand, model, name, wh_price FROM products ORDER BY brand, model"
+        ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["wh10_price"] = round(float(d["wh_price"]) * 1.10, 2)
+            out.append(d)
+        return out
+    finally:
+        conn.close()
 
-    with _connect(db_path) as conn:
-        row = conn.execute(
-            "SELECT qty FROM stock WHERE warehouse=? AND product_id=?",
-            (warehouse, pid),
+
+def find_product(brand: str, model: str) -> Optional[dict[str, Any]]:
+    conn = _connect()
+    try:
+        r = conn.execute(
+            "SELECT id, brand, model, name, wh_price FROM products WHERE brand=? AND model=?",
+            (brand.strip().lower(), model.strip().lower()),
         ).fetchone()
-        current = int(row["qty"])
-        new_qty = current + int(qty_delta)
-        if new_qty < 0:
-            raise ValueError(f"Недостаточно товара на складе {warehouse}. Сейчас: {current}, нужно: {-qty_delta}")
-        conn.execute(
-            "UPDATE stock SET qty=?, updated_at=datetime('now') WHERE warehouse=? AND product_id=?",
-            (new_qty, warehouse, pid),
-        )
-        conn.commit()
+        if not r:
+            return None
+        d = dict(r)
+        d["wh10_price"] = round(float(d["wh_price"]) * 1.10, 2)
+        return d
+    finally:
+        conn.close()
 
 
-def move_stock(
-    from_wh: str,
-    to_wh: str,
-    brand: str,
-    model: str,
-    qty: int,
-    db_path: str | Path = DEFAULT_DB_PATH,
-) -> None:
-    qty = int(qty)
+# -------- stock --------
+
+def _get_stock_qty(conn: sqlite3.Connection, warehouse: str, product_id: int) -> float:
+    r = conn.execute(
+        "SELECT qty FROM stock WHERE warehouse_code=? AND product_id=?",
+        (warehouse, product_id),
+    ).fetchone()
+    return float(r["qty"]) if r else 0.0
+
+
+def _set_stock_qty(conn: sqlite3.Connection, warehouse: str, product_id: int, qty: float) -> None:
+    conn.execute(
+        """
+        INSERT INTO stock(warehouse_code, product_id, qty)
+        VALUES(?, ?, ?)
+        ON CONFLICT(warehouse_code, product_id) DO UPDATE SET qty=excluded.qty
+        """,
+        (warehouse, product_id, qty),
+    )
+
+
+def move_stock(src: str, dst: str, brand: str, model: str, qty: float) -> Tuple[bool, str]:
+    src = src.strip().upper()
+    dst = dst.strip().upper()
+    qty = float(qty)
+
     if qty <= 0:
-        raise ValueError("Количество должно быть > 0")
+        return False, "QTY должно быть > 0"
+    if src == dst:
+        return False, "FROM и TO одинаковые"
+    if src not in WAREHOUSES or dst not in WAREHOUSES:
+        return False, "Неизвестный склад"
 
-    pid = _get_product_id(brand, model, db_path)
-    _ensure_stock_row(from_wh, pid, db_path)
-    _ensure_stock_row(to_wh, pid, db_path)
+    product = find_product(brand, model)
+    if not product:
+        return False, "Товар не найден. Добавь через /product_add"
 
-    with _connect(db_path) as conn:
-        row = conn.execute(
-            "SELECT qty FROM stock WHERE warehouse=? AND product_id=?",
-            (from_wh, pid),
-        ).fetchone()
-        cur_qty = int(row["qty"])
-        if cur_qty < qty:
-            raise ValueError(f"Недостаточно товара на {from_wh}. Сейчас {cur_qty}, нужно {qty}")
+    conn = _connect()
+    try:
+        pid = int(product["id"])
+        src_qty = _get_stock_qty(conn, src, pid)
+        if src_qty < qty:
+            return False, f"На складе {src} недостаточно: есть {src_qty}, нужно {qty}"
 
-        conn.execute(
-            "UPDATE stock SET qty=qty-?, updated_at=datetime('now') WHERE warehouse=? AND product_id=?",
-            (qty, from_wh, pid),
-        )
-        conn.execute(
-            "UPDATE stock SET qty=qty+?, updated_at=datetime('now') WHERE warehouse=? AND product_id=?",
-            (qty, to_wh, pid),
-        )
-        conn.execute(
-            "INSERT INTO movements(from_wh, to_wh, product_id, qty) VALUES(?,?,?,?)",
-            (from_wh, to_wh, pid, qty),
-        )
+        _set_stock_qty(conn, src, pid, src_qty - qty)
+        dst_qty = _get_stock_qty(conn, dst, pid)
+        _set_stock_qty(conn, dst, pid, dst_qty + qty)
+
         conn.commit()
+        return True, ""
+    finally:
+        conn.close()
 
 
-def get_stock(db_path: str | Path = DEFAULT_DB_PATH, warehouse: Optional[str] = None) -> List[Dict]:
-    with _connect(db_path) as conn:
-        if warehouse:
+def get_stock_text(warehouse: Optional[str] = None) -> str:
+    wh = warehouse.strip().upper() if warehouse else None
+    conn = _connect()
+    try:
+        if wh:
             rows = conn.execute(
                 """
-                SELECT s.warehouse, p.brand, p.model, p.name, s.qty
+                SELECT w.code as warehouse, p.brand, p.model, p.name, s.qty
                 FROM stock s
                 JOIN products p ON p.id=s.product_id
-                WHERE s.warehouse=?
+                JOIN warehouses w ON w.code=s.warehouse_code
+                WHERE w.code=?
                 ORDER BY p.brand, p.model
                 """,
-                (warehouse,),
+                (wh,),
             ).fetchall()
+            title = f"<b>Остатки: {wh}</b>\n"
         else:
             rows = conn.execute(
                 """
-                SELECT s.warehouse, p.brand, p.model, p.name, s.qty
+                SELECT w.code as warehouse, p.brand, p.model, p.name, s.qty
                 FROM stock s
                 JOIN products p ON p.id=s.product_id
-                ORDER BY s.warehouse, p.brand, p.model
+                JOIN warehouses w ON w.code=s.warehouse_code
+                ORDER BY w.code, p.brand, p.model
                 """
             ).fetchall()
-        return [dict(r) for r in rows]
+            title = "<b>Остатки (все склады)</b>\n"
+
+        if not rows:
+            return title + "Пока пусто."
+
+        lines = []
+        current = None
+        for r in rows:
+            d = dict(r)
+            if not wh:
+                if current != d["warehouse"]:
+                    current = d["warehouse"]
+                    lines.append(f"\n<b>{current}</b>")
+            lines.append(f"• {d['brand']} {d['model']} — {d['qty']}")
+        return title + "\n".join(lines).strip()
+    finally:
+        conn.close()
+
+
+# -------- invoices & debts --------
+
+def _next_invoice_no(conn: sqlite3.Connection) -> int:
+    r = conn.execute("SELECT COALESCE(MAX(invoice_no), 0) AS mx FROM invoices").fetchone()
+    return int(r["mx"]) + 1
+
+
+def create_invoice_from_cart(cart) -> Tuple[int, float, str]:
+    """
+    cart: app.bot.states.Cart
+    returns: (invoice_no, total, pdf_path)
+    """
+    from app.services.invoice_pdf import build_invoice_pdf  # локальный импорт чтобы не было циклов
+
+    init_db()
+
+    client = get_client_by_name(cart.client_name)
+    if not client:
+        raise ValueError("client not found")
+
+    conn = _connect()
+    try:
+        invoice_no = _next_invoice_no(conn)
+        total = 0.0
+
+        # создаём инвойс
+        cur = conn.execute(
+            "INSERT INTO invoices(invoice_no, client_id, total, currency) VALUES(?, ?, ?, 'USD')",
+            (invoice_no, int(client["id"]), 0.0),
+        )
+        invoice_id = int(cur.lastrowid)
+
+        # items
+        for it in cart.items:
+            product = find_product(it.brand, it.model)
+            if not product:
+                raise ValueError(f"product not found: {it.brand} {it.model}")
+            pid = int(product["id"])
+            line_total = round(float(it.qty) * float(it.unit_price), 2)
+            total = round(total + line_total, 2)
+
+            conn.execute(
+                """
+                INSERT INTO invoice_items(invoice_id, product_id, qty, unit_price, price_mode, line_total)
+                VALUES(?, ?, ?, ?, ?, ?)
+                """,
+                (invoice_id, pid, float(it.qty), float(it.unit_price), it.price_mode, line_total),
+            )
+
+        # обновляем total
+        conn.execute("UPDATE invoices SET total=? WHERE id=?", (total, invoice_id))
+
+        # генерим PDF
+        pdf_path = build_invoice_pdf(
+            invoice_no=invoice_no,
+            client_name=cart.client_name,
+            items=[
+                {
+                    "brand": it.brand,
+                    "model": it.model,
+                    "qty": float(it.qty),
+                    "unit_price": float(it.unit_price),
+                    "line_total": round(float(it.qty) * float(it.unit_price), 2),
+                }
+                for it in cart.items
+            ],
+            total=total,
+            currency="USD",
+        )
+
+        conn.execute("UPDATE invoices SET pdf_path=? WHERE id=?", (pdf_path, invoice_id))
+
+        conn.commit()
+        return invoice_no, total, pdf_path
+    finally:
+        conn.close()
+
+
+def get_debt_usd(client_name: str) -> float:
+    client = get_client_by_name(client_name)
+    if not client:
+        return 0.0
+
+    conn = _connect()
+    try:
+        inv = conn.execute(
+            "SELECT COALESCE(SUM(total),0) AS s FROM invoices WHERE client_id=?",
+            (int(client["id"]),),
+        ).fetchone()["s"]
+        pay = conn.execute(
+            "SELECT COALESCE(SUM(amount),0) AS s FROM payments WHERE client_id=?",
+            (int(client["id"]),),
+        ).fetchone()["s"]
+        return round(float(inv) - float(pay), 2)
+    finally:
+        conn.close()
+
+
+def add_payment(client_name: str, amount: float, note: str = "") -> None:
+    client = get_client_by_name(client_name)
+    if not client:
+        raise ValueError("client not found")
+
+    conn = _connect()
+    try:
+        conn.execute(
+            "INSERT INTO payments(client_id, amount, note) VALUES(?, ?, ?)",
+            (int(client["id"]), float(amount), note.strip()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
