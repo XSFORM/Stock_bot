@@ -1,70 +1,52 @@
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any
 
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 
-def build_invoice_pdf(
-    invoice_no: int,
-    client_name: str,
-    items: List[Dict[str, Any]],
-    total: float,
-    currency: str = "USD",
-) -> str:
-    base_dir = Path(__file__).resolve().parents[1]  # .../app
-    invoices_dir = base_dir / "data" / "invoices"
-    invoices_dir.mkdir(parents=True, exist_ok=True)
+OUT_DIR = Path("/opt/stock_bot/invoices")
 
-    filename = f"invoice_{invoice_no}.pdf"
-    path = invoices_dir / filename
 
-    c = canvas.Canvas(str(path), pagesize=A4)
-    w, h = A4
+def generate_invoice_pdf(invoice: dict[str, Any], items: list[dict[str, Any]]) -> str:
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    y = h - 50
+    number = invoice["number"]
+    filename = OUT_DIR / f"invoice_{number:06d}.pdf"
+
+    c = canvas.Canvas(str(filename), pagesize=A4)
+    width, height = A4
+
+    y = height - 50
     c.setFont("Helvetica-Bold", 14)
-    c.drawString(40, y, f"INVOICE #{invoice_no}")
-    y -= 20
+    c.drawString(50, y, f"INVOICE #{number:06d}")
+    y -= 25
 
     c.setFont("Helvetica", 11)
-    c.drawString(40, y, f"Client: {client_name}")
+    c.drawString(50, y, f"Client: {invoice['client']}")
     y -= 16
-    c.drawString(40, y, f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    y -= 30
+    c.drawString(50, y, f"Date: {invoice['date']}")
+    y -= 25
 
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(40, y, "Item")
-    c.drawString(260, y, "Qty")
-    c.drawString(320, y, "Price")
-    c.drawString(420, y, "Total")
-    y -= 12
-    c.line(40, y, w - 40, y)
-    y -= 16
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(50, y, "Items:")
+    y -= 18
 
     c.setFont("Helvetica", 10)
     for it in items:
-        name = f"{it['brand']} {it['model']}"
-        c.drawString(40, y, name[:34])
-        c.drawRightString(300, y, f"{it['qty']:.0f}")
-        c.drawRightString(390, y, f"{it['unit_price']:.2f}")
-        c.drawRightString(w - 40, y, f"{it['line_total']:.2f}")
-        y -= 16
+        line = f"{it['brand']} {it['model']} — {it['qty']} x {float(it['unit_price']):.2f}$ = {float(it['total']):.2f}$"
+        c.drawString(50, y, line)
+        y -= 14
         if y < 80:
             c.showPage()
-            y = h - 60
+            y = height - 50
             c.setFont("Helvetica", 10)
 
     y -= 10
-    c.line(40, y, w - 40, y)
-    y -= 20
-
     c.setFont("Helvetica-Bold", 12)
-    c.drawRightString(w - 40, y, f"TOTAL: {total:.2f} {currency}")
+    c.drawString(50, y, f"TOTAL: {float(invoice['total']):.2f} {invoice['currency']}")
 
-    c.showPage()
     c.save()
-    return str(path)
+    return str(filename)

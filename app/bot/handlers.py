@@ -1,6 +1,4 @@
-import os
-import sqlite3
-from datetime import datetime
+import shlex
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -24,7 +22,11 @@ from app.db.sqlite import (
 from app.services.backup import make_backup
 from app.services.invoice_pdf import generate_invoice_pdf
 
+
 router = Router()
+
+# текущий выбранный клиент для корзины (только для тебя, один админ)
+ACTIVE_CLIENT: str | None = None
 
 
 def _is_admin(message: Message) -> bool:
@@ -34,35 +36,11 @@ def _is_admin(message: Message) -> bool:
         return False
 
 
-def _db_path() -> str:
-    # Prefer explicit env var, otherwise use default location used by install.sh
-    return os.getenv("DB_PATH", "/opt/stock_bot/app/db/stock.db")
-
-
-def _ensure_clients_table() -> None:
-    """Create minimal 'clients' table if it doesn't exist yet."""
-    db_path = _db_path()
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS clients (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-            """
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     if not _is_admin(message):
         return
+    init_db()
     await message.answer("✅ Stock_bot запущен")
 
 
@@ -82,7 +60,7 @@ async def cmd_help(message: Message):
         "/clients — список\n"
         "/client_add ИМЯ — добавить\n\n"
         "<b>Товары</b>\n"
-        "/product_add BRAND MODEL NAME WHOLESALE_PRICE\n"
+        "/product_add BRAND MODEL \"NAME\" WHOLESALE_PRICE\n"
         "пример:\n"
         "/product_add sonifer sf-8040 \"Blender 800W\" 12.50\n"
         "/products — список\n\n"
@@ -94,14 +72,15 @@ async def cmd_help(message: Message):
         "пример:\n"
         "/move CHINA_DEPOT WAREHOUSE sonifer sf-8040 10\n\n"
         "<b>Корзина (продажа)</b>\n"
-        "/cart_start CLIENT_NAME — начать\n"
-        "/cart_add BRAND MODEL QTY [price=wh|wh10|custom]\n"
-        "[custom_price]\n"
+        "/cart_start CLIENT_NAME — выбрать клиента и начать корзину\n"
+        "/cart_add BRAND MODEL QTY [wh|wh10|custom] [custom_price]\n"
         "пример:\n"
         "/cart_add sonifer sf-8040 2 wh\n"
-        "/cart_show — показать\n"
-        "/cart_remove BRAND MODEL — удалить\n"
-        "/cart_finish — списать из SHOP + инвойс PDF + долг\n"
+        "/cart_add sonifer sf-8040 2 wh10\n"
+        "/cart_add sonifer sf-8040 2 custom 15.00\n"
+        "/cart_show — показать корзину\n"
+        "/cart_remove BRAND MODEL — удалить 1 позицию\n"
+        "/cart_finish — списать из SHOP + инвойс PDF\n"
     )
     await message.answer(text)
 
@@ -128,25 +107,11 @@ async def cmd_backup(message: Message):
 async def cmd_clients(message: Message):
     if not _is_admin(message):
         return
-
-    # In a fresh install the DB may exist but tables may not be created yet.
-    _ensure_clients_table()
-
-    try:
-        rows = list_clients()
-    except Exception as e:
-        # If DB schema wasn't created for some reason, try once more after creating table.
-        if "no such table: clients" in str(e).lower():
-            _ensure_clients_table()
-            rows = list_clients()
-        else:
-            await message.answer(f"❌ Ошибка при чтении клиентов: {e}")
-            return
-
+    init_db()
+    rows = list_clients()
     if not rows:
         await message.answer("Клиентов пока нет. Добавь: /client_add Имя")
         return
-
     lines = ["<b>Клиенты:</b>"]
     for r in rows:
         lines.append(f"• {r['name']}")
@@ -157,42 +122,33 @@ async def cmd_clients(message: Message):
 async def cmd_client_add(message: Message):
     if not _is_admin(message):
         return
+    init_db()
     parts = message.text.split(maxsplit=1)
-    if len(parts) < 2:
+    if len(parts) < 2 or not parts[1].strip():
         await message.answer("Формат: /client_add Имя\nПример: /client_add ali")
         return
-
     name = parts[1].strip()
-    if not name:
-        await message.answer("Формат: /client_add Имя\nПример: /client_add ali")
-        return
-
-    _ensure_clients_table()
-
     try:
         add_client(name)
+        await message.answer(f"✅ Клиент добавлен: {name}")
     except Exception as e:
-        if "no such table: clients" in str(e).lower():
-            _ensure_clients_table()
-            add_client(name)
-        else:
-            await message.answer(f"❌ Ошибка при добавлении клиента: {e}")
-            return
-
-    await message.answer(f"✅ Клиент добавлен: {name}")
+        await message.answer(f"❌ Ошибка при добавлении клиента: {e}")
 
 
 @router.message(Command("products"))
 async def cmd_products(message: Message):
     if not _is_admin(message):
         return
+    init_db()
     rows = list_products()
     if not rows:
         await message.answer("Товаров пока нет. Добавь: /product_add ...")
         return
     lines = ["<b>Товары:</b>"]
     for r in rows:
-        lines.append(f"• {r['brand']} {r['model']} — {r['name']} (wh={r['wholesale_price']:.2f}$)")
+        lines.append(
+            f"• {r['brand']} {r['model']} — {r['name']} (wh={float(r['wh_price']):.2f}$ / wh10={float(r['wh10_price']):.2f}$)"
+        )
     await message.answer("\n".join(lines))
 
 
@@ -200,14 +156,17 @@ async def cmd_products(message: Message):
 async def cmd_product_add(message: Message):
     if not _is_admin(message):
         return
-    parts = message.text.split(maxsplit=4)
-    if len(parts) < 5:
-        await message.answer('Формат: /product_add BRAND MODEL "NAME" WHOLESALE_PRICE')
-        return
-    brand, model, name, wh_price = parts[1], parts[2], parts[3], parts[4]
+    init_db()
     try:
-        add_product(brand, model, name.replace('"', ""), float(wh_price))
+        args = shlex.split(message.text)
+        # ['/product_add', 'brand', 'model', 'name with spaces', '12.50']
+        if len(args) < 5:
+            raise ValueError
+        _, brand, model, name, wh_price = args[0], args[1], args[2], args[3], args[4]
+        add_product(brand, model, name, float(wh_price))
         await message.answer(f"✅ Товар добавлен: {brand} {model}")
+    except ValueError:
+        await message.answer('Формат: /product_add BRAND MODEL "NAME" WHOLESALE_PRICE')
     except Exception as e:
         await message.answer(f"❌ Ошибка добавления товара: {e}")
 
@@ -216,6 +175,7 @@ async def cmd_product_add(message: Message):
 async def cmd_stock(message: Message):
     if not _is_admin(message):
         return
+    init_db()
     parts = message.text.split(maxsplit=1)
     wh = parts[1].strip().upper() if len(parts) > 1 else None
     try:
@@ -235,30 +195,34 @@ async def cmd_stock(message: Message):
 async def cmd_move(message: Message):
     if not _is_admin(message):
         return
+    init_db()
     parts = message.text.split()
     if len(parts) != 6:
         await message.answer("Формат: /move FROM TO BRAND MODEL QTY")
         return
     _, w_from, w_to, brand, model, qty = parts
-    try:
-        move_stock(w_from.upper(), w_to.upper(), brand, model, int(qty))
-        await message.answer(f"✅ Перемещено: {brand} {model} {qty} из {w_from} в {w_to}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка перемещения: {e}")
+    ok, err = move_stock(w_from, w_to, brand, model, float(qty))
+    if not ok:
+        await message.answer(f"❌ {err}")
+        return
+    await message.answer(f"✅ Перемещено: {brand} {model} {qty} из {w_from} в {w_to}")
 
 
 @router.message(Command("cart_start"))
 async def cmd_cart_start(message: Message):
+    global ACTIVE_CLIENT
     if not _is_admin(message):
         return
+    init_db()
     parts = message.text.split(maxsplit=1)
-    if len(parts) < 2:
+    if len(parts) < 2 or not parts[1].strip():
         await message.answer("Формат: /cart_start CLIENT_NAME")
         return
     client = parts[1].strip()
     try:
         cart_start(client)
-        await message.answer(f"🧺 Корзина начата для: {client}")
+        ACTIVE_CLIENT = client
+        await message.answer(f"✅ Корзина начата. Клиент: <b>{client}</b>")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
 
@@ -267,55 +231,81 @@ async def cmd_cart_start(message: Message):
 async def cmd_cart_add(message: Message):
     if not _is_admin(message):
         return
+    init_db()
+    if not ACTIVE_CLIENT:
+        await message.answer("Сначала выбери клиента: /cart_start CLIENT_NAME")
+        return
+
     parts = message.text.split()
+    # /cart_add brand model qty [mode] [custom_price]
     if len(parts) < 4:
         await message.answer("Формат: /cart_add BRAND MODEL QTY [wh|wh10|custom] [custom_price]")
         return
-    brand, model, qty = parts[1], parts[2], int(parts[3])
-    price_mode = parts[4] if len(parts) >= 5 else "wh"
-    custom_price = float(parts[5]) if (len(parts) >= 6) else None
-    try:
-        cart_add(brand, model, qty, price_mode, custom_price)
-        await message.answer(f"✅ Добавлено в корзину: {brand} {model} x{qty}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
+
+    brand, model, qty = parts[1], parts[2], parts[3]
+    mode = parts[4].lower() if len(parts) >= 5 else "wh"
+    custom_price = float(parts[5]) if (mode == "custom" and len(parts) >= 6) else None
+
+    ok, err = cart_add(ACTIVE_CLIENT, brand, model, float(qty), mode, custom_price)
+    if not ok:
+        await message.answer(f"❌ {err}")
+        return
+    await message.answer(f"✅ Добавлено: {brand} {model} x{qty} ({mode})")
 
 
 @router.message(Command("cart_show"))
 async def cmd_cart_show(message: Message):
     if not _is_admin(message):
         return
-    try:
-        txt = cart_show()
-        await message.answer(txt)
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
+    init_db()
+    if not ACTIVE_CLIENT:
+        await message.answer("Сначала выбери клиента: /cart_start CLIENT_NAME")
+        return
+    ok, text = cart_show(ACTIVE_CLIENT)
+    if not ok:
+        await message.answer(f"❌ {text}")
+        return
+    await message.answer(text)
 
 
 @router.message(Command("cart_remove"))
 async def cmd_cart_remove(message: Message):
     if not _is_admin(message):
         return
+    init_db()
+    if not ACTIVE_CLIENT:
+        await message.answer("Сначала выбери клиента: /cart_start CLIENT_NAME")
+        return
     parts = message.text.split()
     if len(parts) != 3:
         await message.answer("Формат: /cart_remove BRAND MODEL")
         return
-    brand, model = parts[1], parts[2]
-    try:
-        cart_remove(brand, model)
-        await message.answer(f"🗑 Удалено: {brand} {model}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
+    _, brand, model = parts
+    ok, err = cart_remove(ACTIVE_CLIENT, brand, model)
+    if not ok:
+        await message.answer(f"❌ {err}")
+        return
+    await message.answer(f"✅ Удалено: {brand} {model}")
 
 
 @router.message(Command("cart_finish"))
 async def cmd_cart_finish(message: Message):
+    global ACTIVE_CLIENT
     if not _is_admin(message):
         return
-    try:
-        result = cart_finish()
-        pdf_path = generate_invoice_pdf(result["invoice"])
-        await message.answer_document(open(pdf_path, "rb"))
-        await message.answer(f"✅ Готово. Итог: {result['total']:.2f}$\nДолг: {'да' if result['debt'] else 'нет'}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
+    init_db()
+    if not ACTIVE_CLIENT:
+        await message.answer("Сначала выбери клиента: /cart_start CLIENT_NAME")
+        return
+
+    ok, err, invoice, items = cart_finish(ACTIVE_CLIENT)
+    if not ok:
+        await message.answer(f"❌ {err}")
+        return
+
+    pdf_path = generate_invoice_pdf(invoice, items)
+    await message.answer(f"✅ Инвойс #{invoice['number']:06d} на {invoice['total']:.2f}$ готов.")
+    await message.answer_document(open(pdf_path, "rb"))
+
+    # после завершения — сброс активного клиента (чтобы случайно не продолжить)
+    ACTIVE_CLIENT = None
