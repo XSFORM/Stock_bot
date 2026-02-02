@@ -1,4 +1,8 @@
 import shlex
+from aiogram.fsm.context import FSMContext
+
+from app.bot.states import ClientAdd, ProductAdd
+
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -37,6 +41,15 @@ async def cmd_start(message: Message):
         return
     init_db()
     await message.answer("✅ Stock_bot запущен")
+    
+
+@router.message(Command("cancel"))
+async def cmd_cancel(message: Message, state: FSMContext):
+    if not _is_admin(message):
+        return
+    await state.clear()
+    await message.answer("❎ Отменено. Можно вводить команды заново.")
+   
 
 
 @router.message(Command("help"))
@@ -48,6 +61,7 @@ async def cmd_help(message: Message):
         "<b>Stock_bot — команды</b>\n\n"
         "<b>Основное</b>\n"
         "/start — запуск\n"
+        "/cancel — отмена ввода"
         "/help — помощь\n"
         "/ping — проверка\n"
         "/backup — бэкап базы + PDF\n\n"
@@ -114,20 +128,50 @@ async def cmd_clients(message: Message):
 
 
 @router.message(Command("client_add"))
-async def cmd_client_add(message: Message):
+async def cmd_client_add(message: Message, state: FSMContext):
     if not _is_admin(message):
         return
-    init_db()
+
     parts = message.text.split(maxsplit=1)
-    if len(parts) < 2 or not parts[1].strip():
-        await message.answer("Формат: /client_add Имя\nПример: /client_add ali")
+
+    # 1) Если сразу передали имя: /client_add ali
+    if len(parts) >= 2 and parts[1].strip():
+        name = parts[1].strip()
+        try:
+            add_client(name)
+            await message.answer(f"✅ Клиент добавлен: {name}")
+        except Exception as e:
+            await message.answer(f"❌ Ошибка при добавлении клиента: {e}")
         return
-    name = parts[1].strip()
+
+    # 2) Если нажали просто /client_add — включаем пошаговый режим
+    await state.set_state(ClientAdd.waiting_name)
+    await message.answer(
+        "Введите имя клиента одним сообщением.\n"
+        "Пример: ali\n\n"
+        "Отмена: /cancel"
+    )
+
+
+@router.message(ClientAdd.waiting_name)
+async def client_add_wait_name(message: Message, state: FSMContext):
+    if not _is_admin(message):
+        return
+
+    name = (message.text or "").strip()
+    if not name or name.startswith("/"):
+        await message.answer("Имя не похоже на имя 🙂 Введите имя текстом. Отмена: /cancel")
+        return
+
     try:
         add_client(name)
         await message.answer(f"✅ Клиент добавлен: {name}")
     except Exception as e:
         await message.answer(f"❌ Ошибка при добавлении клиента: {e}")
+        return
+    finally:
+        await state.clear()
+
 
 
 @router.message(Command("products"))
@@ -148,22 +192,128 @@ async def cmd_products(message: Message):
 
 
 @router.message(Command("product_add"))
-async def cmd_product_add(message: Message):
+async def cmd_product_add(message: Message, state: FSMContext):
     if not _is_admin(message):
         return
-    init_db()
+
+    # Поддержим старый формат:
+    # /product_add brand model "Name" 12.50
+    parts = message.text.split(maxsplit=4)
+    if len(parts) >= 5:
+        brand = parts[1].strip()
+        model = parts[2].strip()
+        name = parts[3].strip().replace('"', "")
+        wh_price = parts[4].strip()
+
+        try:
+            add_product(brand, model, name, float(wh_price))
+            await message.answer(f"✅ Товар добавлен: {brand} {model} ({float(wh_price):.2f}$)")
+        except Exception as e:
+            await message.answer(f"❌ Ошибка добавления товара: {e}")
+        return
+
+    # Если нажали просто /product_add — пошаговый режим
+    await state.clear()
+    await state.set_state(ProductAdd.waiting_brand)
+    await message.answer(
+        "Ок, добавляем товар.\n\n"
+        "1/4) Введите БРЕНД (например: sonifer)\n"
+        "Отмена: /cancel"
+    )
+
+
+@router.message(ProductAdd.waiting_brand)
+async def product_add_brand(message: Message, state: FSMContext):
+    if not _is_admin(message):
+        return
+
+    brand = (message.text or "").strip()
+    if not brand or brand.startswith("/"):
+        await message.answer("Введите бренд текстом. Пример: sonifer\nОтмена: /cancel")
+        return
+
+    await state.update_data(brand=brand)
+    await state.set_state(ProductAdd.waiting_model)
+    await message.answer("2/4) Введите МОДЕЛЬ (например: sf-8040)\nОтмена: /cancel")
+
+
+@router.message(ProductAdd.waiting_model)
+async def product_add_model(message: Message, state: FSMContext):
+    if not _is_admin(message):
+        return
+
+    model = (message.text or "").strip()
+    if not model or model.startswith("/"):
+        await message.answer("Введите модель текстом. Пример: sf-8040\nОтмена: /cancel")
+        return
+
+    await state.update_data(model=model)
+    await state.set_state(ProductAdd.waiting_name)
+    await message.answer(
+        "3/4) Введите НАЗВАНИЕ (можно коротко),\n"
+        "или отправьте '-' чтобы пропустить.\n"
+        "Пример: Blender 800W\n"
+        "Отмена: /cancel"
+    )
+
+
+@router.message(ProductAdd.waiting_name)
+async def product_add_name(message: Message, state: FSMContext):
+    if not _is_admin(message):
+        return
+
+    name = (message.text or "").strip()
+    if not name:
+        await message.answer("Введите название или '-' чтобы пропустить.\nОтмена: /cancel")
+        return
+
+    # Если пропустили — сделаем имя = model (удобно, чтобы не было пусто)
+    data = await state.get_data()
+    if name == "-":
+        name = data.get("model", "")
+
+    await state.update_data(name=name)
+    await state.set_state(ProductAdd.waiting_price)
+    await message.answer(
+        "4/4) Введите ЦЕНУ ПРИХОДА (wh) в USD.\n"
+        "Пример: 12.50\n"
+        "Отмена: /cancel"
+    )
+
+
+@router.message(ProductAdd.waiting_price)
+async def product_add_price(message: Message, state: FSMContext):
+    if not _is_admin(message):
+        return
+
+    raw = (message.text or "").strip().replace(",", ".")
     try:
-        args = shlex.split(message.text)
-        # ['/product_add', 'brand', 'model', 'name with spaces', '12.50']
-        if len(args) < 5:
-            raise ValueError
-        _, brand, model, name, wh_price = args[0], args[1], args[2], args[3], args[4]
-        add_product(brand, model, name, float(wh_price))
-        await message.answer(f"✅ Товар добавлен: {brand} {model}")
-    except ValueError:
-        await message.answer('Формат: /product_add BRAND MODEL "NAME" WHOLESALE_PRICE')
+        price = float(raw)
+        if price <= 0:
+            raise ValueError("price <= 0")
+    except Exception:
+        await message.answer("Цена должна быть числом, например 12.50\nОтмена: /cancel")
+        return
+
+    data = await state.get_data()
+    brand = data["brand"]
+    model = data["model"]
+    name = data["name"]
+
+    try:
+        add_product(brand, model, name, price)
+        await message.answer(
+            f"✅ Товар добавлен:\n"
+            f"{brand} {model}\n"
+            f"Название: {name}\n"
+            f"Цена прихода: {price:.2f}$"
+        )
     except Exception as e:
         await message.answer(f"❌ Ошибка добавления товара: {e}")
+        return
+    finally:
+        await state.clear()
+
 
 
 @router.message(Command("stock"))

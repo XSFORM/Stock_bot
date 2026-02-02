@@ -1,23 +1,12 @@
-from __future__ import annotations
-
-from dataclasses import dataclass, field
-from typing import Dict, List
+from aiogram.fsm.state import State, StatesGroup
 
 
-@dataclass
-class CartItem:
-    brand: str
-    model: str
-    qty: float
-    unit_price: float
-    price_mode: str
+class ClientAdd(StatesGroup):
+    waiting_name = State()
 
 
-@dataclass
-class Cart:
-    client_name: str
-    items: List[CartItem] = field(default_factory=list)
-
-
-# ключ = telegram user id (у тебя будет один)
-CARTS: Dict[int, Cart] = {}
+class ProductAdd(StatesGroup):
+    waiting_brand = State()
+    waiting_model = State()
+    waiting_name = State()
+    waiting_price = State()
