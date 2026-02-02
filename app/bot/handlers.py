@@ -14,7 +14,6 @@ from app.db.sqlite import (
     move_stock,
 )
 
-)
 from app.services.backup import make_backup
 from app.services.invoice_pdf import generate_invoice_pdf
 
