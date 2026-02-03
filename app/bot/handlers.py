@@ -1,14 +1,13 @@
 import shlex
-from aiogram.fsm.context import FSMContext
-
-from app.bot.states import ClientAdd, ProductAdd
-
+import re
 
 from aiogram import Router
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message, ReplyKeyboardRemove
 
 from app.config import settings
+from app.bot.states import ClientAdd, ProductAdd
 from app.db.sqlite import (
     add_client,
     add_product,
@@ -17,15 +16,26 @@ from app.db.sqlite import (
     list_products,
     move_stock,
 )
-
 from app.services.backup import make_backup
 from app.services.invoice_pdf import generate_invoice_pdf
 
-
 router = Router()
 
-# текущий выбранный клиент для корзины (только для тебя, один админ)
 ACTIVE_CLIENT: str | None = None
+
+BRAND_PREFIX = {
+    "SONIFER": "SF-",
+    "RAF": "R-",
+    "VGR": "V-",
+    "SOKANY": "SK-",
+    "BABYVERSE": "BA-",
+    "MOSER": "MS-",
+}
+
+def normalize_brand(text: str) -> str:
+    t = text.strip().upper()
+    t = t.replace("✅", "").strip()
+    return t
 
 
 def _is_admin(message: Message) -> bool:
