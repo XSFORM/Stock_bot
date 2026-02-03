@@ -1,5 +1,6 @@
 WAREHOUSES = {
     "CHINA_DEPOT": "China depot",
+    "DEALER_DEPOT": "Dealer depot",
     "WAREHOUSE": "Warehouse",
     "SHOP": "Shop",
 }

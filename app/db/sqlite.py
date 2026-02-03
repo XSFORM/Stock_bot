@@ -1,8 +1,9 @@
 from __future__ import annotations
+
 import os
 import sqlite3
 from pathlib import Path
-from typing import Optional, Tuple, Any
+from typing import Any, Optional, Tuple
 
 from app.constants import WAREHOUSES
 
@@ -105,12 +106,11 @@ def list_products() -> list[dict[str, Any]]:
         rows = conn.execute(
             "SELECT id, brand, model, name, wh_price FROM products ORDER BY brand, model"
         ).fetchall()
-        out = []
+        out: list[dict[str, Any]] = []
         for r in rows:
             d = dict(r)
             d["wh10_price"] = round(float(d["wh_price"]) * 1.10, 2)
-            return_list = out
-            return_list.append(d)
+            out.append(d)
         return out
     finally:
         conn.close()
@@ -153,6 +153,34 @@ def _set_stock_qty(conn: sqlite3.Connection, warehouse: str, product_id: int, qt
     )
 
 
+def receive_stock(warehouse: str, brand: str, model: str, qty: float) -> Tuple[bool, str]:
+    """
+    Поступление на склад: увеличиваем остаток.
+    """
+    init_db()
+    wh = warehouse.strip().upper()
+    qty = float(qty)
+
+    if wh not in WAREHOUSES:
+        return False, "Неизвестный склад"
+    if qty <= 0:
+        return False, "QTY должно быть > 0"
+
+    product = find_product(brand, model)
+    if not product:
+        return False, "Товар не найден. Добавь через /product_add"
+
+    conn = _connect()
+    try:
+        pid = int(product["id"])
+        have = _get_stock_qty(conn, wh, pid)
+        _set_stock_qty(conn, wh, pid, have + qty)
+        conn.commit()
+        return True, ""
+    finally:
+        conn.close()
+
+
 def move_stock(src: str, dst: str, brand: str, model: str, qty: float) -> Tuple[bool, str]:
     src = src.strip().upper()
     dst = dst.strip().upper()
@@ -182,6 +210,45 @@ def move_stock(src: str, dst: str, brand: str, model: str, qty: float) -> Tuple[
 
         conn.commit()
         return True, ""
+    finally:
+        conn.close()
+
+
+def move_all(src: str, dst: str = "SHOP") -> tuple[bool, str, int]:
+    """
+    Перенос всех позиций со склада src в dst.
+    Возвращает (ok, err, moved_positions_count)
+    """
+    init_db()
+    src = src.strip().upper()
+    dst = dst.strip().upper()
+
+    if src not in WAREHOUSES or dst not in WAREHOUSES:
+        return False, "Неизвестный склад", 0
+    if src == dst:
+        return False, "FROM и TO одинаковые", 0
+
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT product_id, qty FROM stock WHERE warehouse_code=? AND qty > 0",
+            (src,),
+        ).fetchall()
+
+        moved = 0
+        for r in rows:
+            pid = int(r["product_id"])
+            qty = float(r["qty"])
+            if qty <= 0:
+                continue
+
+            dst_qty = _get_stock_qty(conn, dst, pid)
+            _set_stock_qty(conn, dst, pid, dst_qty + qty)
+            _set_stock_qty(conn, src, pid, 0.0)
+            moved += 1
+
+        conn.commit()
+        return True, "", moved
     finally:
         conn.close()
 
@@ -217,6 +284,17 @@ def get_stock(warehouse: Optional[str] = None) -> list[dict[str, Any]]:
         conn.close()
 
 
+def get_stock_text(warehouse: Optional[str] = None) -> str:
+    rows = get_stock(warehouse)
+    if not rows:
+        return "Остатков нет."
+
+    lines = ["<b>Остатки:</b>"]
+    for r in rows:
+        lines.append(f"{r['warehouse']}: {r['brand']} {r['model']} — {float(r['qty'])}")
+    return "\n".join(lines)
+
+
 # -------- cart / invoice --------
 
 def _get_or_create_client_id(conn: sqlite3.Connection, client_name: str) -> int:
@@ -235,7 +313,6 @@ def cart_start(client_name: str) -> int:
     conn = _connect()
     try:
         cid = _get_or_create_client_id(conn, client_name)
-        # close old open carts for safety? (optional) - we keep only one OPEN cart
         conn.execute("UPDATE carts SET status='CLOSED' WHERE client_id=? AND status='OPEN'", (cid,))
         conn.execute("INSERT INTO carts(client_id, status) VALUES(?, 'OPEN')", (cid,))
         cart_id = int(conn.execute("SELECT last_insert_rowid() as id").fetchone()["id"])
@@ -260,7 +337,14 @@ def _get_open_cart_id(conn: sqlite3.Connection, client_name: str) -> Optional[in
     return int(r["id"]) if r else None
 
 
-def cart_add(client_name: str, brand: str, model: str, qty: float, price_mode: str, custom_price: Optional[float] = None) -> Tuple[bool, str]:
+def cart_add(
+    client_name: str,
+    brand: str,
+    model: str,
+    qty: float,
+    price_mode: str,
+    custom_price: Optional[float] = None,
+) -> Tuple[bool, str]:
     init_db()
     qty = float(qty)
     if qty <= 0:
@@ -349,7 +433,6 @@ def cart_remove(client_name: str, brand: str, model: str) -> Tuple[bool, str]:
         if not cart_id:
             return False, "Корзина не начата."
 
-        # remove last matching item
         r = conn.execute(
             """
             SELECT i.id
@@ -406,22 +489,21 @@ def cart_finish(client_name: str) -> Tuple[bool, str, dict[str, Any], list[dict[
             if have < need:
                 return False, f"На складе SHOP не хватает {r['brand']} {r['model']}: есть {have}, нужно {need}", {}, []
 
-        # subtract
         for r in items:
             pid = int(r["product_id"])
             need = float(r["qty"])
             have = _get_stock_qty(conn, "SHOP", pid)
             _set_stock_qty(conn, "SHOP", pid, have - need)
 
-        # totals
         total_sum = round(sum(float(r["total"]) for r in items), 2)
 
-        # invoice number
         last = conn.execute("SELECT COALESCE(MAX(number), 0) as n FROM invoices").fetchone()
         num = int(last["n"]) + 1
 
-        conn.execute("INSERT INTO invoices(cart_id, number, total, currency) VALUES(?, ?, ?, 'USD')",
-                     (cart_id, num, total_sum))
+        conn.execute(
+            "INSERT INTO invoices(cart_id, number, total, currency) VALUES(?, ?, ?, 'USD')",
+            (cart_id, num, total_sum),
+        )
 
         conn.execute("UPDATE carts SET status='CLOSED' WHERE id=?", (cart_id,))
         conn.commit()
