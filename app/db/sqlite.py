@@ -533,3 +533,9 @@ def cart_finish_from_shop(client_name: str, shop_code: str) -> Tuple[bool, str, 
         return True, "", invoice, [dict(x) for x in items]
     finally:
         conn.close()
+def cart_finish(client_name: str):
+    """
+    Legacy wrapper: списание из общего магазина SHOP.
+    Нужен для совместимости (web/telegram) когда используем legacy SHOP.
+    """
+    return cart_finish_from_shop(client_name, "SHOP")        
