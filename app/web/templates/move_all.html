@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <h4>Move all</h4>
+  {% if message %}<div class="alert alert-info">{{ message }}</div>{% endif %}
+  <form class="row g-2" method="post" action="/move-all">
+    <div class="col-md-6">
+      <label class="form-label">From</label>
+      <select class="form-select" name="src">
+        {% for w in warehouses %}
+          <option value="{{ w }}">{{ w }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">To</label>
+      <select class="form-select" name="dst">
+        {% for w in warehouses %}
+          <option value="{{ w }}" {% if w=="SHOP" %}selected{% endif %}>{{ w }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12">
+      <button class="btn btn-primary mt-2">Move all</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

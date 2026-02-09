@@ -1,12 +1,12 @@
 [Unit]
-Description=Stock Bot (Telegram)
+Description=Stock Web (FastAPI)
 After=network.target
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/stock_bot
 EnvironmentFile=/opt/stock_bot/.env
-ExecStart=/opt/stock_bot/venv/bin/python -m app.main
+ExecStart=/opt/stock_bot/venv/bin/python -m uvicorn app.web.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=2
 User=root

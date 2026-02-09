@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <h4>Sale done</h4>
+  <p>Invoice: {{ invoice_number }}</p>
+  <ul>
+    <li><a href="/download?path={{ pdf }}">Download PDF</a></li>
+    <li><a href="/download?path={{ backup }}">Download backup zip</a></li>
+  </ul>
+  <a class="btn btn-secondary" href="/sale">Back</a>
+</div>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="bg-white p-3 rounded shadow-sm">
+      <h4>Products</h4>
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Brand</th><th>Model</th><th>Name</th><th>WH</th><th>WH10</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in products %}
+          <tr>
+            <td>{{ p.brand }}</td>
+            <td>{{ p.model }}</td>
+            <td>{{ p.name }}</td>
+            <td>{{ "%.2f"|format(p.wh_price) }}</td>
+            <td>{{ "%.2f"|format(p.wh10_price) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="bg-white p-3 rounded shadow-sm">
+      <h4>Add product</h4>
+      <form method="post" action="/products/add">
+        <div class="mb-2">
+          <label class="form-label">Brand</label>
+          <input class="form-control" name="brand" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Model</label>
+          <input class="form-control" name="model" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Name</label>
+          <input class="form-control" name="name" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Wholesale cost (WH)</label>
+          <input class="form-control" name="wh_price" type="number" step="0.01" required>
+        </div>
+        <button class="btn btn-primary">Save</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

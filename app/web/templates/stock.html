@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <h4>Stock</h4>
+
+  <form class="row g-2 mb-3" method="get" action="/stock">
+    <div class="col-auto">
+      <select class="form-select" name="warehouse">
+        <option value="">All warehouses</option>
+        {% for w in warehouses %}
+          <option value="{{ w }}" {% if selected_warehouse==w %}selected{% endif %}>{{ w }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-secondary">Filter</button>
+    </div>
+  </form>
+
+  <table class="table table-sm">
+    <thead>
+      <tr>
+        <th>Warehouse</th><th>Brand</th><th>Model</th><th>Name</th><th>Qty</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.warehouse }}</td>
+        <td>{{ r.brand }}</td>
+        <td>{{ r.model }}</td>
+        <td>{{ r.name }}</td>
+        <td>{{ r.qty }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
