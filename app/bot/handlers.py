@@ -18,7 +18,7 @@ from app.db.sqlite import (
     add_client,
     add_product,
     cart_add,
-    cart_finish,
+    cart_finish_from_shop,
     cart_remove,
     cart_show,
     cart_start,
@@ -26,6 +26,7 @@ from app.db.sqlite import (
     list_clients,
     list_products,
     move_all,
+    move_all_auto_shop,
     move_stock,
     receive_stock,
 )
@@ -34,8 +35,8 @@ from app.services.invoice_pdf import generate_invoice_pdf
 
 router = Router()
 
-# текущий выбранный клиент для корзины (один админ => ок держать в памяти процесса)
 ACTIVE_CLIENT: str | None = None
+ACTIVE_CART_SOURCE: str = "CHINA"  # CHINA | DEALER (по умолчанию Китай)
 
 DEFAULT_BRAND = "SONIFER"
 
@@ -47,9 +48,6 @@ BRAND_PREFIX = {
     "BABYVERSE": "BA-",
     "MOSER": "MS-",
 }
-
-
-# ----------------- helpers -----------------
 
 
 def _is_admin(message: Message) -> bool:
@@ -79,7 +77,6 @@ def _brands_kb() -> ReplyKeyboardMarkup:
 
 def _normalize_brand(text: str) -> str:
     t = text.strip().upper()
-    # убираем галочки/эмодзи и всё лишнее, оставляем буквы/цифры/-
     t = re.sub(r"[^A-Z0-9\-]", "", t)
     return t
 
@@ -89,11 +86,9 @@ def _normalize_model(model_text: str, prefix: str) -> str:
     if not t:
         return t
 
-    # если только цифры — добавляем префикс бренда (если есть)
     if prefix and re.fullmatch(r"\d+", t):
         return (prefix + t).lower()
 
-    # поддержка sf9040 / sf-9040 / SF9040
     m = re.fullmatch(r"([A-Za-z]{1,5})-?(\d+)", t)
     if m:
         letters = m.group(1).upper()
@@ -115,17 +110,18 @@ def _parse_qty(text: str) -> float:
     return float(text.strip().replace(",", "."))
 
 
+def _warehouse_help() -> str:
+    return ", ".join(sorted(WAREHOUSES.keys()))
+
+
 def _require_active_client() -> str | None:
     global ACTIVE_CLIENT
     return ACTIVE_CLIENT
 
 
-def _warehouse_help() -> str:
-    # краткая подсказка по складам
-    return ", ".join(sorted(WAREHOUSES.keys()))
-
-
-# ----------------- common -----------------
+def _shop_for_source() -> str:
+    global ACTIVE_CART_SOURCE
+    return "SHOP_CHINA" if ACTIVE_CART_SOURCE == "CHINA" else "SHOP_DEALER"
 
 
 @router.message(Command("start"))
@@ -162,9 +158,6 @@ async def cmd_help(message: Message):
         "/client_add ИМЯ — добавить\n\n"
         "<b>Товары</b>\n"
         "/product_add — мастер добавления\n"
-        "/product_add BRAND MODEL \"NAME\" WHOLESALE_PRICE — быстро\n"
-        "пример:\n"
-        "/product_add sonifer sf-8040 \"Blender 800W\" 12.50\n"
         "/products — список\n\n"
         "<b>Поступление</b>\n"
         "/receive CHINA BRAND MODEL QTY — приход из Китая на CHINA_DEPOT\n"
@@ -175,13 +168,15 @@ async def cmd_help(message: Message):
         "/stock WAREHOUSE — по складу\n\n"
         "<b>Перемещение</b>\n"
         "/move FROM TO BRAND MODEL QTY\n"
-        "/move_all FROM — перенести ВСЁ из FROM в SHOP\n\n"
+        "/move_all FROM — перенести ВСЁ (CHINA_DEPOT→SHOP_CHINA, DEALER_DEPOT→SHOP_DEALER)\n"
+        "/move_all FROM TO — перенести ВСЁ в указанный склад\n\n"
         "<b>Корзина (продажа)</b>\n"
         "/cart_start CLIENT_NAME — выбрать клиента и начать корзину\n"
+        "/cart_source CHINA|DEALER — выбрать из какого магазина продаём\n"
         "/cart_add BRAND MODEL QTY [wh|wh10|custom] [custom_price]\n"
         "/cart_show — показать корзину\n"
         "/cart_remove BRAND MODEL — удалить 1 позицию\n"
-        "/cart_finish — списать из SHOP + инвойс PDF + backup\n"
+        "/cart_finish — списать из SHOP_CHINA/SHOP_DEALER + PDF + backup\n"
     )
     await message.answer(text)
 
@@ -202,9 +197,6 @@ async def cmd_backup(message: Message):
         await message.answer_document(open(file_path, "rb"))
     except Exception as e:
         await message.answer(f"❌ Ошибка бэкапа: {e}")
-
-
-# ----------------- clients -----------------
 
 
 @router.message(Command("clients"))
@@ -228,8 +220,6 @@ async def cmd_client_add(message: Message, state: FSMContext):
         return
 
     parts = message.text.split(maxsplit=1)
-
-    # 1) Если сразу передали имя: /client_add ali
     if len(parts) >= 2 and parts[1].strip():
         name = parts[1].strip()
         try:
@@ -239,12 +229,9 @@ async def cmd_client_add(message: Message, state: FSMContext):
             await message.answer(f"❌ Ошибка при добавлении клиента: {e}")
         return
 
-    # 2) Если нажали просто /client_add — включаем пошаговый режим
     await state.set_state(ClientAdd.waiting_name)
     await message.answer(
-        "Введите имя клиента одним сообщением.\n"
-        "Пример: ali\n\n"
-        "Отмена: /cancel",
+        "Введите имя клиента одним сообщением.\nПример: ali\n\nОтмена: /cancel",
         reply_markup=ReplyKeyboardRemove(),
     )
 
@@ -269,9 +256,6 @@ async def client_add_wait_name(message: Message, state: FSMContext):
         await state.clear()
 
 
-# ----------------- products -----------------
-
-
 @router.message(Command("products"))
 async def cmd_products(message: Message):
     if not _is_admin(message):
@@ -279,7 +263,7 @@ async def cmd_products(message: Message):
     init_db()
     rows = list_products()
     if not rows:
-        await message.answer("Товаров пока нет. Добавь: /product_add ...")
+        await message.answer("Товаров пока нет. Добавь: /product_add")
         return
     lines = ["<b>Товары:</b>"]
     for r in rows:
@@ -296,7 +280,6 @@ async def cmd_product_add(message: Message, state: FSMContext):
 
     init_db()
 
-    # быстрый режим: /product_add brand model "Name" 12.50
     try:
         args = shlex.split(message.text)
         if len(args) >= 5:
@@ -307,14 +290,11 @@ async def cmd_product_add(message: Message, state: FSMContext):
     except Exception:
         pass
 
-    # мастер
     await state.clear()
     await state.set_state(ProductAdd.waiting_brand)
     await state.update_data(brand=DEFAULT_BRAND)
     await message.answer(
-        "Ок, добавляем товар.\n\n"
-        "1/4) Выберите БРЕНД (по умолчанию SONIFER)\n"
-        "Отмена: /cancel",
+        "Ок, добавляем товар.\n\n1/4) Выберите БРЕНД (по умолчанию SONIFER)\nОтмена: /cancel",
         reply_markup=_brands_kb(),
     )
 
@@ -325,7 +305,6 @@ async def product_add_brand(message: Message, state: FSMContext):
         return
 
     raw = (message.text or "").strip()
-
     if raw == "/cancel":
         await state.clear()
         await message.answer("❎ Отменено.", reply_markup=ReplyKeyboardRemove())
@@ -344,9 +323,7 @@ async def product_add_brand(message: Message, state: FSMContext):
     prefix = BRAND_PREFIX.get(brand, "")
     await state.set_state(ProductAdd.waiting_model)
 
-    hint = ""
-    if prefix:
-        hint = f"\nПодсказка: можешь написать только номер (например: 8040) — я сделаю {prefix}8040."
+    hint = f"\nПодсказка: можно написать только номер (например: 8040) — сделаю {prefix}8040." if prefix else ""
     await message.answer(
         f"2/4) Введите МОДЕЛЬ (например: {prefix.lower()}8040){hint}\nОтмена: /cancel",
         reply_markup=ReplyKeyboardRemove(),
@@ -376,10 +353,7 @@ async def product_add_model(message: Message, state: FSMContext):
     await state.update_data(model=model)
     await state.set_state(ProductAdd.waiting_name)
     await message.answer(
-        "3/4) Введите НАЗВАНИЕ (можно коротко),\n"
-        "или отправьте '-' чтобы пропустить.\n"
-        "Пример: Blender 800W\n"
-        "Отмена: /cancel",
+        "3/4) Введите НАЗВАНИЕ (можно коротко), или '-' чтобы пропустить.\nОтмена: /cancel",
         reply_markup=ReplyKeyboardRemove(),
     )
 
@@ -406,9 +380,7 @@ async def product_add_name(message: Message, state: FSMContext):
     await state.update_data(name=name)
     await state.set_state(ProductAdd.waiting_price)
     await message.answer(
-        "4/4) Введите ЦЕНУ ПРИХОДА (wh) в USD.\n"
-        "Пример: 12.50\n"
-        "Отмена: /cancel",
+        "4/4) Введите ЦЕНУ ПРИХОДА (wh) в USD.\nПример: 12.50\nОтмена: /cancel",
         reply_markup=ReplyKeyboardRemove(),
     )
 
@@ -439,12 +411,7 @@ async def product_add_price(message: Message, state: FSMContext):
 
     try:
         add_product(str(brand), str(model), str(name), float(price))
-        await message.answer(
-            "✅ Товар добавлен:\n"
-            f"{brand} {model}\n"
-            f"Название: {name}\n"
-            f"Цена прихода: {price:.2f}$"
-        )
+        await message.answer(f"✅ Товар добавлен: {brand} {model}")
     except Exception as e:
         await message.answer(f"❌ Ошибка добавления товара: {e}")
         return
@@ -452,16 +419,8 @@ async def product_add_price(message: Message, state: FSMContext):
         await state.clear()
 
 
-# ----------------- receiving -----------------
-
-
 @router.message(Command("receive"))
 async def cmd_receive(message: Message):
-    """
-    /receive CHINA brand model qty
-    /receive DEALER brand model qty
-    /receive WAREHOUSE brand model qty
-    """
     if not _is_admin(message):
         return
 
@@ -479,15 +438,14 @@ async def cmd_receive(message: Message):
         return
 
     _, src, brand, model, qty_s = parts
-    src = src.strip().upper()
+    src_u = src.strip().upper()
 
-    # алиасы источников
-    if src in ("CHINA", "CN"):
+    if src_u in ("CHINA", "CN"):
         warehouse = "CHINA_DEPOT"
-    elif src in ("DEALER", "DILLER", "SUPPLIER", "LOCAL"):
+    elif src_u in ("DEALER", "DILLER", "SUPPLIER", "LOCAL"):
         warehouse = "DEALER_DEPOT"
     else:
-        warehouse = src
+        warehouse = src_u
 
     try:
         qty = _parse_qty(qty_s)
@@ -501,9 +459,6 @@ async def cmd_receive(message: Message):
         return
 
     await message.answer(f"✅ Приход: {warehouse} +{qty} шт — {brand} {model}")
-
-
-# ----------------- stock / move -----------------
 
 
 @router.message(Command("stock"))
@@ -544,27 +499,37 @@ async def cmd_move(message: Message):
 async def cmd_move_all(message: Message):
     """
     /move_all FROM
-    переносит всё в SHOP и обнуляет FROM
+    /move_all FROM TO
     """
     if not _is_admin(message):
         return
 
     init_db()
     parts = message.text.split()
-    if len(parts) != 2:
-        await message.answer(f"Формат: /move_all FROM\nСклады: {_warehouse_help()}")
+    if len(parts) not in (2, 3):
+        await message.answer(
+            "Формат:\n"
+            "/move_all FROM\n"
+            "/move_all FROM TO\n\n"
+            f"Склады: {_warehouse_help()}"
+        )
         return
 
-    _, src = parts
-    ok, err, moved = move_all(src, "SHOP")
+    if len(parts) == 2:
+        _, src = parts
+        ok, err, moved, dst = move_all_auto_shop(src)
+        if not ok:
+            await message.answer(f"❌ {err}")
+            return
+        await message.answer(f"✅ Перенесено: {moved} позиций из {src.upper()} в {dst}. {src.upper()} очищен.")
+        return
+
+    _, src, dst = parts
+    ok, err, moved = move_all(src, dst)
     if not ok:
         await message.answer(f"❌ {err}")
         return
-
-    await message.answer(f"✅ Перенесено в SHOP: {moved} позиций. Склад {src.upper()} очищен.")
-
-
-# ----------------- cart / sales -----------------
+    await message.answer(f"✅ Перенесено: {moved} позиций из {src.upper()} в {dst.upper()}. {src.upper()} очищен.")
 
 
 @router.message(Command("cart_start"))
@@ -588,6 +553,27 @@ async def cmd_cart_start(message: Message):
         await message.answer(f"❌ Ошибка корзины: {e}")
 
 
+@router.message(Command("cart_source"))
+async def cmd_cart_source(message: Message):
+    if not _is_admin(message):
+        return
+
+    global ACTIVE_CART_SOURCE
+
+    parts = message.text.split()
+    if len(parts) != 2:
+        await message.answer("Формат: /cart_source CHINA или /cart_source DEALER")
+        return
+
+    src = parts[1].strip().upper()
+    if src not in ("CHINA", "DEALER"):
+        await message.answer("Источник должен быть CHINA или DEALER")
+        return
+
+    ACTIVE_CART_SOURCE = src
+    await message.answer(f"✅ Источник продажи: <b>{ACTIVE_CART_SOURCE}</b> (склад списания: {_shop_for_source()})")
+
+
 @router.message(Command("cart_add"))
 async def cmd_cart_add(message: Message):
     if not _is_admin(message):
@@ -598,7 +584,6 @@ async def cmd_cart_add(message: Message):
         await message.answer("Сначала выбери клиента: /cart_start CLIENT_NAME")
         return
 
-    # /cart_add BRAND MODEL QTY [wh|wh10|custom] [custom_price]
     parts = message.text.split()
     if len(parts) < 4:
         await message.answer("Формат: /cart_add BRAND MODEL QTY [wh|wh10|custom] [custom_price]")
@@ -629,7 +614,10 @@ async def cmd_cart_add(message: Message):
         await message.answer(f"❌ {err}")
         return
 
-    await message.answer(f"✅ Добавлено в корзину ({client_name}): {brand} {model} × {qty} ({price_mode})")
+    await message.answer(
+        f"✅ Добавлено в корзину ({client_name}): {brand} {model} × {qty} ({price_mode})\n"
+        f"Источник продажи: {ACTIVE_CART_SOURCE} (спишется из {_shop_for_source()})"
+    )
 
 
 @router.message(Command("cart_show"))
@@ -680,24 +668,24 @@ async def cmd_cart_finish(message: Message):
         return
 
     global ACTIVE_CLIENT
+
     client_name = _require_active_client()
     if not client_name:
         await message.answer("Сначала выбери клиента: /cart_start CLIENT_NAME")
         return
 
-    ok, err, invoice, items = cart_finish(client_name)
+    shop = _shop_for_source()
+    ok, err, invoice, items = cart_finish_from_shop(client_name, shop)
     if not ok:
         await message.answer(f"❌ {err}")
         return
 
-    # PDF invoice
     try:
         pdf_path = generate_invoice_pdf(invoice, items)
         await message.answer_document(open(pdf_path, "rb"))
     except Exception as e:
         await message.answer(f"⚠️ Инвойс создан, но PDF не сгенерировался: {e}")
 
-    # backup после завершения
     try:
         backup_path = make_backup()
         await message.answer_document(open(backup_path, "rb"))
@@ -707,8 +695,8 @@ async def cmd_cart_finish(message: Message):
     await message.answer(
         f"✅ Продажа завершена. Инвойс #{int(invoice['number']):06d}\n"
         f"Клиент: {client_name}\n"
+        f"Склад списания: {shop}\n"
         f"Сумма: {float(invoice['total']):.2f} {invoice['currency']}"
     )
 
-    # сбрасываем активного клиента после завершения
     ACTIVE_CLIENT = None

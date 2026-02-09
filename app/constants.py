@@ -2,7 +2,13 @@ WAREHOUSES = {
     "CHINA_DEPOT": "China depot",
     "DEALER_DEPOT": "Dealer depot",
     "WAREHOUSE": "Warehouse",
-    "SHOP": "Shop",
+
+    # магазин разделён по источнику (чтобы не смешивать себестоимость/партии)
+    "SHOP_CHINA": "Shop (China)",
+    "SHOP_DEALER": "Shop (Dealer)",
+
+    # оставим общий SHOP для совместимости (можешь не использовать)
+    "SHOP": "Shop (legacy/mixed)",
 }
 
 PRICE_WHOLESALE = "wh"

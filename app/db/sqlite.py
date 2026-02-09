@@ -9,7 +9,6 @@ from app.constants import WAREHOUSES
 
 BASE_DIR = Path(__file__).resolve().parents[1]  # .../app
 
-# ✅ берём из .env, иначе fallback
 DB_PATH = Path(os.getenv("DB_PATH", str(BASE_DIR / "db" / "stock.db")))
 SCHEMA_PATH = BASE_DIR / "db" / "schema.sql"
 
@@ -28,7 +27,6 @@ def init_db() -> None:
         if SCHEMA_PATH.exists():
             conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
 
-        # seed warehouses
         for code, title in WAREHOUSES.items():
             conn.execute(
                 "INSERT OR IGNORE INTO warehouses(code, title) VALUES(?, ?)",
@@ -154,9 +152,6 @@ def _set_stock_qty(conn: sqlite3.Connection, warehouse: str, product_id: int, qt
 
 
 def receive_stock(warehouse: str, brand: str, model: str, qty: float) -> Tuple[bool, str]:
-    """
-    Поступление на склад: увеличиваем остаток.
-    """
     init_db()
     wh = warehouse.strip().upper()
     qty = float(qty)
@@ -215,10 +210,6 @@ def move_stock(src: str, dst: str, brand: str, model: str, qty: float) -> Tuple[
 
 
 def move_all(src: str, dst: str = "SHOP") -> tuple[bool, str, int]:
-    """
-    Перенос всех позиций со склада src в dst.
-    Возвращает (ok, err, moved_positions_count)
-    """
     init_db()
     src = src.strip().upper()
     dst = dst.strip().upper()
@@ -251,6 +242,25 @@ def move_all(src: str, dst: str = "SHOP") -> tuple[bool, str, int]:
         return True, "", moved
     finally:
         conn.close()
+
+
+def move_all_auto_shop(src: str) -> tuple[bool, str, int, str]:
+    """
+    Автоматический перенос в нужный магазин:
+    CHINA_DEPOT -> SHOP_CHINA
+    DEALER_DEPOT -> SHOP_DEALER
+    иначе -> SHOP (legacy)
+    Возвращает (ok, err, moved, dst)
+    """
+    src_u = src.strip().upper()
+    if src_u == "CHINA_DEPOT":
+        dst = "SHOP_CHINA"
+    elif src_u == "DEALER_DEPOT":
+        dst = "SHOP_DEALER"
+    else:
+        dst = "SHOP"
+    ok, err, moved = move_all(src_u, dst)
+    return ok, err, moved, dst
 
 
 def get_stock(warehouse: Optional[str] = None) -> list[dict[str, Any]]:
@@ -455,12 +465,16 @@ def cart_remove(client_name: str, brand: str, model: str) -> Tuple[bool, str]:
         conn.close()
 
 
-def cart_finish(client_name: str) -> Tuple[bool, str, dict[str, Any], list[dict[str, Any]]]:
+def cart_finish_from_shop(client_name: str, shop_code: str) -> Tuple[bool, str, dict[str, Any], list[dict[str, Any]]]:
     """
-    списать из SHOP, закрыть корзину, создать invoice.
+    Списать из указанного магазина (SHOP_CHINA / SHOP_DEALER / SHOP), закрыть корзину, создать invoice.
     return (ok, err, invoice_dict, items)
     """
     init_db()
+    shop = shop_code.strip().upper()
+    if shop not in WAREHOUSES:
+        return False, "Неизвестный склад магазина", {}, []
+
     conn = _connect()
     try:
         cart_id = _get_open_cart_id(conn, client_name)
@@ -481,19 +495,19 @@ def cart_finish(client_name: str) -> Tuple[bool, str, dict[str, Any], list[dict[
         if not items:
             return False, "Корзина пустая.", {}, []
 
-        # check stock in SHOP and subtract
+        # check stock in shop and subtract
         for r in items:
             pid = int(r["product_id"])
             need = float(r["qty"])
-            have = _get_stock_qty(conn, "SHOP", pid)
+            have = _get_stock_qty(conn, shop, pid)
             if have < need:
-                return False, f"На складе SHOP не хватает {r['brand']} {r['model']}: есть {have}, нужно {need}", {}, []
+                return False, f"На складе {shop} не хватает {r['brand']} {r['model']}: есть {have}, нужно {need}", {}, []
 
         for r in items:
             pid = int(r["product_id"])
             need = float(r["qty"])
-            have = _get_stock_qty(conn, "SHOP", pid)
-            _set_stock_qty(conn, "SHOP", pid, have - need)
+            have = _get_stock_qty(conn, shop, pid)
+            _set_stock_qty(conn, shop, pid, have - need)
 
         total_sum = round(sum(float(r["total"]) for r in items), 2)
 
@@ -514,6 +528,7 @@ def cart_finish(client_name: str) -> Tuple[bool, str, dict[str, Any], list[dict[
             "date": conn.execute("SELECT created_at FROM invoices WHERE cart_id=?", (cart_id,)).fetchone()["created_at"],
             "total": total_sum,
             "currency": "USD",
+            "shop": shop,
         }
         return True, "", invoice, [dict(x) for x in items]
     finally:
