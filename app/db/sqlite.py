@@ -228,24 +228,24 @@ def receive_stock(
 
         product_id = int(row["id"])
 
-        # 2) upsert stock qty for warehouse+product
+        # 2) upsert stock qty for warehouse_code+product_id
         srow = conn.execute(
-            "SELECT qty FROM stock WHERE warehouse=? AND product_id=?",
+            "SELECT qty FROM stock WHERE warehouse_code=? AND product_id=?",
             (warehouse, product_id),
         ).fetchone()
 
         if srow:
             conn.execute(
-                "UPDATE stock SET qty = qty + ? WHERE warehouse=? AND product_id=?",
+                "UPDATE stock SET qty = qty + ? WHERE warehouse_code=? AND product_id=?",
                 (qty, warehouse, product_id),
             )
         else:
             conn.execute(
-                "INSERT INTO stock(warehouse, product_id, qty) VALUES (?, ?, ?)",
+                "INSERT INTO stock(warehouse_code, product_id, qty) VALUES (?, ?, ?)",
                 (warehouse, product_id, qty),
             )
 
-        # 3) journal (optional)
+        # 3) journal (optional; requires stock_ops table)
         if source:
             conn.execute(
                 """
