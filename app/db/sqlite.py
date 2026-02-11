@@ -197,19 +197,62 @@ def _set_stock_qty(conn: sqlite3.Connection, warehouse: str, product_id: int, qt
     )
 
 
-def receive_stock(warehouse: str, brand: str, model: str, qty: float, source: str | None = None):
+def receive_stock(
+    warehouse: str,
+    brand: str,
+    model: str,
+    qty: float,
+    source: str | None = None,
+) -> tuple[bool, str]:
+    warehouse = (warehouse or "").strip().upper()
+    brand = (brand or "").strip()
+    model = (model or "").strip()
+
+    try:
+        qty = float(qty)
+    except Exception:
+        return False, "qty is not a number"
+
+    if qty <= 0:
+        return False, "qty must be > 0"
+
     conn = _connect()
     try:
-        # ... твоя существующая логика: найти product_id (pid), обновить/вставить stock и т.д.
+        # 1) find product
+        row = conn.execute(
+            "SELECT id FROM products WHERE brand=? AND model=?",
+            (brand, model),
+        ).fetchone()
+        if not row:
+            return False, f"product not found: {brand} {model}"
 
-        # AFTER stock updated:
+        product_id = int(row["id"])
+
+        # 2) upsert stock qty for warehouse+product
+        srow = conn.execute(
+            "SELECT qty FROM stock WHERE warehouse=? AND product_id=?",
+            (warehouse, product_id),
+        ).fetchone()
+
+        if srow:
+            conn.execute(
+                "UPDATE stock SET qty = qty + ? WHERE warehouse=? AND product_id=?",
+                (qty, warehouse, product_id),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO stock(warehouse, product_id, qty) VALUES (?, ?, ?)",
+                (warehouse, product_id, qty),
+            )
+
+        # 3) journal (optional)
         if source:
             conn.execute(
                 """
                 INSERT INTO stock_ops(op_type, source, warehouse_code, product_id, qty)
                 VALUES ('RECEIVE', ?, ?, ?, ?)
                 """,
-                (source, warehouse, pid, float(qty)),
+                (source, warehouse, product_id, qty),
             )
 
         conn.commit()
