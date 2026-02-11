@@ -60,3 +60,26 @@ CREATE TABLE IF NOT EXISTS invoices (
   total REAL NOT NULL,
   FOREIGN KEY (cart_id) REFERENCES carts(id) ON DELETE CASCADE
 );
+
+-- Brands master data
+CREATE TABLE IF NOT EXISTS brands (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Stock operations journal (for audit & reporting)
+CREATE TABLE IF NOT EXISTS stock_ops (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  op_type TEXT NOT NULL,                 -- e.g. 'RECEIVE'
+  source TEXT NOT NULL,                  -- 'CHINA' | 'DEALER'
+  warehouse_code TEXT NOT NULL,          -- e.g. 'TM_DEPO' | '1416_SHOP'
+  product_id INTEGER NOT NULL,
+  qty REAL NOT NULL,
+  FOREIGN KEY(product_id) REFERENCES products(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_ops_created_at ON stock_ops(created_at);
+CREATE INDEX IF NOT EXISTS idx_stock_ops_product_id ON stock_ops(product_id);
+CREATE INDEX IF NOT EXISTS idx_stock_ops_warehouse_code ON stock_ops(warehouse_code);

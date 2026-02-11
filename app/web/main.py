@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.constants import WAREHOUSES
+from app.constants import WAREHOUSES, RECEIVE_SOURCES
 from app.db.sqlite import (
     init_db,
     list_products,
@@ -21,6 +21,8 @@ from app.db.sqlite import (
     cart_add,
     cart_show,
     cart_finish,
+    list_brands,
+    add_brand,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.backup import make_backup
@@ -47,6 +49,9 @@ def _render(request: Request, name: str, ctx: dict[str, Any]) -> HTMLResponse:
     base = {
         "request": request,
         "warehouses": sorted(WAREHOUSES.keys()),
+        "sources": sorted(RECEIVE_SOURCES.keys()),
+        "source_labels": RECEIVE_SOURCES,
+        "warehouse_labels": WAREHOUSES,
     }
     base.update(ctx)
     return templates.TemplateResponse(name, base)
@@ -71,8 +76,20 @@ def products_add(
     model: str = Form(...),
     name: str = Form(...),
     wh_price: float = Form(...),
+    do_receive: Optional[str] = Form(None),
+    source: str = Form("CHINA"),
+    warehouse: str = Form("TM_DEPO"),
+    qty: Optional[float] = Form(None),
 ):
     add_product(brand, model, name, float(wh_price))
+
+    if do_receive:
+        if qty is None:
+            return RedirectResponse(url="/products?msg=qty_required", status_code=303)
+        ok, err = receive_stock(warehouse, brand, model, float(qty), source=source)
+        msg = "OK" if ok else err
+        return RedirectResponse(url=f"/products?msg=received:{msg}", status_code=303)
+
     return RedirectResponse(url="/products", status_code=303)
 
 
@@ -101,14 +118,14 @@ def receive_get(request: Request):
 @app.post("/receive")
 def receive_post(
     warehouse: str = Form(...),
+    source: str = Form(...),
     brand: str = Form(...),
     model: str = Form(...),
     qty: float = Form(...),
 ):
-    ok, err = receive_stock(warehouse, brand, model, float(qty))
+    ok, err = receive_stock(warehouse, brand, model, float(qty), source=source)
     msg = "OK" if ok else err
-    url = f"/receive?msg={msg}"
-    return RedirectResponse(url=url, status_code=303)
+    return RedirectResponse(url=f"/receive?msg={msg}", status_code=303)
 
 
 # ---------------- move ----------------
@@ -215,3 +232,14 @@ def download(path: str):
     # MVP: доверяем path. Потом обязательно ограничим директории!
     p = Path(path)
     return FileResponse(str(p), filename=p.name)
+    
+@app.get("/brands", response_class=HTMLResponse)
+def brands_get(request: Request, msg: str = ""):
+    return _render(request, "brands.html", {"brands": list_brands(), "message": msg})
+
+
+@app.post("/brands/add")
+def brands_add(name: str = Form(...)):
+    ok, err = add_brand(name)
+    msg = "OK" if ok else err
+    return RedirectResponse(url=f"/brands?msg={msg}", status_code=303)    

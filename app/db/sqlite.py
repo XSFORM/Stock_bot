@@ -33,6 +33,9 @@ def init_db() -> None:
                 (code, title),
             )
         conn.commit()
+        
+        seed_brands_from_products()
+        
     finally:
         conn.close()
 
@@ -50,6 +53,49 @@ def add_client(name: str) -> None:
         conn.commit()
     finally:
         conn.close()
+        
+def list_brands() -> list[str]:
+    conn = _connect()
+    try:
+        rows = conn.execute("SELECT name FROM brands ORDER BY name").fetchall()
+        return [r["name"] for r in rows]
+    finally:
+        conn.close()
+
+
+def add_brand(name: str) -> tuple[bool, str]:
+    name = (name or "").strip()
+    if not name:
+        return False, "Brand name is empty"
+
+    conn = _connect()
+    try:
+        try:
+            conn.execute("INSERT INTO brands(name) VALUES (?)", (name,))
+            conn.commit()
+            return True, ""
+        except Exception:
+            # likely UNIQUE constraint
+            return False, "Brand already exists"
+    finally:
+        conn.close()
+
+
+def seed_brands_from_products() -> None:
+    """One-time helper: populate brands table from existing products.brand values."""
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT brand FROM products WHERE brand IS NOT NULL AND TRIM(brand) != ''"
+        ).fetchall()
+        for r in rows:
+            b = (r["brand"] or "").strip()
+            if not b:
+                continue
+            conn.execute("INSERT OR IGNORE INTO brands(name) VALUES (?)", (b,))
+        conn.commit()
+    finally:
+        conn.close()        
 
 
 def list_clients() -> list[dict[str, Any]]:
@@ -151,27 +197,25 @@ def _set_stock_qty(conn: sqlite3.Connection, warehouse: str, product_id: int, qt
     )
 
 
-def receive_stock(warehouse: str, brand: str, model: str, qty: float) -> Tuple[bool, str]:
-    init_db()
-    wh = warehouse.strip().upper()
-    qty = float(qty)
-
-    if wh not in WAREHOUSES:
-        return False, "Неизвестный склад"
-    if qty <= 0:
-        return False, "QTY должно быть > 0"
-
-    product = find_product(brand, model)
-    if not product:
-        return False, "Товар не найден. Добавь через /product_add"
-
+def receive_stock(warehouse: str, brand: str, model: str, qty: float, source: str | None = None):
     conn = _connect()
     try:
-        pid = int(product["id"])
-        have = _get_stock_qty(conn, wh, pid)
-        _set_stock_qty(conn, wh, pid, have + qty)
+        # ... твоя существующая логика: найти product_id (pid), обновить/вставить stock и т.д.
+
+        # AFTER stock updated:
+        if source:
+            conn.execute(
+                """
+                INSERT INTO stock_ops(op_type, source, warehouse_code, product_id, qty)
+                VALUES ('RECEIVE', ?, ?, ?, ?)
+                """,
+                (source, warehouse, pid, float(qty)),
+            )
+
         conn.commit()
         return True, ""
+    except Exception as e:
+        return False, str(e)
     finally:
         conn.close()
 

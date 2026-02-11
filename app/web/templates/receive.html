@@ -19,6 +19,15 @@
       <label class="form-label">Model</label>
       <input class="form-control" name="model" required>
     </div>
+	<div class="col-md-3">
+      <label class="form-label">Source</label>
+      <select class="form-select" name="source">
+        {% for s in sources %}
+          <option value="{{ s }}">{{ source_labels[s] }}
+	</option>
+        {% endfor %}
+      </select>
+    </div>	  
     <div class="col-md-3">
       <label class="form-label">Qty</label>
       <input class="form-control" name="qty" type="number" step="0.01" required>
