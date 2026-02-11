@@ -162,28 +162,73 @@ def get_client_by_name(name: str) -> Optional[dict[str, Any]]:
 
 # -------- products --------
 
-def add_product(brand: str, model: str, name: str, wh_price: float) -> None:
-    brand = brand.strip().lower()
-    model = model.strip().lower()
-    name = name.strip()
-    wh_price = float(wh_price)
+def add_product(brand: str, model: str, name: str, wh_price: float) -> int:
+    brand = (brand or "").strip()
+    model = (model or "").strip()
+    name = (name or "").strip()
 
     conn = _connect()
     try:
-        conn.execute(
+        cur = conn.execute(
             """
             INSERT INTO products(brand, model, name, wh_price)
-            VALUES(?, ?, ?, ?)
-            ON CONFLICT(brand, model) DO UPDATE SET
-              name=excluded.name,
-              wh_price=excluded.wh_price
+            VALUES (?, ?, ?, ?)
             """,
-            (brand, model, name, wh_price),
+            (brand, model, name, float(wh_price)),
         )
         conn.commit()
+        return int(cur.lastrowid)
     finally:
         conn.close()
 
+def receive_stock_by_product_id(
+    warehouse: str,
+    product_id: int,
+    qty: float,
+    source: str | None = None,
+) -> tuple[bool, str]:
+    warehouse = (warehouse or "").strip().upper()
+
+    try:
+        qty = float(qty)
+    except Exception:
+        return False, "qty is not a number"
+    if qty <= 0:
+        return False, "qty must be > 0"
+
+    conn = _connect()
+    try:
+        srow = conn.execute(
+            "SELECT qty FROM stock WHERE warehouse_code=? AND product_id=?",
+            (warehouse, int(product_id)),
+        ).fetchone()
+
+        if srow:
+            conn.execute(
+                "UPDATE stock SET qty = qty + ? WHERE warehouse_code=? AND product_id=?",
+                (qty, warehouse, int(product_id)),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO stock(warehouse_code, product_id, qty) VALUES (?, ?, ?)",
+                (warehouse, int(product_id), qty),
+            )
+
+        if source:
+            conn.execute(
+                """
+                INSERT INTO stock_ops(op_type, source, warehouse_code, product_id, qty)
+                VALUES ('RECEIVE', ?, ?, ?, ?)
+                """,
+                (source, warehouse, int(product_id), qty),
+            )
+
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
 
 def list_products() -> list[dict[str, Any]]:
     conn = _connect()

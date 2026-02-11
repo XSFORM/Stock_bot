@@ -25,6 +25,7 @@ from app.db.sqlite import (
     cart_show,
     cart_finish,
     list_brands,
+    receive_stock_by_product_id
     add_brand,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
@@ -90,9 +91,9 @@ def products_add(
     warehouse: str = Form("TM_DEPO"),
     qty: float = Form(...),
 ):
-    add_product(brand, model, name, float(wh_price))
+    product_id = add_product(brand, model, name, float(wh_price))
 
-    ok, err = receive_stock(warehouse, brand, model, float(qty), source=source)
+    ok, err = receive_stock_by_product_id(warehouse, product_id, float(qty), source=source)
     msg = "OK" if ok else err
     return RedirectResponse(url=f"/products?msg={msg}", status_code=303)
 
