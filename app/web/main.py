@@ -67,7 +67,8 @@ def index(request: Request):
 @app.get("/products", response_class=HTMLResponse)
 def products(request: Request):
     rows = list_products()
-    return _render(request, "products.html", {"products": rows})
+    brands = list_brands()
+    return _render(request, "products.html", {"products": rows, "brands": brands})
 
 
 @app.post("/products/add")
