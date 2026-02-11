@@ -13,11 +13,10 @@ from app.constants import WAREHOUSES, RECEIVE_SOURCES
 from app.db.sqlite import (
     init_db,
     list_products,
-    list_brand_model_prefixes,
-    add_brand_model_prefix,
     add_product,
     get_stock,
     receive_stock,
+    receive_stock_by_product_id,
     move_stock,
     move_all,
     cart_start,
@@ -25,8 +24,9 @@ from app.db.sqlite import (
     cart_show,
     cart_finish,
     list_brands,
-    receive_stock_by_product_id
     add_brand,
+    list_brand_model_prefixes,
+    add_brand_model_prefix,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.backup import make_backup
