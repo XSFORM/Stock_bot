@@ -77,21 +77,15 @@ def products_add(
     model: str = Form(...),
     name: str = Form(...),
     wh_price: float = Form(...),
-    do_receive: Optional[str] = Form(None),
     source: str = Form("CHINA"),
     warehouse: str = Form("TM_DEPO"),
-    qty: Optional[float] = Form(None),
+    qty: float = Form(...),
 ):
     add_product(brand, model, name, float(wh_price))
 
-    if do_receive:
-        if qty is None:
-            return RedirectResponse(url="/products?msg=qty_required", status_code=303)
-        ok, err = receive_stock(warehouse, brand, model, float(qty), source=source)
-        msg = "OK" if ok else err
-        return RedirectResponse(url=f"/products?msg=received:{msg}", status_code=303)
-
-    return RedirectResponse(url="/products", status_code=303)
+    ok, err = receive_stock(warehouse, brand, model, float(qty), source=source)
+    msg = "OK" if ok else err
+    return RedirectResponse(url=f"/products?msg={msg}", status_code=303)
 
 
 # ---------------- stock ----------------
