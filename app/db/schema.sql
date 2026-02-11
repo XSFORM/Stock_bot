@@ -83,3 +83,13 @@ CREATE TABLE IF NOT EXISTS stock_ops (
 CREATE INDEX IF NOT EXISTS idx_stock_ops_created_at ON stock_ops(created_at);
 CREATE INDEX IF NOT EXISTS idx_stock_ops_product_id ON stock_ops(product_id);
 CREATE INDEX IF NOT EXISTS idx_stock_ops_warehouse_code ON stock_ops(warehouse_code);
+-- Brand model prefixes (for fast model entry like tf-1086)
+CREATE TABLE IF NOT EXISTS brand_model_prefixes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  brand_name TEXT NOT NULL,
+  prefix TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(brand_name, prefix)
+);
+
+CREATE INDEX IF NOT EXISTS idx_brand_model_prefixes_brand ON brand_model_prefixes(brand_name);

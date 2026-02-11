@@ -7,11 +7,14 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import JSONResponse
 
 from app.constants import WAREHOUSES, RECEIVE_SOURCES
 from app.db.sqlite import (
     init_db,
     list_products,
+    list_brand_model_prefixes,
+    add_brand_model_prefix,
     add_product,
     get_stock,
     receive_stock,
@@ -57,6 +60,12 @@ def _render(request: Request, name: str, ctx: dict[str, Any]) -> HTMLResponse:
     return templates.TemplateResponse(name, base)
 
 
+@app.get("/api/brand-prefixes")
+def api_brand_prefixes(brand: str):
+    prefixes = list_brand_model_prefixes(brand)
+    # front will display with dash: tf -> "tf-"
+    return JSONResponse({"brand": brand, "prefixes": prefixes})
+    
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return _render(request, "index.html", {})
@@ -230,8 +239,22 @@ def download(path: str):
     
 @app.get("/brands", response_class=HTMLResponse)
 def brands_get(request: Request, msg: str = ""):
-    return _render(request, "brands.html", {"brands": list_brands(), "message": msg})
+    brands = list_brands()
+    prefix_map = {b: list_brand_model_prefixes(b) for b in brands}
+    return _render(
+        request,
+        "brands.html",
+        {"brands": brands, "prefix_map": prefix_map, "message": msg},
+    )
 
+@app.post("/brands/prefix/add")
+def brand_prefix_add(
+    brand_name: str = Form(...),
+    prefix: str = Form(...),
+):
+    ok, err = add_brand_model_prefix(brand_name, prefix)
+    msg = "OK" if ok else err
+    return RedirectResponse(url=f"/brands?msg={msg}", status_code=303)
 
 @app.post("/brands/add")
 def brands_add(name: str = Form(...)):

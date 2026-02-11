@@ -34,10 +34,10 @@
     <div class="bg-white p-3 rounded shadow-sm">
       <h4>Add product + Receive</h4>
 
-      <form method="post" action="/products/add">
+      <form method="post" action="/products/add" id="productForm">
         <div class="mb-2">
           <label class="form-label">Brand</label>
-          <select class="form-select" name="brand" required>
+          <select class="form-select" name="brand" id="brandSelect" required>
             {% for b in brands %}
               <option value="{{ b }}">{{ b }}</option>
             {% endfor %}
@@ -47,9 +47,17 @@
           </div>
         </div>
 
+        <!-- Model builder: prefix dropdown + suffix input, hidden full model -->
         <div class="mb-2">
           <label class="form-label">Model</label>
-          <input class="form-control" name="model" required>
+          <div class="input-group">
+            <select class="form-select" id="modelPrefixSelect" style="max-width: 45%;">
+              <option value="">(no prefix)</option>
+            </select>
+            <input class="form-control" id="modelSuffixInput" placeholder="1086A" required>
+          </div>
+          <input type="hidden" name="model" id="modelFullInput">
+          <div class="form-text">Result example: tf-1086A</div>
         </div>
 
         <div class="mb-2">
@@ -92,4 +100,53 @@
     </div>
   </div>
 </div>
+
+<script>
+async function loadPrefixes(brand) {
+  const prefixSelect = document.getElementById("modelPrefixSelect");
+  prefixSelect.innerHTML = '<option value="">(no prefix)</option>';
+
+  try {
+    const res = await fetch(`/api/brand-prefixes?brand=${encodeURIComponent(brand)}`);
+    const data = await res.json();
+    (data.prefixes || []).forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p;         // stored without dash
+      opt.textContent = p + "-";
+      prefixSelect.appendChild(opt);
+    });
+  } catch (e) {
+    // keep default
+  }
+}
+
+function buildFullModel() {
+  const prefix = (document.getElementById("modelPrefixSelect").value || "").trim();
+  const suffix = (document.getElementById("modelSuffixInput").value || "").trim();
+
+  // required suffix is enforced by input 'required'
+  let full = suffix;
+  if (prefix) full = prefix + "-" + suffix;
+
+  document.getElementById("modelFullInput").value = full;
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  const brandSelect = document.getElementById("brandSelect");
+  await loadPrefixes(brandSelect.value);
+  buildFullModel();
+
+  brandSelect.addEventListener("change", async (e) => {
+    await loadPrefixes(e.target.value);
+    buildFullModel();
+  });
+
+  document.getElementById("modelPrefixSelect").addEventListener("change", buildFullModel);
+  document.getElementById("modelSuffixInput").addEventListener("input", buildFullModel);
+
+  document.getElementById("productForm").addEventListener("submit", (e) => {
+    buildFullModel();
+  });
+});
+</script>
 {% endblock %}

@@ -62,6 +62,47 @@ def list_brands() -> list[str]:
     finally:
         conn.close()
 
+def list_brand_model_prefixes(brand_name: str) -> list[str]:
+    brand_name = (brand_name or "").strip()
+    if not brand_name:
+        return []
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT prefix FROM brand_model_prefixes WHERE brand_name=? ORDER BY prefix",
+            (brand_name,),
+        ).fetchall()
+        return [r["prefix"] for r in rows]
+    finally:
+        conn.close()
+
+
+def add_brand_model_prefix(brand_name: str, prefix: str) -> tuple[bool, str]:
+    brand_name = (brand_name or "").strip()
+    prefix = (prefix or "").strip()
+
+    # normalize: user may type "tf-" -> store "tf"
+    if prefix.endswith("-"):
+        prefix = prefix[:-1].strip()
+
+    if not brand_name:
+        return False, "brand is empty"
+    if not prefix:
+        return False, "prefix is empty"
+
+    conn = _connect()
+    try:
+        try:
+            conn.execute(
+                "INSERT INTO brand_model_prefixes(brand_name, prefix) VALUES (?, ?)",
+                (brand_name, prefix),
+            )
+            conn.commit()
+            return True, ""
+        except Exception:
+            return False, "prefix already exists"
+    finally:
+        conn.close()
 
 def add_brand(name: str) -> tuple[bool, str]:
     name = (name or "").strip()
