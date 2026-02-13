@@ -162,6 +162,64 @@ def get_client_by_name(name: str) -> Optional[dict[str, Any]]:
 
 # -------- products --------
 
+def get_product_id_by_brand_model(brand: str, model: str) -> int | None:
+    brand = (brand or "").strip()
+    model = (model or "").strip()
+    if not brand or not model:
+        return None
+
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT id FROM products WHERE brand=? AND model=?",
+            (brand, model),
+        ).fetchone()
+        return int(row["id"]) if row else None
+    finally:
+        conn.close()
+
+
+def add_or_get_product_id(
+    brand: str,
+    model: str,
+    name: str,
+    wh_price: float,
+) -> tuple[int, bool]:
+    """
+    Returns: (product_id, created_new)
+    If product exists -> updates name/wh_price (current) and returns existing id.
+    """
+    brand = (brand or "").strip()
+    model = (model or "").strip()
+    name = (name or "").strip()
+    wh_price = float(wh_price)
+
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT id FROM products WHERE brand=? AND model=?",
+            (brand, model),
+        ).fetchone()
+
+        if row:
+            pid = int(row["id"])
+            # keep "current" values up-to-date
+            conn.execute(
+                "UPDATE products SET name=?, wh_price=? WHERE id=?",
+                (name, wh_price, pid),
+            )
+            conn.commit()
+            return pid, False
+
+        cur = conn.execute(
+            "INSERT INTO products(brand, model, name, wh_price) VALUES (?, ?, ?, ?)",
+            (brand, model, name, wh_price),
+        )
+        conn.commit()
+        return int(cur.lastrowid), True
+    finally:
+        conn.close()
+
 def add_product(brand: str, model: str, name: str, wh_price: float) -> int:
     brand = (brand or "").strip()
     model = (model or "").strip()

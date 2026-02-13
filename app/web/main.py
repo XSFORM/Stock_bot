@@ -17,6 +17,7 @@ from app.db.sqlite import (
     get_stock,
     receive_stock,
     receive_stock_by_product_id,
+    add_or_get_product_id, receive_stock_by_product_id,
     move_stock,
     move_all,
     cart_start,
@@ -91,11 +92,17 @@ def products_add(
     warehouse: str = Form("TM_DEPO"),
     qty: float = Form(...),
 ):
-    product_id = add_product(brand, model, name, float(wh_price))
+    try:
+        product_id, created = add_or_get_product_id(brand, model, name, float(wh_price))
+        ok, err = receive_stock_by_product_id(warehouse, product_id, float(qty), source=source)
+        if not ok:
+            return RedirectResponse(url=f"/products?msg=received:{err}", status_code=303)
 
-    ok, err = receive_stock_by_product_id(warehouse, product_id, float(qty), source=source)
-    msg = "OK" if ok else err
-    return RedirectResponse(url=f"/products?msg={msg}", status_code=303)
+        msg = "created+received" if created else "received (existing product)"
+        return RedirectResponse(url=f"/products?msg={msg}", status_code=303)
+    except Exception as e:
+        # вместо черного экрана
+        return RedirectResponse(url=f"/products?msg=error:{e}", status_code=303)
 
 
 # ---------------- stock ----------------
