@@ -45,7 +45,7 @@
         <td>{{ r.name }}</td>
         <td class="text-end">{{ "%.2f"|format(r.wh_price) }}</td>
         <td class="text-end">{{ "%.2f"|format(r.sale_price) }}</td>
-        <td class="text-end">{{ r.qty }}</td>
+        <td class="text-end">{{ r.qty|int }}</td>
       </tr>
       {% endfor %}
     </tbody>
