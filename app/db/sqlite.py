@@ -308,8 +308,12 @@ def find_product(brand: str, model: str) -> Optional[dict[str, Any]]:
     conn = _connect()
     try:
         r = conn.execute(
-            "SELECT id, brand, model, name, wh_price FROM products WHERE brand=? AND model=?",
-            (brand.strip().lower(), model.strip().lower()),
+            """
+            SELECT id, brand, model, name, wh_price
+            FROM products
+            WHERE lower(brand)=lower(?) AND lower(model)=lower(?)
+            """,
+            (brand.strip(), model.strip()),
         ).fetchone()
         if not r:
             return None
