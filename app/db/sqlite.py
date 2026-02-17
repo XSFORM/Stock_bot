@@ -494,32 +494,47 @@ def move_all_auto_shop(src: str) -> tuple[bool, str, int, str]:
     return ok, err, moved, dst
 
 
-def get_stock(warehouse: Optional[str] = None) -> list[dict[str, Any]]:
-    wh = warehouse.strip().upper() if warehouse else None
+def get_stock(warehouse: Optional[str] = None, q: Optional[str] = None) -> list[dict[str, Any]]:
+    wh = warehouse.strip().upper() if warehouse else ""
+    term = (q or "").strip().lower()
+
     conn = _connect()
     try:
+        params: list[Any] = []
+        where_parts: list[str] = []
+
         if wh:
-            rows = conn.execute(
-                """
-                SELECT w.code as warehouse, p.brand, p.model, p.name, s.qty
-                FROM stock s
-                JOIN products p ON p.id=s.product_id
-                JOIN warehouses w ON w.code=s.warehouse_code
-                WHERE w.code=?
-                ORDER BY p.brand, p.model
-                """,
-                (wh,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT w.code as warehouse, p.brand, p.model, p.name, s.qty
-                FROM stock s
-                JOIN products p ON p.id=s.product_id
-                JOIN warehouses w ON w.code=s.warehouse_code
-                ORDER BY w.code, p.brand, p.model
-                """
-            ).fetchall()
+            where_parts.append("w.code=?")
+            params.append(wh)
+
+        if term:
+            like = f"%{term}%"
+            where_parts.append(
+                "(lower(p.model) LIKE ? OR lower(p.brand) LIKE ? OR lower(p.name) LIKE ?)"
+            )
+            params.extend([like, like, like])
+
+        where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+
+        rows = conn.execute(
+            f"""
+            SELECT
+              w.code as warehouse,
+              p.brand,
+              p.model,
+              p.name,
+              s.qty,
+              p.wh_price as wh_price,
+              ROUND(p.wh_price * 1.10, 2) as sale_price
+            FROM stock s
+            JOIN products p ON p.id=s.product_id
+            JOIN warehouses w ON w.code=s.warehouse_code
+            {where_sql}
+            ORDER BY w.code, p.brand, p.model
+            """,
+            tuple(params),
+        ).fetchall()
+
         return [dict(r) for r in rows]
     finally:
         conn.close()

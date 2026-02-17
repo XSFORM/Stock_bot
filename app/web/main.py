@@ -108,14 +108,16 @@ def products_add(
 # ---------------- stock ----------------
 
 @app.get("/stock", response_class=HTMLResponse)
-def stock(request: Request, warehouse: Optional[str] = None):
-    rows = get_stock(warehouse)
+def stock_get(request: Request, warehouse: str = "", q: str = ""):
+    rows = get_stock(warehouse if warehouse else None, q if q else None)
     return _render(
         request,
         "stock.html",
         {
             "rows": rows,
-            "selected_warehouse": (warehouse or "").upper(),
+            "warehouses": list(WAREHOUSES.keys()),
+            "selected_warehouse": (warehouse or "").strip().upper(),
+            "search_q": q or "",
         },
     )
 

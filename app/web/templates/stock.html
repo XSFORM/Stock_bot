@@ -3,8 +3,9 @@
 <div class="bg-white p-3 rounded shadow-sm">
   <h4>Stock</h4>
 
-  <form class="row g-2 mb-3" method="get" action="/stock">
+  <form class="row g-2 mb-3 align-items-end" method="get" action="/stock">
     <div class="col-auto">
+      <label class="form-label mb-1">Warehouse</label>
       <select class="form-select" name="warehouse">
         <option value="">All warehouses</option>
         {% for w in warehouses %}
@@ -12,6 +13,12 @@
         {% endfor %}
       </select>
     </div>
+
+    <div class="col-auto">
+      <label class="form-label mb-1">Search</label>
+      <input class="form-control" name="q" value="{{ search_q }}" placeholder="model / brand / name (e.g. 9030 or sf-9030)">
+    </div>
+
     <div class="col-auto">
       <button class="btn btn-secondary">Filter</button>
     </div>
@@ -20,7 +27,13 @@
   <table class="table table-sm">
     <thead>
       <tr>
-        <th>Warehouse</th><th>Brand</th><th>Model</th><th>Name</th><th>Qty</th>
+        <th>Warehouse</th>
+        <th>Brand</th>
+        <th>Model</th>
+        <th>Name</th>
+        <th class="text-end">WH</th>
+        <th class="text-end">Sale</th>
+        <th class="text-end">Qty</th>
       </tr>
     </thead>
     <tbody>
@@ -30,7 +43,9 @@
         <td>{{ r.brand }}</td>
         <td>{{ r.model }}</td>
         <td>{{ r.name }}</td>
-        <td>{{ r.qty }}</td>
+        <td class="text-end">{{ "%.2f"|format(r.wh_price) }}</td>
+        <td class="text-end">{{ "%.2f"|format(r.sale_price) }}</td>
+        <td class="text-end">{{ r.qty }}</td>
       </tr>
       {% endfor %}
     </tbody>
