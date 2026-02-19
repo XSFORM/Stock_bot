@@ -177,6 +177,24 @@ def move_all_post(
     ok, err, moved = move_all(src, dst)
     msg = f"OK moved={moved}" if ok else err
     return RedirectResponse(url=f"/move-all?msg={msg}", status_code=303)
+    
+# ---------------- clients --------------------
+
+@app.get("/clients", response_class=HTMLResponse)
+def clients_get(request: Request, msg: str = ""):
+    clients = list_clients()
+    return _render(request, "clients.html", {"clients": clients, "message": msg})
+
+
+@app.post("/clients/add")
+def clients_add(
+    name: str = Form(...),
+    phone: str = Form(""),
+    note: str = Form(""),
+):
+    ok, err = add_client(name, phone, note)
+    msg = "OK" if ok else err
+    return RedirectResponse(url=f"/clients?msg={msg}", status_code=303)    
 
 
 # ---------------- sale (cart) ----------------

@@ -26,7 +26,8 @@ def init_db() -> None:
     try:
         if SCHEMA_PATH.exists():
             conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
-
+            
+        _ensure_clients_columns(conn)
         for code, title in WAREHOUSES.items():
             conn.execute(
                 "INSERT OR IGNORE INTO warehouses(code, title) VALUES(?, ?)",
@@ -158,6 +159,15 @@ def get_client_by_name(name: str) -> Optional[dict[str, Any]]:
         return dict(r) if r else None
     finally:
         conn.close()
+        
+def _ensure_clients_columns(conn: sqlite3.Connection) -> None:
+    cols = conn.execute("PRAGMA table_info(clients);").fetchall()
+    existing = {c["name"] for c in cols}
+
+    if "phone" not in existing:
+        conn.execute("ALTER TABLE clients ADD COLUMN phone TEXT NOT NULL DEFAULT '';")
+    if "note" not in existing:
+        conn.execute("ALTER TABLE clients ADD COLUMN note TEXT NOT NULL DEFAULT '';")        
 
 
 # -------- products --------
