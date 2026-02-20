@@ -6,4 +6,6 @@ body.bg-light {
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
+.bg-white.rounded.shadow-sm {
+  box-shadow: 0 8px 30px rgba(0,0,0,0.18) !important;
 }
