@@ -747,16 +747,45 @@ def _get_or_create_client_id(conn: sqlite3.Connection, client_name: str) -> int:
     return int(conn.execute("SELECT last_insert_rowid() as id").fetchone()["id"])
     
 
-def cart_start_by_id(client_id: int) -> int:
+def get_open_cart() -> Optional[dict]:
+    """Return the current OPEN cart (cart_id, client_id, client_name, created_at) or None."""
     init_db()
     conn = _connect()
     try:
+        r = conn.execute(
+            """
+            SELECT c.id as cart_id, c.client_id, cl.name as client_name, c.created_at
+            FROM carts c
+            JOIN clients cl ON cl.id = c.client_id
+            WHERE c.status = 'OPEN'
+            ORDER BY c.id DESC
+            LIMIT 1
+            """,
+        ).fetchone()
+        return dict(r) if r else None
+    finally:
+        conn.close()
+
+
+def cart_start_by_id(client_id: int) -> Tuple[bool, str, Optional[int]]:
+    """Start a new OPEN cart for client_id.
+
+    Returns (True, "", cart_id) on success.
+    Returns (False, error_msg, None) if an OPEN cart already exists.
+    """
+    init_db()
+    conn = _connect()
+    try:
+        existing = conn.execute(
+            "SELECT id FROM carts WHERE status='OPEN' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if existing:
+            return False, "Уже есть активный инвойс. Завершите его перед началом нового.", None
         cid = int(client_id)
-        conn.execute("UPDATE carts SET status='CLOSED' WHERE client_id=? AND status='OPEN'", (cid,))
         conn.execute("INSERT INTO carts(client_id, status) VALUES(?, 'OPEN')", (cid,))
         cart_id = int(conn.execute("SELECT last_insert_rowid() as id").fetchone()["id"])
         conn.commit()
-        return cart_id
+        return True, "", cart_id
     finally:
         conn.close()
 
