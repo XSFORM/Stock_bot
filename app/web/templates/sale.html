@@ -10,7 +10,13 @@
       <form method="post" action="/sale/start">
         <div class="mb-2">
           <label class="form-label">Client</label>
-          <input class="form-control" name="client" placeholder="ali" required>
+          <select class="form-select" name="client_id" required>
+            <option value="" selected disabled>Select client...</option>
+            {% for c in clients %}
+              <option value="{{ c.id }}">{{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Add clients in <a href="/clients">Clients</a>.</div>
         </div>
         <button class="btn btn-secondary">Start</button>
       </form>
@@ -21,7 +27,12 @@
       <form method="post" action="/sale/add">
         <div class="mb-2">
           <label class="form-label">Client</label>
-          <input class="form-control" name="client" required>
+          <select class="form-select" name="client_id" required>
+            <option value="" selected disabled>Select client...</option>
+            {% for c in clients %}
+              <option value="{{ c.id }}">{{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="mb-2">
           <label class="form-label">Brand</label>
@@ -33,7 +44,7 @@
         </div>
         <div class="mb-2">
           <label class="form-label">Qty</label>
-          <input class="form-control" name="qty" type="number" step="0.01" required>
+          <input class="form-control" name="qty" type="number" step="1" required>
         </div>
         <div class="mb-2">
           <label class="form-label">Price mode</label>
@@ -56,7 +67,12 @@
       <form method="post" action="/sale/show" class="mb-2">
         <div class="mb-2">
           <label class="form-label">Client</label>
-          <input class="form-control" name="client" required>
+          <select class="form-select" name="client_id" required>
+            <option value="" selected disabled>Select client...</option>
+            {% for c in clients %}
+              <option value="{{ c.id }}">{{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}</option>
+            {% endfor %}
+          </select>
         </div>
         <button class="btn btn-outline-secondary">Show cart</button>
       </form>
@@ -64,7 +80,12 @@
       <form method="post" action="/sale/finish">
         <div class="mb-2">
           <label class="form-label">Client</label>
-          <input class="form-control" name="client" required>
+          <select class="form-select" name="client_id" required>
+            <option value="" selected disabled>Select client...</option>
+            {% for c in clients %}
+              <option value="{{ c.id }}">{{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}</option>
+            {% endfor %}
+          </select>
         </div>
         <button class="btn btn-success">Finish (PDF + Backup)</button>
       </form>

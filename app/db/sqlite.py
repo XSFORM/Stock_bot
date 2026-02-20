@@ -43,15 +43,25 @@ def init_db() -> None:
 
 # -------- clients --------
 
-def add_client(name: str) -> None:
-    name = name.strip()
+def add_client(name: str, phone: str = "", note: str = "") -> tuple[bool, str]:
+    name = (name or "").strip()
+    phone = (phone or "").strip()
+    note = (note or "").strip()
+
     if not name:
-        raise ValueError("empty name")
+        return False, "empty name"
 
     conn = _connect()
     try:
-        conn.execute("INSERT OR IGNORE INTO clients(name) VALUES(?)", (name,))
-        conn.commit()
+        try:
+            conn.execute(
+                "INSERT INTO clients(name, phone, note) VALUES(?, ?, ?)",
+                (name, phone, note),
+            )
+            conn.commit()
+            return True, ""
+        except Exception:
+            return False, "Client already exists"
     finally:
         conn.close()
         
@@ -143,7 +153,9 @@ def seed_brands_from_products() -> None:
 def list_clients() -> list[dict[str, Any]]:
     conn = _connect()
     try:
-        rows = conn.execute("SELECT id, name FROM clients ORDER BY name").fetchall()
+        rows = conn.execute(
+            "SELECT id, name, phone, note FROM clients ORDER BY name"
+        ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -576,6 +588,138 @@ def _get_or_create_client_id(conn: sqlite3.Connection, client_name: str) -> int:
         return int(client["id"])
     conn.execute("INSERT INTO clients(name) VALUES(?)", (client_name.strip(),))
     return int(conn.execute("SELECT last_insert_rowid() as id").fetchone()["id"])
+    
+
+def cart_start_by_id(client_id: int) -> int:
+    init_db()
+    conn = _connect()
+    try:
+        cid = int(client_id)
+        conn.execute("UPDATE carts SET status='CLOSED' WHERE client_id=? AND status='OPEN'", (cid,))
+        conn.execute("INSERT INTO carts(client_id, status) VALUES(?, 'OPEN')", (cid,))
+        cart_id = int(conn.execute("SELECT last_insert_rowid() as id").fetchone()["id"])
+        conn.commit()
+        return cart_id
+    finally:
+        conn.close()
+
+
+def _get_open_cart_id_by_client_id(conn: sqlite3.Connection, client_id: int) -> Optional[int]:
+    r = conn.execute(
+        """
+        SELECT id
+        FROM carts
+        WHERE client_id=? AND status='OPEN'
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (int(client_id),),
+    ).fetchone()
+    return int(r["id"]) if r else None
+
+
+def cart_add_by_id(
+    client_id: int,
+    brand: str,
+    model: str,
+    qty: float,
+    price_mode: str,
+    custom_price: Optional[float] = None,
+) -> Tuple[bool, str]:
+    init_db()
+    qty = float(qty)
+    if qty <= 0:
+        return False, "QTY должно быть > 0"
+
+    price_mode = price_mode.strip().lower()
+    if price_mode not in ("wh", "wh10", "custom"):
+        return False, "price_mode должен быть: wh / wh10 / custom"
+
+    product = find_product(brand, model)
+    if not product:
+        return False, "Товар не найден."
+
+    conn = _connect()
+    try:
+        cart_id = _get_open_cart_id_by_client_id(conn, int(client_id))
+        if not cart_id:
+            cart_id = cart_start_by_id(int(client_id))
+
+        wh_price = float(product["wh_price"])
+        if price_mode == "wh":
+            unit = round(wh_price, 2)
+        elif price_mode == "wh10":
+            unit = round(wh_price * 1.10, 2)
+        else:
+            if custom_price is None:
+                return False, "Для custom нужно указать custom_price"
+            unit = round(float(custom_price), 2)
+
+        total = round(unit * qty, 2)
+
+        conn.execute(
+            """
+            INSERT INTO cart_items(cart_id, product_id, qty, price_mode, unit_price, total)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (cart_id, int(product["id"]), qty, price_mode, unit, total),
+        )
+        conn.commit()
+        return True, ""
+    finally:
+        conn.close()
+
+
+def cart_show_by_id(client_id: int) -> Tuple[bool, str]:
+    init_db()
+    conn = _connect()
+    try:
+        cart_id = _get_open_cart_id_by_client_id(conn, int(client_id))
+        if not cart_id:
+            return False, "Корзина не начата."
+
+        rows = conn.execute(
+            """
+            SELECT p.brand, p.model, p.name, i.qty, i.price_mode, i.unit_price, i.total
+            FROM cart_items i
+            JOIN products p ON p.id=i.product_id
+            WHERE i.cart_id=?
+            ORDER BY i.id
+            """,
+            (cart_id,),
+        ).fetchall()
+
+        if not rows:
+            return True, "Корзина пустая."
+
+        cl = conn.execute("SELECT name FROM clients WHERE id=?", (int(client_id),)).fetchone()
+        client_name = cl["name"] if cl else f"#{client_id}"
+
+        lines = [f"<b>Корзина: {client_name}</b>"]
+        sum_total = 0.0
+        for r in rows:
+            d = dict(r)
+            sum_total += float(d["total"])
+            lines.append(
+                f"• {d['brand']} {d['model']} — {d['qty']} шт × {float(d['unit_price']):.2f}$ ({d['price_mode']}) = {float(d['total']):.2f}$"
+            )
+        lines.append(f"\n<b>Итого:</b> {sum_total:.2f}$")
+        return True, "\n".join(lines)
+    finally:
+        conn.close()
+
+
+def cart_finish_by_id(client_id: int):
+    # MVP: translate id -> name and reuse existing cart_finish(name)
+    conn = _connect()
+    try:
+        r = conn.execute("SELECT name FROM clients WHERE id=?", (int(client_id),)).fetchone()
+        if not r:
+            return False, "Клиент не найден", {}, []
+        name = r["name"]
+    finally:
+        conn.close()
+    return cart_finish(name)    
 
 
 def cart_start(client_name: str) -> int:
