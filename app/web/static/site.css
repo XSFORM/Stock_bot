@@ -1,7 +1,7 @@
 body.bg-light {
   /* заменишь на свою картинку */
   background-image:
-    linear-gradient(rgba(245, 246, 250, 0.25), rgba(245, 246, 250, 0.25)),
+    linear-gradient(rgba(245, 246, 250, 0.0), rgba(245, 246, 250, 0.0)),
     url("/static/bg.jpg");
   background-size: cover;
   background-position: center;
