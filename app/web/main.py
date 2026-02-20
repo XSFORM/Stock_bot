@@ -38,6 +38,9 @@ from app.db.sqlite import (
     cart_add_by_cart_id,
     cart_show_by_cart_id,
     cart_finish_by_cart_id_shop1416,
+    # new
+    search_stock,
+    get_cart_items_list,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.backup import make_backup
@@ -77,6 +80,13 @@ def api_brand_prefixes(brand: str):
     prefixes = list_brand_model_prefixes(brand)
     # front will display with dash: tf -> "tf-"
     return JSONResponse({"brand": brand, "prefixes": prefixes})
+
+
+@app.get("/api/stock-search")
+def api_stock_search(warehouse: str = "1416_SHOP", q: str = ""):
+    """Search stock for a specific warehouse. Returns up to 30 items."""
+    items = search_stock(warehouse, q, limit=30)
+    return JSONResponse({"results": items})
     
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
@@ -233,10 +243,21 @@ def client_edit_post(
 def sale_get(request: Request, msg: str = ""):
     clients = list_clients()
     open_cart = get_open_cart()
+    cart_items: list = []
+    cart_total: float = 0.0
+    if open_cart:
+        _, cart_items = get_cart_items_list(open_cart["cart_id"])
+        cart_total = sum(float(i["total"]) for i in cart_items)
     return _render(
         request,
         "sale.html",
-        {"message": msg, "clients": clients, "open_cart": open_cart},
+        {
+            "message": msg,
+            "clients": clients,
+            "open_cart": open_cart,
+            "cart_items": cart_items,
+            "cart_total": cart_total,
+        },
     )
 
 
