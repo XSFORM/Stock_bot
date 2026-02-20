@@ -201,6 +201,26 @@ def clients_add(
     ok, err = add_client(name, phone, note)
     msg = "OK" if ok else err
     return RedirectResponse(url=f"/clients?msg={msg}", status_code=303)    
+    
+    
+@app.get("/clients/{client_id}/edit", response_class=HTMLResponse)
+def client_edit_get(request: Request, client_id: int, msg: str = ""):
+    c = get_client(int(client_id))
+    if not c:
+        return RedirectResponse(url="/clients?msg=client_not_found", status_code=303)
+    return _render(request, "client_edit.html", {"client": c, "message": msg})
+
+
+@app.post("/clients/{client_id}/edit")
+def client_edit_post(
+    client_id: int,
+    name: str = Form(...),
+    phone: str = Form(""),
+    note: str = Form(""),
+):
+    ok, err = update_client(int(client_id), name, phone, note)
+    msg = "OK" if ok else err
+    return RedirectResponse(url=f"/clients/{int(client_id)}/edit?msg={msg}", status_code=303)    
 
 
 # ---------------- sale (cart) ----------------
