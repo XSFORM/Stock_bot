@@ -280,7 +280,6 @@ def sale_finish(cart_id: int = Form(...)):
         url=f"/sale/done?pdf={pdf_path}&backup={backup_path}&n={invoice['number']}",
         status_code=303,
     )
-    )
 
 
 @app.get("/sale/done", response_class=HTMLResponse)
