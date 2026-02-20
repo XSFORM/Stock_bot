@@ -15,6 +15,7 @@
             <th>Name</th>
             <th>Phone</th>
             <th>Note</th>
+			<th></th>
           </tr>
         </thead>
         <tbody>
@@ -23,6 +24,10 @@
             <td>{{ c.name }}</td>
             <td>{{ c.phone }}</td>
             <td>{{ c.note }}</td>
+			<td class="text-end">
+              <a class="btn btn-sm btn-outline-secondary"
+	    href="/clients/{{ c.id }}/edit">Edit</a>
+            </td>
           </tr>
           {% endfor %}
         </tbody>

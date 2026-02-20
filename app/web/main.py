@@ -27,6 +27,8 @@ from app.db.sqlite import (
     # clients
     list_clients,
     add_client,
+    get_client,
+    update_client,
     # sale by id
     cart_start_by_id,
     cart_add_by_id,

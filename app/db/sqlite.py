@@ -172,6 +172,39 @@ def get_client_by_name(name: str) -> Optional[dict[str, Any]]:
     finally:
         conn.close()
         
+def get_client(client_id: int) -> Optional[dict[str, Any]]:
+    conn = _connect()
+    try:
+        r = conn.execute(
+            "SELECT id, name, phone, note FROM clients WHERE id=?",
+            (int(client_id),),
+        ).fetchone()
+        return dict(r) if r else None
+    finally:
+        conn.close()
+
+
+def update_client(client_id: int, name: str, phone: str = "", note: str = "") -> tuple[bool, str]:
+    name = (name or "").strip()
+    phone = (phone or "").strip()
+    note = (note or "").strip()
+    if not name:
+        return False, "empty name"
+
+    conn = _connect()
+    try:
+        try:
+            conn.execute(
+                "UPDATE clients SET name=?, phone=?, note=? WHERE id=?",
+                (name, phone, note, int(client_id)),
+            )
+            conn.commit()
+            return True, ""
+        except Exception:
+            return False, "Client name already exists"
+    finally:
+        conn.close()        
+        
 def _ensure_clients_columns(conn: sqlite3.Connection) -> None:
     cols = conn.execute("PRAGMA table_info(clients);").fetchall()
     existing = {c["name"] for c in cols}
