@@ -612,6 +612,130 @@ def get_stock_text(warehouse: Optional[str] = None) -> str:
 
 # -------- cart / invoice --------
 
+def cart_add_by_cart_id(
+    cart_id: int,
+    brand: str,
+    model: str,
+    qty: float,
+    price_mode: str,
+    custom_price: Optional[float] = None,
+) -> Tuple[bool, str]:
+    init_db()
+    qty = float(qty)
+    if qty <= 0:
+        return False, "QTY должно быть > 0"
+
+    price_mode = price_mode.strip().lower()
+    if price_mode not in ("wh", "wh10", "custom"):
+        return False, "price_mode должен быть: wh / wh10 / custom"
+
+    product = find_product(brand, model)
+    if not product:
+        return False, "Товар не найден."
+
+    wh_price = float(product["wh_price"])
+    if price_mode == "wh":
+        unit = round(wh_price, 2)
+    elif price_mode == "wh10":
+        unit = round(wh_price * 1.10, 2)
+    else:
+        if custom_price is None:
+            return False, "Для custom нужно указать custom_price"
+        unit = round(float(custom_price), 2)
+
+    total = round(unit * qty, 2)
+
+    conn = _connect()
+    try:
+        # ensure cart exists and open
+        r = conn.execute("SELECT status FROM carts WHERE id=?", (int(cart_id),)).fetchone()
+        if not r:
+            return False, "Cart not found"
+        if r["status"] != "OPEN":
+            return False, "Cart is closed"
+
+        conn.execute(
+            """
+            INSERT INTO cart_items(cart_id, product_id, qty, price_mode, unit_price, total)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (int(cart_id), int(product["id"]), qty, price_mode, unit, total),
+        )
+        conn.commit()
+        return True, ""
+    finally:
+        conn.close()
+
+
+def cart_show_by_cart_id(cart_id: int) -> Tuple[bool, str]:
+    init_db()
+    conn = _connect()
+    try:
+        cart = conn.execute(
+            """
+            SELECT c.id, c.status, cl.name as client_name
+            FROM carts c
+            JOIN clients cl ON cl.id=c.client_id
+            WHERE c.id=?
+            """,
+            (int(cart_id),),
+        ).fetchone()
+        if not cart:
+            return False, "Корзина не найдена."
+
+        rows = conn.execute(
+            """
+            SELECT p.brand, p.model, p.name, i.qty, i.price_mode, i.unit_price, i.total
+            FROM cart_items i
+            JOIN products p ON p.id=i.product_id
+            WHERE i.cart_id=?
+            ORDER BY i.id
+            """,
+            (int(cart_id),),
+        ).fetchall()
+
+        if not rows:
+            return True, "Корзина пустая."
+
+        lines = [f"<b>Корзина: {cart['client_name']}</b>"]
+        sum_total = 0.0
+        for r in rows:
+            d = dict(r)
+            sum_total += float(d["total"])
+            lines.append(
+                f"• {d['brand']} {d['model']} — {d['qty']} шт × {float(d['unit_price']):.2f}$ ({d['price_mode']}) = {float(d['total']):.2f}$"
+            )
+        lines.append(f"\n<b>Итого:</b> {sum_total:.2f}$")
+        return True, "\n".join(lines)
+    finally:
+        conn.close()
+
+
+def cart_finish_by_cart_id_shop1416(cart_id: int):
+    """
+    Finish cart by cart_id, selling strictly from 1416_SHOP.
+    Internally maps cart->client_name and uses existing logic.
+    """
+    conn = _connect()
+    try:
+        r = conn.execute(
+            """
+            SELECT cl.name as client_name
+            FROM carts c
+            JOIN clients cl ON cl.id=c.client_id
+            WHERE c.id=?
+            """,
+            (int(cart_id),),
+        ).fetchone()
+        if not r:
+            return False, "Корзина не найдена.", {}, []
+        client_name = r["client_name"]
+    finally:
+        conn.close()
+
+    # IMPORTANT: sells only from 1416_SHOP
+    return cart_finish_from_shop(client_name, "1416_SHOP")
+
 def _get_or_create_client_id(conn: sqlite3.Connection, client_name: str) -> int:
     client = conn.execute(
         "SELECT id FROM clients WHERE lower(name)=lower(?)",
@@ -975,4 +1099,7 @@ def cart_finish(client_name: str):
     Legacy wrapper: списание из общего магазина SHOP.
     Нужен для совместимости (web/telegram) когда используем legacy SHOP.
     """
-    return cart_finish_from_shop(client_name, "SHOP")        
+    return cart_finish_from_shop(client_name, "SHOP")   
+
+def cart_finish_shop1416(client_name: str):
+    return cart_finish_from_shop(client_name, "1416_SHOP")    

@@ -34,6 +34,9 @@ from app.db.sqlite import (
     cart_add_by_id,
     cart_show_by_id,
     cart_finish_by_id,
+    cart_add_by_cart_id,
+    cart_show_by_cart_id,
+    cart_finish_by_cart_id_shop1416,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.backup import make_backup
@@ -226,44 +229,49 @@ def client_edit_post(
 # ---------------- sale (cart) ----------------
 
 @app.get("/sale", response_class=HTMLResponse)
-def sale_get(request: Request, msg: str = ""):
+def sale_get(request: Request, msg: str = "", cart_id: str = ""):
     clients = list_clients()
-    return _render(request, "sale.html", {"message": msg, "clients": clients})
+    cid = int(cart_id) if str(cart_id).isdigit() else None
+    return _render(
+        request,
+        "sale.html",
+        {"message": msg, "clients": clients, "cart_id": cid},
+    )
 
 
 @app.post("/sale/start")
 def sale_start(client_id: int = Form(...)):
-    cart_start_by_id(int(client_id))
-    return RedirectResponse(url=f"/sale?msg=cart_started", status_code=303)
+    cart_id = cart_start_by_id(int(client_id))
+    return RedirectResponse(url=f"/sale?msg=cart_started&cart_id={cart_id}", status_code=303)
 
 
 @app.post("/sale/add")
 def sale_add(
-    client_id: int = Form(...),
+    cart_id: int = Form(...),
     brand: str = Form(...),
     model: str = Form(...),
     qty: float = Form(...),
-    price_mode: str = Form("wh"),
+    price_mode: str = Form("wh10"),
     custom_price: Optional[float] = Form(None),
 ):
-    ok, err = cart_add_by_id(int(client_id), brand, model, float(qty), price_mode, custom_price)
+    ok, err = cart_add_by_cart_id(int(cart_id), brand, model, float(qty), price_mode, custom_price)
     msg = "OK" if ok else err
-    return RedirectResponse(url=f"/sale?msg=add:{msg}", status_code=303)
+    return RedirectResponse(url=f"/sale?msg=add:{msg}&cart_id={int(cart_id)}", status_code=303)
 
 
 @app.post("/sale/show")
-def sale_show(client_id: int = Form(...)):
-    ok, text = cart_show_by_id(int(client_id))
+def sale_show(cart_id: int = Form(...)):
+    ok, text = cart_show_by_cart_id(int(cart_id))
     if not ok:
-        return RedirectResponse(url=f"/sale?msg=show:{text}", status_code=303)
-    return RedirectResponse(url=f"/sale?msg=cart:{text}", status_code=303)
+        return RedirectResponse(url=f"/sale?msg=show:{text}&cart_id={int(cart_id)}", status_code=303)
+    return RedirectResponse(url=f"/sale?msg=cart:{text}&cart_id={int(cart_id)}", status_code=303)
 
 
 @app.post("/sale/finish")
-def sale_finish(client_id: int = Form(...)):
-    ok, err, invoice, items = cart_finish_by_id(int(client_id))
+def sale_finish(cart_id: int = Form(...)):
+    ok, err, invoice, items = cart_finish_by_cart_id_shop1416(int(cart_id))
     if not ok:
-        return RedirectResponse(url=f"/sale?msg=finish:{err}", status_code=303)
+        return RedirectResponse(url=f"/sale?msg=finish:{err}&cart_id={int(cart_id)}", status_code=303)
 
     pdf_path = generate_invoice_pdf(invoice, items)
     backup_path = make_backup()
@@ -271,6 +279,7 @@ def sale_finish(client_id: int = Form(...)):
     return RedirectResponse(
         url=f"/sale/done?pdf={pdf_path}&backup={backup_path}&n={invoice['number']}",
         status_code=303,
+    )
     )
 
 
