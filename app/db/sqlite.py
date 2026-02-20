@@ -610,6 +610,72 @@ def get_stock_text(warehouse: Optional[str] = None) -> str:
     return "\n".join(lines)
 
 
+def search_stock(warehouse: str, q: str, limit: int = 30) -> list[dict[str, Any]]:
+    """Search stock for a specific warehouse by brand/model/name query.
+
+    Returns list of dicts: product_id, brand, model, name, qty_available, wh_price, wh10_price.
+    """
+    wh = warehouse.strip().upper()
+    term = (q or "").strip().lower()
+    like = f"%{term}%"
+
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+              p.id as product_id,
+              p.brand,
+              p.model,
+              p.name,
+              s.qty as qty_available,
+              p.wh_price,
+              ROUND(p.wh_price * 1.10, 2) as wh10_price
+            FROM stock s
+            JOIN products p ON p.id = s.product_id
+            JOIN warehouses w ON w.code = s.warehouse_code
+            WHERE w.code = ?
+              AND s.qty > 0
+              AND (lower(p.brand) LIKE ? OR lower(p.model) LIKE ? OR lower(p.name) LIKE ?)
+            ORDER BY p.brand, p.model
+            LIMIT ?
+            """,
+            (wh, like, like, like, int(limit)),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_cart_items_list(cart_id: int) -> tuple[bool, list[dict[str, Any]]]:
+    """Return cart items as a list of dicts (for template rendering).
+
+    Each dict has: brand, model, name, qty, price_mode, unit_price, total.
+    """
+    init_db()
+    conn = _connect()
+    try:
+        cart = conn.execute(
+            "SELECT id, status FROM carts WHERE id=?", (int(cart_id),)
+        ).fetchone()
+        if not cart:
+            return False, []
+
+        rows = conn.execute(
+            """
+            SELECT p.brand, p.model, p.name, i.qty, i.price_mode, i.unit_price, i.total
+            FROM cart_items i
+            JOIN products p ON p.id = i.product_id
+            WHERE i.cart_id = ?
+            ORDER BY i.id
+            """,
+            (int(cart_id),),
+        ).fetchall()
+        return True, [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 # -------- cart / invoice --------
 
 def cart_add_by_cart_id(
@@ -653,6 +719,11 @@ def cart_add_by_cart_id(
             return False, "Cart not found"
         if r["status"] != "OPEN":
             return False, "Cart is closed"
+
+        # validate against 1416_SHOP stock
+        available = _get_stock_qty(conn, "1416_SHOP", int(product["id"]))
+        if qty > available:
+            return False, f"Недостаточно на складе 1416_SHOP: доступно {available:.0f}, запрошено {qty:.0f}"
 
         conn.execute(
             """
