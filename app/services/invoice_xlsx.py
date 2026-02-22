@@ -98,18 +98,18 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
 
     # Keep borders (and light-blue fill) across the whole row A..F
     for col_idx in range(1, 7):
-    cell = ws.cell(row=total_row_idx, column=col_idx)
-    cell.border = _BORDER
-    cell.fill = _TOTAL_FILL
+        cell = ws.cell(row=total_row_idx, column=col_idx)
+        cell.border = _BORDER
+        cell.fill = _TOTAL_FILL
 
-    if col_idx in (1, 4):
-        cell.alignment = _CENTER
-    elif col_idx in (5, 6):
-        cell.alignment = _RIGHT
-    else:
-        # для текста/пустых ячеек можно left или оставить как есть
-        # но лучше задать явно чтобы не было сюрпризов
-        cell.alignment = Alignment(horizontal="left")
+        if col_idx in (1, 4):
+            cell.alignment = _CENTER
+        elif col_idx in (5, 6):
+            cell.alignment = _RIGHT
+        else:
+    # для текста/пустых ячеек можно left или оставить как есть
+    # но лучше задать явно чтобы не было сюрпризов
+            cell.alignment = Alignment(horizontal="left")
 
     # Make sure Unit Price column (E) is empty but styled
     ws.cell(row=total_row_idx, column=5, value="").fill = _TOTAL_FILL
