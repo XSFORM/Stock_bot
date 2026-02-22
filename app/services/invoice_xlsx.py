@@ -84,6 +84,21 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     total_cell.alignment = _RIGHT
     total_cell.border = _BORDER
 
+    # --- Items qty row ---
+    qty_row_idx = total_row_idx + 1
+    items_qty = sum(float(item["qty"]) for item in items)
+    ws.merge_cells(f"A{qty_row_idx}:E{qty_row_idx}")
+    qty_lbl = ws[f"A{qty_row_idx}"]
+    qty_lbl.value = "Items qty"
+    qty_lbl.font = _TOTAL_FONT
+    qty_lbl.alignment = _RIGHT
+    qty_lbl.border = _BORDER
+
+    qty_cell = ws.cell(row=qty_row_idx, column=6, value=int(items_qty))
+    qty_cell.font = _TOTAL_FONT
+    qty_cell.alignment = _RIGHT
+    qty_cell.border = _BORDER
+
     return wb
 
 

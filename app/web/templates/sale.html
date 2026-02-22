@@ -13,6 +13,7 @@
   .items-table th { white-space: nowrap; }
   .total-row td { font-weight: 700; background: #f8f9fa; }
   .edit-inline input[type=number] { min-width: 56px; }
+  .hidden { display: none; }
 </style>
 
 <div class="bg-white p-3 rounded shadow-sm">
@@ -42,7 +43,25 @@
         <div class="erp-label">Client</div>
         <div class="erp-value">
           {% if open_cart %}
-            {{ open_cart.client_name }}
+            <span id="client-display">
+              {{ open_cart.client_name }}
+              <button class="btn btn-outline-secondary btn-sm ms-2 py-0" type="button" id="client-edit-btn">
+                &#9998; Edit
+              </button>
+            </span>
+            <form id="client-edit-form" method="post" action="/sale/client/update"
+              class="d-flex gap-2 align-items-center mt-1 hidden">
+              <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
+              <select class="form-select form-select-sm" name="client_id" required style="max-width:260px">
+                {% for c in clients %}
+                  <option value="{{ c.id }}"{% if c.id == open_cart.client_id %} selected{% endif %}>
+                    {{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+              <button class="btn btn-sm btn-primary">Save</button>
+              <button class="btn btn-sm btn-outline-secondary" type="button" id="client-edit-cancel">Cancel</button>
+            </form>
           {% else %}
             <form method="post" action="/sale/start" class="d-flex gap-2 align-items-center mt-1">
               <select class="form-select form-select-sm" name="client_id" required style="max-width:260px">
@@ -143,7 +162,8 @@
             </tr>
             {% endfor %}
             <tr class="total-row">
-              <td colspan="5" class="text-end">Total:</td>
+              <td colspan="3" class="text-end">Items qty: {{ cart_qty | int }}</td>
+              <td colspan="2" class="text-end">Total:</td>
               <td class="text-end">{{ "%.2f"|format(cart_total) }}</td>
               <td></td>
             </tr>
@@ -266,6 +286,26 @@
       }
       searchInput.setCustomValidity('');
     });
+  })();
+
+  // Client edit toggle
+  (function () {
+    const editBtn = document.getElementById('client-edit-btn');
+    const cancelBtn = document.getElementById('client-edit-cancel');
+    const display = document.getElementById('client-display');
+    const editForm = document.getElementById('client-edit-form');
+    if (editBtn) {
+      editBtn.addEventListener('click', function () {
+        display.classList.add('hidden');
+        editForm.classList.remove('hidden');
+      });
+    }
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', function () {
+        editForm.classList.add('hidden');
+        display.classList.remove('hidden');
+      });
+    }
   })();
   </script>
   {% endif %}

@@ -46,6 +46,7 @@ from app.db.sqlite import (
     delete_cart_item,
     get_invoice_by_number,
     get_invoice_items_by_number,
+    cart_set_client,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xlsx_bytes
@@ -251,9 +252,11 @@ def sale_get(request: Request, msg: str = ""):
     open_cart = get_open_cart()
     cart_items: list = []
     cart_total: float = 0.0
+    cart_qty: float = 0.0
     if open_cart:
         _, cart_items = get_cart_items_list(open_cart["cart_id"])
         cart_total = sum(float(i["total"]) for i in cart_items)
+        cart_qty = sum(float(i["qty"]) for i in cart_items)
     return _render(
         request,
         "sale.html",
@@ -263,6 +266,7 @@ def sale_get(request: Request, msg: str = ""):
             "open_cart": open_cart,
             "cart_items": cart_items,
             "cart_total": cart_total,
+            "cart_qty": cart_qty,
         },
     )
 
@@ -316,6 +320,16 @@ def sale_finish(cart_id: int = Form(...)):
 def sale_cancel(cart_id: int = Form(...)):
     ok, err = cancel_cart(int(cart_id))
     msg = "invoice_cancelled" if ok else f"cancel_error:{err}"
+    return RedirectResponse(url=f"/sale?msg={msg}", status_code=303)
+
+
+@app.post("/sale/client/update")
+def sale_client_update(
+    cart_id: int = Form(...),
+    client_id: int = Form(...),
+):
+    ok, err = cart_set_client(cart_id, client_id)
+    msg = "client_updated" if ok else f"client_update_error:{err}"
     return RedirectResponse(url=f"/sale?msg={msg}", status_code=303)
 
 
