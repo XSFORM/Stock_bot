@@ -12,7 +12,10 @@ OUT_DIR = Path("/opt/stock_bot/invoices")
 
 _HEADER_FILL = PatternFill("solid", fgColor="4472C4")
 _HEADER_FONT = Font(bold=True, color="FFFFFF")
+_TOTAL_FILL = PatternFill("solid", fgColor="D9EEF7")  # Accent 1, ~60% (light blue)
 _TOTAL_FONT = Font(bold=True)
+_TOTAL_FONT_ITALIC = Font(bold=True, italic=True)
+
 _CENTER = Alignment(horizontal="center")
 _RIGHT = Alignment(horizontal="right")
 
@@ -70,20 +73,15 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
             elif col_idx in (5, 6):
                 cell.alignment = _RIGHT
 
-    # --- Total row (ERP style) ---
-    # Desired layout (single row):
-    # Name column: TOTAL
-    # Qty column: sum qty
-    # Total column: invoice total
+    # --- Total row (styled like your 2nd screenshot) ---
     total_row_idx = header_row + len(items) + 1
-
     items_qty = int(sum(float(item["qty"]) for item in items))
     invoice_total = round(float(invoice["total"]), 2)
 
-    # Put "TOTAL" into Name column (C)
-    total_lbl = ws.cell(row=total_row_idx, column=3, value="TOTAL")
-    total_lbl.font = _TOTAL_FONT
-    total_lbl.alignment = _RIGHT
+    # Put TOTAL label into Model column (B), bold+italic
+    total_lbl = ws.cell(row=total_row_idx, column=2, value="TOTAL")
+    total_lbl.font = _TOTAL_FONT_ITALIC
+    total_lbl.alignment = Alignment(horizontal="left")
     total_lbl.border = _BORDER
 
     # Qty sum into Qty column (D)
@@ -92,20 +90,26 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     qty_cell.alignment = _CENTER
     qty_cell.border = _BORDER
 
-    # Leave Unit Price (E) empty but keep border for table look
-    unit_price_cell = ws.cell(row=total_row_idx, column=5, value="")
-    unit_price_cell.border = _BORDER
-
-    # Invoice total into Total column (F)
+    # Total amount into Total column (F)
     total_cell = ws.cell(row=total_row_idx, column=6, value=invoice_total)
     total_cell.font = _TOTAL_FONT
     total_cell.alignment = _RIGHT
     total_cell.border = _BORDER
 
-    # Also keep borders on A/B of the total row (so the table looks closed)
-    for col_idx in (1, 2):
-        c = ws.cell(row=total_row_idx, column=col_idx, value="")
-        c.border = _BORDER
+    # Keep borders (and light-blue fill) across the whole row A..F
+    for col_idx in range(1, 7):
+        cell = ws.cell(row=total_row_idx, column=col_idx)
+        cell.border = _BORDER
+        cell.fill = _TOTAL_FILL
+        # Keep numeric alignment consistent if cells already have a different one
+        if col_idx in (1, 4):
+            cell.alignment = cell.alignment or _CENTER
+        elif col_idx in (5, 6):
+            cell.alignment = cell.alignment or _RIGHT
+
+    # Make sure Unit Price column (E) is empty but styled
+    ws.cell(row=total_row_idx, column=5, value="").fill = _TOTAL_FILL
+    ws.cell(row=total_row_idx, column=5).border = _BORDER
 
     return wb
 
