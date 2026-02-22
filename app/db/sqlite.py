@@ -650,7 +650,7 @@ def search_stock(warehouse: str, q: str, limit: int = 30) -> list[dict[str, Any]
 def get_cart_items_list(cart_id: int) -> tuple[bool, list[dict[str, Any]]]:
     """Return cart items as a list of dicts (for template rendering).
 
-    Each dict has: brand, model, name, qty, price_mode, unit_price, total.
+    Each dict has: id, brand, model, name, qty, price_mode, unit_price, total.
     """
     init_db()
     conn = _connect()
@@ -663,7 +663,7 @@ def get_cart_items_list(cart_id: int) -> tuple[bool, list[dict[str, Any]]]:
 
         rows = conn.execute(
             """
-            SELECT p.brand, p.model, p.name, i.qty, i.price_mode, i.unit_price, i.total
+            SELECT i.id, p.brand, p.model, p.name, i.qty, i.price_mode, i.unit_price, i.total
             FROM cart_items i
             JOIN products p ON p.id = i.product_id
             WHERE i.cart_id = ?
@@ -672,6 +672,125 @@ def get_cart_items_list(cart_id: int) -> tuple[bool, list[dict[str, Any]]]:
             (int(cart_id),),
         ).fetchall()
         return True, [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def cancel_cart(cart_id: int) -> tuple[bool, str]:
+    """Delete an OPEN cart and all its items from DB (physical delete, no stock changes)."""
+    init_db()
+    conn = _connect()
+    try:
+        r = conn.execute(
+            "SELECT id, status FROM carts WHERE id=?", (int(cart_id),)
+        ).fetchone()
+        if not r:
+            return False, "Cart not found"
+        if r["status"] != "OPEN":
+            return False, "Cart is not open"
+        conn.execute("DELETE FROM cart_items WHERE cart_id=?", (int(cart_id),))
+        conn.execute("DELETE FROM carts WHERE id=?", (int(cart_id),))
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def update_cart_item(item_id: int, qty: float, unit_price: float) -> tuple[bool, str]:
+    """Update qty and unit_price for a cart item; sets price_mode to 'custom'."""
+    init_db()
+    qty = float(qty)
+    unit_price = float(unit_price)
+    if qty <= 0:
+        return False, "qty must be > 0"
+    if unit_price < 0:
+        return False, "unit_price must be >= 0"
+    total = round(qty * unit_price, 2)
+    conn = _connect()
+    try:
+        r = conn.execute(
+            "SELECT i.id, c.status FROM cart_items i JOIN carts c ON c.id=i.cart_id WHERE i.id=?",
+            (int(item_id),),
+        ).fetchone()
+        if not r:
+            return False, "Item not found"
+        if r["status"] != "OPEN":
+            return False, "Cart is not open"
+        conn.execute(
+            "UPDATE cart_items SET qty=?, unit_price=?, total=?, price_mode='custom' WHERE id=?",
+            (qty, unit_price, total, int(item_id)),
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def delete_cart_item(item_id: int) -> tuple[bool, str]:
+    """Remove a single item from an OPEN cart (no stock changes)."""
+    init_db()
+    conn = _connect()
+    try:
+        r = conn.execute(
+            "SELECT i.id, c.status FROM cart_items i JOIN carts c ON c.id=i.cart_id WHERE i.id=?",
+            (int(item_id),),
+        ).fetchone()
+        if not r:
+            return False, "Item not found"
+        if r["status"] != "OPEN":
+            return False, "Cart is not open"
+        conn.execute("DELETE FROM cart_items WHERE id=?", (int(item_id),))
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def get_invoice_by_number(number: int) -> Optional[dict[str, Any]]:
+    """Return invoice dict by invoice number."""
+    init_db()
+    conn = _connect()
+    try:
+        r = conn.execute(
+            """
+            SELECT inv.id, inv.number, inv.created_at, inv.currency, inv.total,
+                   cl.name as client
+            FROM invoices inv
+            JOIN carts c ON c.id = inv.cart_id
+            JOIN clients cl ON cl.id = c.client_id
+            WHERE inv.number = ?
+            """,
+            (int(number),),
+        ).fetchone()
+        return dict(r) if r else None
+    finally:
+        conn.close()
+
+
+def get_invoice_items_by_number(number: int) -> list[dict[str, Any]]:
+    """Return line items for an invoice by invoice number."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT p.brand, p.model, p.name, ci.qty, ci.price_mode, ci.unit_price, ci.total
+            FROM invoices inv
+            JOIN carts c ON c.id = inv.cart_id
+            JOIN cart_items ci ON ci.cart_id = c.id
+            JOIN products p ON p.id = ci.product_id
+            WHERE inv.number = ?
+            ORDER BY ci.id
+            """,
+            (int(number),),
+        ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()
 
