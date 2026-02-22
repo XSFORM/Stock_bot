@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi import FastAPI, Form, Request, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import JSONResponse
@@ -41,8 +41,14 @@ from app.db.sqlite import (
     # new
     search_stock,
     get_cart_items_list,
+    cancel_cart,
+    update_cart_item,
+    delete_cart_item,
+    get_invoice_by_number,
+    get_invoice_items_by_number,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
+from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xlsx_bytes
 from app.services.backup import make_backup
 
 
@@ -303,6 +309,60 @@ def sale_finish(cart_id: int = Form(...)):
     return RedirectResponse(
         url=f"/sale/done?pdf={pdf_path}&backup={backup_path}&n={invoice['number']}",
         status_code=303,
+    )
+
+
+@app.post("/sale/cancel")
+def sale_cancel(cart_id: int = Form(...)):
+    ok, err = cancel_cart(int(cart_id))
+    msg = "invoice_cancelled" if ok else f"cancel_error:{err}"
+    return RedirectResponse(url=f"/sale?msg={msg}", status_code=303)
+
+
+@app.post("/sale/item/update")
+def sale_item_update(
+    item_id: int = Form(...),
+    qty: float = Form(...),
+    unit_price: float = Form(...),
+):
+    ok, err = update_cart_item(int(item_id), float(qty), float(unit_price))
+    msg = "item_updated" if ok else f"update_error:{err}"
+    return RedirectResponse(url=f"/sale?msg={msg}", status_code=303)
+
+
+@app.post("/sale/item/delete")
+def sale_item_delete(item_id: int = Form(...)):
+    ok, err = delete_cart_item(int(item_id))
+    msg = "item_removed" if ok else f"delete_error:{err}"
+    return RedirectResponse(url=f"/sale?msg={msg}", status_code=303)
+
+
+@app.get("/sale/xlsx")
+def sale_xlsx(n: int):
+    invoice = get_invoice_by_number(int(n))
+    if not invoice:
+        return RedirectResponse(url="/sale?msg=invoice_not_found", status_code=303)
+    items = get_invoice_items_by_number(int(n))
+    data = generate_invoice_xlsx_bytes(invoice, items)
+    filename = f"invoice_{invoice['number']:06d}.xlsx"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/sale/xlsx/view", response_class=HTMLResponse)
+def sale_xlsx_view(request: Request, n: int):
+    invoice = get_invoice_by_number(int(n))
+    if not invoice:
+        return RedirectResponse(url="/sale?msg=invoice_not_found", status_code=303)
+    items = get_invoice_items_by_number(int(n))
+    cart_total = sum(float(i["total"]) for i in items)
+    return _render(
+        request,
+        "sale_xlsx_view.html",
+        {"invoice": invoice, "items": items, "cart_total": cart_total},
     )
 
 
