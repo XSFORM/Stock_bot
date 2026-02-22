@@ -70,34 +70,42 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
             elif col_idx in (5, 6):
                 cell.alignment = _RIGHT
 
-    # --- Total row ---
+    # --- Total row (ERP style) ---
+    # Desired layout (single row):
+    # Name column: TOTAL
+    # Qty column: sum qty
+    # Total column: invoice total
     total_row_idx = header_row + len(items) + 1
-    ws.merge_cells(f"A{total_row_idx}:E{total_row_idx}")
-    lbl = ws[f"A{total_row_idx}"]
-    lbl.value = "TOTAL"
-    lbl.font = _TOTAL_FONT
-    lbl.alignment = _RIGHT
-    lbl.border = _BORDER
 
-    total_cell = ws.cell(row=total_row_idx, column=6, value=round(float(invoice["total"]), 2))
+    items_qty = int(sum(float(item["qty"]) for item in items))
+    invoice_total = round(float(invoice["total"]), 2)
+
+    # Put "TOTAL" into Name column (C)
+    total_lbl = ws.cell(row=total_row_idx, column=3, value="TOTAL")
+    total_lbl.font = _TOTAL_FONT
+    total_lbl.alignment = _RIGHT
+    total_lbl.border = _BORDER
+
+    # Qty sum into Qty column (D)
+    qty_cell = ws.cell(row=total_row_idx, column=4, value=items_qty)
+    qty_cell.font = _TOTAL_FONT
+    qty_cell.alignment = _CENTER
+    qty_cell.border = _BORDER
+
+    # Leave Unit Price (E) empty but keep border for table look
+    unit_price_cell = ws.cell(row=total_row_idx, column=5, value="")
+    unit_price_cell.border = _BORDER
+
+    # Invoice total into Total column (F)
+    total_cell = ws.cell(row=total_row_idx, column=6, value=invoice_total)
     total_cell.font = _TOTAL_FONT
     total_cell.alignment = _RIGHT
     total_cell.border = _BORDER
 
-    # --- Items qty row ---
-    qty_row_idx = total_row_idx + 1
-    items_qty = sum(float(item["qty"]) for item in items)
-    ws.merge_cells(f"A{qty_row_idx}:E{qty_row_idx}")
-    qty_lbl = ws[f"A{qty_row_idx}"]
-    qty_lbl.value = "Items qty"
-    qty_lbl.font = _TOTAL_FONT
-    qty_lbl.alignment = _RIGHT
-    qty_lbl.border = _BORDER
-
-    qty_cell = ws.cell(row=qty_row_idx, column=6, value=int(items_qty))
-    qty_cell.font = _TOTAL_FONT
-    qty_cell.alignment = _RIGHT
-    qty_cell.border = _BORDER
+    # Also keep borders on A/B of the total row (so the table looks closed)
+    for col_idx in (1, 2):
+        c = ws.cell(row=total_row_idx, column=col_idx, value="")
+        c.border = _BORDER
 
     return wb
 
