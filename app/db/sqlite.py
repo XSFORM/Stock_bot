@@ -676,6 +676,34 @@ def get_cart_items_list(cart_id: int) -> tuple[bool, list[dict[str, Any]]]:
         conn.close()
 
 
+def cart_set_client(cart_id: int, client_id: int) -> tuple[bool, str]:
+    """Change the client on an OPEN cart without affecting cart items."""
+    init_db()
+    conn = _connect()
+    try:
+        r = conn.execute(
+            "SELECT id, status FROM carts WHERE id=?", (int(cart_id),)
+        ).fetchone()
+        if not r:
+            return False, "Cart not found"
+        if r["status"] != "OPEN":
+            return False, "Cart is not open"
+        c = conn.execute(
+            "SELECT id FROM clients WHERE id=?", (int(client_id),)
+        ).fetchone()
+        if not c:
+            return False, "Client not found"
+        conn.execute(
+            "UPDATE carts SET client_id=? WHERE id=?", (int(client_id), int(cart_id))
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
 def cancel_cart(cart_id: int) -> tuple[bool, str]:
     """Delete an OPEN cart and all its items from DB (physical delete, no stock changes)."""
     init_db()
