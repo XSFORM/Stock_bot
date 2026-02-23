@@ -48,9 +48,21 @@ from app.db.sqlite import (
     get_invoice_by_number,
     get_invoice_items_by_number,
     cart_set_client,
+    # receive invoices
+    receive_invoice_get_open,
+    receive_invoice_start,
+    receive_invoice_cancel,
+    receive_item_add,
+    receive_item_update,
+    receive_item_delete,
+    receive_invoice_finish,
+    receive_invoice_get,
+    receive_invoice_get_items,
+    add_product_simple,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xlsx_bytes
+from app.services.receive_xlsx import generate_receive_xlsx_bytes
 from app.services.backup import make_backup
 
 
@@ -157,30 +169,143 @@ def stock_get(request: Request, warehouse: str = "", q: str = ""):
     )
 
 
-# ---------------- receive ----------------
+# ---------------- receive (ERP style) ----------------
 
 @app.get("/receive", response_class=HTMLResponse)
 def receive_get(request: Request, msg: str = ""):
-    return _render(request, "receive.html", {"message": msg})
+    open_inv = receive_invoice_get_open()
+    inv_items: list = []
+    inv_total: float = 0.0
+    inv_qty: float = 0.0
+    if open_inv:
+        inv_items = receive_invoice_get_items(open_inv["id"])
+        inv_total = sum(float(i["total"]) for i in inv_items)
+        inv_qty = sum(float(i["qty"]) for i in inv_items)
+    return _render(
+        request,
+        "receive.html",
+        {
+            "message": msg,
+            "open_inv": open_inv,
+            "inv_items": inv_items,
+            "inv_total": inv_total,
+            "inv_qty": inv_qty,
+        },
+    )
 
 
-@app.post("/receive")
-def receive_post(
-    warehouse: str = Form(...),
-    source: str = Form(...),
-    product_id: Optional[int] = Form(None),
-    brand: str = Form(""),
-    model: str = Form(""),
-    qty: float = Form(...),
+@app.post("/receive/start")
+def receive_start(
+    supplier: str = Form(""),
+    destination_warehouse: str = Form(...),
+    note: str = Form(""),
 ):
-    if product_id:
-        ok, err = receive_stock_by_product_id(warehouse, product_id, float(qty), source=source)
-    else:
-        if not brand or not model:
-            return RedirectResponse(url="/receive?msg=Please+select+a+product+from+the+suggestions", status_code=303)
-        ok, err = receive_stock(warehouse, brand, model, float(qty), source=source)
-    msg = "OK" if ok else err
+    ok, err, inv_id = receive_invoice_start(supplier, destination_warehouse, note)
+    if not ok:
+        return RedirectResponse(url=f"/receive?msg={err}", status_code=303)
+    return RedirectResponse(url="/receive?msg=receive_started", status_code=303)
+
+
+@app.post("/receive/cancel")
+def receive_cancel(invoice_id: int = Form(...)):
+    ok, err = receive_invoice_cancel(int(invoice_id))
+    msg = "receive_cancelled" if ok else f"cancel_error:{err}"
     return RedirectResponse(url=f"/receive?msg={msg}", status_code=303)
+
+
+@app.post("/receive/item/add")
+def receive_item_add_post(
+    invoice_id: int = Form(...),
+    product_id: int = Form(...),
+    qty: float = Form(...),
+    purchase_price: float = Form(...),
+):
+    ok, err = receive_item_add(int(invoice_id), int(product_id), float(qty), float(purchase_price))
+    msg = "item_added" if ok else f"add_error:{err}"
+    return RedirectResponse(url=f"/receive?msg={msg}", status_code=303)
+
+
+@app.post("/receive/item/new")
+def receive_item_new_post(
+    invoice_id: int = Form(...),
+    brand: str = Form(...),
+    model: str = Form(...),
+    name: str = Form(...),
+    barcode: str = Form(""),
+    product_note: str = Form(""),
+    qty: float = Form(...),
+    purchase_price: float = Form(...),
+):
+    ok, err, product_id = add_product_simple(brand, model, name, barcode, product_note)
+    if not ok:
+        return RedirectResponse(url=f"/receive?msg=new_product_error:{err}", status_code=303)
+    ok2, err2 = receive_item_add(int(invoice_id), int(product_id), float(qty), float(purchase_price))
+    msg = "new_product_added" if ok2 else f"add_error:{err2}"
+    return RedirectResponse(url=f"/receive?msg={msg}", status_code=303)
+
+
+@app.post("/receive/item/update")
+def receive_item_update_post(
+    item_id: int = Form(...),
+    qty: float = Form(...),
+    purchase_price: float = Form(...),
+):
+    ok, err = receive_item_update(int(item_id), float(qty), float(purchase_price))
+    msg = "item_updated" if ok else f"update_error:{err}"
+    return RedirectResponse(url=f"/receive?msg={msg}", status_code=303)
+
+
+@app.post("/receive/item/delete")
+def receive_item_delete_post(item_id: int = Form(...)):
+    ok, err = receive_item_delete(int(item_id))
+    msg = "item_removed" if ok else f"delete_error:{err}"
+    return RedirectResponse(url=f"/receive?msg={msg}", status_code=303)
+
+
+@app.post("/receive/finish")
+def receive_finish(invoice_id: int = Form(...)):
+    ok, err = receive_invoice_finish(int(invoice_id))
+    if not ok:
+        return RedirectResponse(url=f"/receive?msg=finish_error:{err}", status_code=303)
+    return RedirectResponse(url=f"/receive/done?n={invoice_id}", status_code=303)
+
+
+@app.get("/receive/done", response_class=HTMLResponse)
+def receive_done(request: Request, n: int):
+    inv = receive_invoice_get(int(n))
+    if not inv:
+        return RedirectResponse(url="/receive?msg=invoice_not_found", status_code=303)
+    return _render(request, "receive_done.html", {"invoice": inv})
+
+
+@app.get("/receive/xlsx")
+def receive_xlsx(n: int):
+    inv = receive_invoice_get(int(n))
+    if not inv:
+        return RedirectResponse(url="/receive?msg=invoice_not_found", status_code=303)
+    items = receive_invoice_get_items(int(n))
+    data = generate_receive_xlsx_bytes(inv, items)
+    filename = f"receive_{inv['number']:06d}.xlsx"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/receive/xlsx/view", response_class=HTMLResponse)
+def receive_xlsx_view(request: Request, n: int):
+    inv = receive_invoice_get(int(n))
+    if not inv:
+        return RedirectResponse(url="/receive?msg=invoice_not_found", status_code=303)
+    items = receive_invoice_get_items(int(n))
+    inv_total = sum(float(i["total"]) for i in items)
+    inv_qty = sum(float(i["qty"]) for i in items)
+    return _render(
+        request,
+        "receive_xlsx_view.html",
+        {"invoice": inv, "items": items, "inv_total": inv_total, "inv_qty": inv_qty},
+    )
 
 
 # ---------------- move ----------------

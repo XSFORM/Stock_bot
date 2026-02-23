@@ -28,6 +28,7 @@ def init_db() -> None:
             conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
             
         _ensure_clients_columns(conn)
+        _ensure_product_extra_columns(conn)
         for code, title in WAREHOUSES.items():
             conn.execute(
                 "INSERT OR IGNORE INTO warehouses(code, title) VALUES(?, ?)",
@@ -213,6 +214,20 @@ def _ensure_clients_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE clients ADD COLUMN phone TEXT NOT NULL DEFAULT '';")
     if "note" not in existing:
         conn.execute("ALTER TABLE clients ADD COLUMN note TEXT NOT NULL DEFAULT '';")        
+
+
+def _ensure_product_extra_columns(conn: sqlite3.Connection) -> None:
+    """Add barcode, note, last_purchase_price to products if missing (migration)."""
+    cols = conn.execute("PRAGMA table_info(products);").fetchall()
+    existing = {c["name"] for c in cols}
+    if "barcode" not in existing:
+        conn.execute("ALTER TABLE products ADD COLUMN barcode TEXT NOT NULL DEFAULT '';")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode);")
+    if "note" not in existing:
+        conn.execute("ALTER TABLE products ADD COLUMN note TEXT NOT NULL DEFAULT '';")
+    if "last_purchase_price" not in existing:
+        conn.execute("ALTER TABLE products ADD COLUMN last_purchase_price REAL;")
+    conn.commit()
 
 
 # -------- products --------
@@ -613,7 +628,7 @@ def get_stock_text(warehouse: Optional[str] = None) -> str:
 def search_products(q: str, limit: int = 30) -> list[dict[str, Any]]:
     """Search all products (catalog) by brand/model/name, case-insensitive.
 
-    Returns list of dicts: product_id, brand, model, name.
+    Returns list of dicts: product_id, brand, model, name, last_purchase_price.
     """
     term = (q or "").strip().lower()
     like = f"%{term}%"
@@ -622,7 +637,7 @@ def search_products(q: str, limit: int = 30) -> list[dict[str, Any]]:
     try:
         rows = conn.execute(
             """
-            SELECT id as product_id, brand, model, name
+            SELECT id as product_id, brand, model, name, last_purchase_price
             FROM products
             WHERE lower(brand) LIKE ? OR lower(model) LIKE ? OR lower(name) LIKE ?
             ORDER BY brand, model
@@ -1375,3 +1390,362 @@ def cart_finish(client_name: str):
 
 def cart_finish_shop1416(client_name: str):
     return cart_finish_from_shop(client_name, "1416_SHOP")    
+
+# ============================================================
+# Receive (purchase) invoices
+# ============================================================
+
+def receive_invoice_get_open() -> Optional[dict[str, Any]]:
+    """Return the current OPEN receive invoice or None."""
+    init_db()
+    conn = _connect()
+    try:
+        r = conn.execute(
+            """
+            SELECT id, number, supplier, destination_warehouse, status, created_at, note
+            FROM receive_invoices
+            WHERE status = 'OPEN'
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        return dict(r) if r else None
+    finally:
+        conn.close()
+
+
+def receive_invoice_start(
+    supplier: str,
+    destination_warehouse: str,
+    note: str = "",
+) -> tuple[bool, str, Optional[int]]:
+    """Create a new OPEN receive invoice. Returns (ok, err, invoice_id)."""
+    init_db()
+    supplier = (supplier or "").strip()
+    destination_warehouse = (destination_warehouse or "").strip().upper()
+    note = (note or "").strip()
+
+    if not destination_warehouse:
+        return False, "destination_warehouse is required", None
+
+    conn = _connect()
+    try:
+        existing = conn.execute(
+            "SELECT id FROM receive_invoices WHERE status='OPEN' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if existing:
+            return False, "There is already an open receive invoice. Finish or cancel it first.", None
+
+        last = conn.execute(
+            "SELECT COALESCE(MAX(number), 0) as n FROM receive_invoices"
+        ).fetchone()
+        num = int(last["n"]) + 1
+
+        cur = conn.execute(
+            """
+            INSERT INTO receive_invoices(number, supplier, destination_warehouse, status, note)
+            VALUES (?, ?, ?, 'OPEN', ?)
+            """,
+            (num, supplier, destination_warehouse, note),
+        )
+        conn.commit()
+        return True, "", int(cur.lastrowid)
+    except Exception as e:
+        return False, str(e), None
+    finally:
+        conn.close()
+
+
+def receive_invoice_cancel(invoice_id: int) -> tuple[bool, str]:
+    """Cancel an OPEN receive invoice (no stock changes)."""
+    init_db()
+    conn = _connect()
+    try:
+        r = conn.execute(
+            "SELECT id, status FROM receive_invoices WHERE id=?", (int(invoice_id),)
+        ).fetchone()
+        if not r:
+            return False, "Invoice not found"
+        if r["status"] != "OPEN":
+            return False, "Invoice is not open"
+        conn.execute("DELETE FROM receive_items WHERE invoice_id=?", (int(invoice_id),))
+        conn.execute(
+            "UPDATE receive_invoices SET status='CANCELLED' WHERE id=?", (int(invoice_id),)
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def receive_item_add(
+    invoice_id: int,
+    product_id: int,
+    qty: float,
+    purchase_price: float,
+) -> tuple[bool, str]:
+    """Add a line item to an OPEN receive invoice."""
+    init_db()
+    try:
+        qty = float(qty)
+        purchase_price = float(purchase_price)
+    except Exception:
+        return False, "qty and purchase_price must be numbers"
+    if qty <= 0:
+        return False, "qty must be > 0"
+    if purchase_price < 0:
+        return False, "purchase_price must be >= 0"
+
+    total = round(qty * purchase_price, 2)
+    conn = _connect()
+    try:
+        r = conn.execute(
+            "SELECT id, status FROM receive_invoices WHERE id=?", (int(invoice_id),)
+        ).fetchone()
+        if not r:
+            return False, "Invoice not found"
+        if r["status"] != "OPEN":
+            return False, "Invoice is not open"
+        p = conn.execute(
+            "SELECT id FROM products WHERE id=?", (int(product_id),)
+        ).fetchone()
+        if not p:
+            return False, "Product not found"
+        conn.execute(
+            """
+            INSERT INTO receive_items(invoice_id, product_id, qty, purchase_price, total)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (int(invoice_id), int(product_id), qty, purchase_price, total),
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def receive_item_update(item_id: int, qty: float, purchase_price: float) -> tuple[bool, str]:
+    """Update qty and purchase_price for a receive item."""
+    init_db()
+    try:
+        qty = float(qty)
+        purchase_price = float(purchase_price)
+    except Exception:
+        return False, "qty and purchase_price must be numbers"
+    if qty <= 0:
+        return False, "qty must be > 0"
+    if purchase_price < 0:
+        return False, "purchase_price must be >= 0"
+    total = round(qty * purchase_price, 2)
+    conn = _connect()
+    try:
+        r = conn.execute(
+            """
+            SELECT ri.id, inv.status
+            FROM receive_items ri
+            JOIN receive_invoices inv ON inv.id = ri.invoice_id
+            WHERE ri.id=?
+            """,
+            (int(item_id),),
+        ).fetchone()
+        if not r:
+            return False, "Item not found"
+        if r["status"] != "OPEN":
+            return False, "Invoice is not open"
+        conn.execute(
+            "UPDATE receive_items SET qty=?, purchase_price=?, total=? WHERE id=?",
+            (qty, purchase_price, total, int(item_id)),
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def receive_item_delete(item_id: int) -> tuple[bool, str]:
+    """Remove a line item from an OPEN receive invoice."""
+    init_db()
+    conn = _connect()
+    try:
+        r = conn.execute(
+            """
+            SELECT ri.id, inv.status
+            FROM receive_items ri
+            JOIN receive_invoices inv ON inv.id = ri.invoice_id
+            WHERE ri.id=?
+            """,
+            (int(item_id),),
+        ).fetchone()
+        if not r:
+            return False, "Item not found"
+        if r["status"] != "OPEN":
+            return False, "Invoice is not open"
+        conn.execute("DELETE FROM receive_items WHERE id=?", (int(item_id),))
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def receive_invoice_finish(invoice_id: int) -> tuple[bool, str]:
+    """
+    Finish a receive invoice:
+    - increase stock in destination_warehouse for each item
+    - update last_purchase_price on each product
+    - set invoice status to DONE
+    """
+    init_db()
+    conn = _connect()
+    try:
+        inv = conn.execute(
+            "SELECT id, status, destination_warehouse FROM receive_invoices WHERE id=?",
+            (int(invoice_id),),
+        ).fetchone()
+        if not inv:
+            return False, "Invoice not found"
+        if inv["status"] != "OPEN":
+            return False, "Invoice is not open"
+
+        items = conn.execute(
+            """
+            SELECT ri.id, ri.product_id, ri.qty, ri.purchase_price
+            FROM receive_items ri
+            WHERE ri.invoice_id=?
+            ORDER BY ri.id
+            """,
+            (int(invoice_id),),
+        ).fetchall()
+        if not items:
+            return False, "No items in invoice"
+
+        wh = inv["destination_warehouse"]
+        for item in items:
+            pid = int(item["product_id"])
+            qty = float(item["qty"])
+            pp = float(item["purchase_price"])
+
+            # Upsert stock
+            srow = conn.execute(
+                "SELECT qty FROM stock WHERE warehouse_code=? AND product_id=?",
+                (wh, pid),
+            ).fetchone()
+            if srow:
+                conn.execute(
+                    "UPDATE stock SET qty = qty + ? WHERE warehouse_code=? AND product_id=?",
+                    (qty, wh, pid),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO stock(warehouse_code, product_id, qty) VALUES(?, ?, ?)",
+                    (wh, pid, qty),
+                )
+
+            # Update last_purchase_price
+            conn.execute(
+                "UPDATE products SET last_purchase_price=? WHERE id=?",
+                (pp, pid),
+            )
+
+        conn.execute(
+            "UPDATE receive_invoices SET status='DONE' WHERE id=?",
+            (int(invoice_id),),
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def receive_invoice_get(invoice_id: int) -> Optional[dict[str, Any]]:
+    """Return receive invoice dict by id."""
+    init_db()
+    conn = _connect()
+    try:
+        r = conn.execute(
+            """
+            SELECT id, number, supplier, destination_warehouse, status, created_at, note
+            FROM receive_invoices
+            WHERE id=?
+            """,
+            (int(invoice_id),),
+        ).fetchone()
+        return dict(r) if r else None
+    finally:
+        conn.close()
+
+
+def receive_invoice_get_items(invoice_id: int) -> list[dict[str, Any]]:
+    """Return line items for a receive invoice."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT ri.id, p.brand, p.model, p.name, ri.qty, ri.purchase_price, ri.total
+            FROM receive_items ri
+            JOIN products p ON p.id = ri.product_id
+            WHERE ri.invoice_id=?
+            ORDER BY ri.id
+            """,
+            (int(invoice_id),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def add_product_simple(
+    brand: str,
+    model: str,
+    name: str,
+    barcode: str = "",
+    note: str = "",
+) -> tuple[bool, str, Optional[int]]:
+    """Add a new product (for receive screen). Returns (ok, err, product_id)."""
+    init_db()
+    brand = (brand or "").strip()
+    model = (model or "").strip()
+    name = (name or "").strip()
+    barcode = (barcode or "").strip()
+    note = (note or "").strip()
+
+    if not brand:
+        return False, "brand is required", None
+    if not model:
+        return False, "model is required", None
+    if not name:
+        return False, "name is required", None
+
+    conn = _connect()
+    try:
+        existing = conn.execute(
+            "SELECT id FROM products WHERE brand=? AND model=?", (brand, model)
+        ).fetchone()
+        if existing:
+            return False, f"Product {brand} {model} already exists", None
+        cur = conn.execute(
+            """
+            INSERT INTO products(brand, model, name, wh_price, barcode, note)
+            VALUES (?, ?, ?, 0, ?, ?)
+            """,
+            (brand, model, name, barcode, note),
+        )
+        conn.commit()
+        # Also seed the brand
+        conn.execute("INSERT OR IGNORE INTO brands(name) VALUES (?)", (brand,))
+        conn.commit()
+        return True, "", int(cur.lastrowid)
+    except Exception as e:
+        return False, str(e), None
+    finally:
+        conn.close()
