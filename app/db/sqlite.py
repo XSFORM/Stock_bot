@@ -1785,3 +1785,49 @@ def add_product_simple(
         return False, str(e), None
     finally:
         conn.close()
+
+
+def list_sale_invoices_done(limit: int = 200) -> list[dict[str, Any]]:
+    """Return list of completed sale invoices (most recent first)."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT inv.id, inv.number, inv.created_at, inv.total, inv.currency,
+                   cl.name as client
+            FROM invoices inv
+            JOIN carts c ON c.id = inv.cart_id
+            JOIN clients cl ON cl.id = c.client_id
+            ORDER BY inv.number DESC
+            LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def list_receive_invoices_done(limit: int = 200) -> list[dict[str, Any]]:
+    """Return list of DONE receive invoices with totals (most recent first)."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT inv.id, inv.number, inv.supplier, inv.destination_warehouse,
+                   inv.created_at,
+                   COALESCE(SUM(ri.total), 0) as total
+            FROM receive_invoices inv
+            LEFT JOIN receive_items ri ON ri.invoice_id = inv.id
+            WHERE inv.status = 'DONE'
+            GROUP BY inv.id
+            ORDER BY inv.number DESC
+            LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
