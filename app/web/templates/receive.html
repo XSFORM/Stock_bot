@@ -1,8 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+  #product-suggestions { position: absolute; z-index: 1000; background: #fff; border: 1px solid #dee2e6; border-radius: 4px; width: 100%; max-height: 260px; overflow-y: auto; display: none; }
+  #product-suggestions .suggestion-item { padding: 6px 12px; cursor: pointer; font-size: 0.9rem; }
+  #product-suggestions .suggestion-item:hover { background: #e9ecef; }
+  .search-wrap { position: relative; }
+</style>
 <div class="bg-white p-3 rounded shadow-sm">
   <h4>Receive</h4>
-  <form class="row g-2" method="post" action="/receive">
+  {% if message %}<div class="alert alert-info">{{ message }}</div>{% endif %}
+  <form class="row g-2" method="post" action="/receive" id="receive-form">
     <div class="col-md-3">
       <label class="form-label">Warehouse</label>
       <select class="form-select" name="warehouse">
@@ -11,24 +18,29 @@
         {% endfor %}
       </select>
     </div>
-    <div class="col-md-3">
-      <label class="form-label">Brand</label>
-      <input class="form-control" name="brand" required>
+    <div class="col-md-4">
+      <label class="form-label">Product (brand / model / name)</label>
+      <div class="search-wrap">
+        <input type="text" class="form-control" id="product-search" autocomplete="off"
+               placeholder="Start typing brand, model or name…">
+        <div id="product-suggestions"></div>
+      </div>
+      <div id="product-error" class="text-danger small mt-1" style="display:none">
+        Please select a product from the suggestions list.
+      </div>
     </div>
-    <div class="col-md-3">
-      <label class="form-label">Model</label>
-      <input class="form-control" name="model" required>
-    </div>
-	<div class="col-md-3">
+    <input type="hidden" name="product_id" id="product-id-input">
+    <input type="hidden" name="brand" id="brand-input">
+    <input type="hidden" name="model" id="model-input">
+    <div class="col-md-2">
       <label class="form-label">Source</label>
       <select class="form-select" name="source">
         {% for s in sources %}
-          <option value="{{ s }}">{{ source_labels[s] }}
-	</option>
+          <option value="{{ s }}">{{ source_labels[s] }}</option>
         {% endfor %}
       </select>
-    </div>	  
-    <div class="col-md-3">
+    </div>
+    <div class="col-md-2">
       <label class="form-label">Qty</label>
       <input class="form-control" name="qty" type="number" step="0.01" required>
     </div>
@@ -37,4 +49,79 @@
     </div>
   </form>
 </div>
+<script>
+(function () {
+  const searchInput = document.getElementById('product-search');
+  const suggestions = document.getElementById('product-suggestions');
+  const productIdInput = document.getElementById('product-id-input');
+  const brandInput = document.getElementById('brand-input');
+  const modelInput = document.getElementById('model-input');
+  const productError = document.getElementById('product-error');
+  const form = document.getElementById('receive-form');
+
+  let selectedProduct = null;
+  let debounceTimer;
+
+  searchInput.addEventListener('input', function () {
+    clearTimeout(debounceTimer);
+    selectedProduct = null;
+    productIdInput.value = '';
+    const q = this.value.trim();
+    if (q.length < 1) { hideSuggestions(); return; }
+    debounceTimer = setTimeout(() => fetchSuggestions(q), 220);
+  });
+
+  searchInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') hideSuggestions();
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!suggestions.contains(e.target) && e.target !== searchInput) hideSuggestions();
+  });
+
+  function fetchSuggestions(q) {
+    fetch('/api/products-search?q=' + encodeURIComponent(q) + '&limit=30')
+      .then(r => r.json())
+      .then(data => renderSuggestions(data.results || []))
+      .catch(() => hideSuggestions());
+  }
+
+  function renderSuggestions(items) {
+    suggestions.innerHTML = '';
+    if (!items.length) { hideSuggestions(); return; }
+    items.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'suggestion-item';
+      div.textContent = item.brand + ' ' + item.model + ' - ' + item.name;
+      div.addEventListener('click', () => selectProduct(item));
+      suggestions.appendChild(div);
+    });
+    suggestions.style.display = 'block';
+  }
+
+  function selectProduct(item) {
+    selectedProduct = item;
+    searchInput.value = item.brand + ' ' + item.model + ' - ' + item.name;
+    productIdInput.value = item.product_id;
+    brandInput.value = item.brand;
+    modelInput.value = item.model;
+    productError.style.display = 'none';
+    hideSuggestions();
+  }
+
+  function hideSuggestions() {
+    suggestions.style.display = 'none';
+  }
+
+  form.addEventListener('submit', function (e) {
+    if (!productIdInput.value) {
+      e.preventDefault();
+      productError.style.display = 'block';
+      searchInput.focus();
+    } else {
+      productError.style.display = 'none';
+    }
+  });
+})();
+</script>
 {% endblock %}
