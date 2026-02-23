@@ -1886,3 +1886,97 @@ def list_receive_invoices_done(limit: int = 200) -> list[dict[str, Any]]:
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+def list_history(q: str = "", limit: int = 500) -> list[dict[str, Any]]:
+    """Return merged RECEIVE and SALE line items sorted by datetime desc.
+
+    Each row has normalized keys:
+      dt, type, ref, counterparty, warehouse, brand, model, name,
+      qty, unit_price, total, view_url, download_url
+    """
+    init_db()
+    conn = _connect()
+    try:
+        like = f"%{q.strip()}%" if q.strip() else "%"
+
+        # ---- RECEIVE events ----
+        receive_rows = conn.execute(
+            """
+            SELECT
+                inv.created_at            AS dt,
+                'RECEIVE'                 AS type,
+                inv.id                    AS ref,
+                inv.supplier              AS counterparty,
+                inv.destination_warehouse AS warehouse,
+                p.brand                   AS brand,
+                p.model                   AS model,
+                p.name                    AS name,
+                ri.qty                    AS qty,
+                ri.purchase_price         AS unit_price,
+                ri.total                  AS total
+            FROM receive_invoices inv
+            JOIN receive_items ri ON ri.invoice_id = inv.id
+            JOIN products p ON p.id = ri.product_id
+            WHERE inv.status = 'DONE'
+              AND (
+                  lower(p.brand) LIKE lower(?)
+                  OR lower(p.model) LIKE lower(?)
+                  OR lower(p.name) LIKE lower(?)
+              )
+            """,
+            (like, like, like),
+        ).fetchall()
+
+        # ---- SALE events ----
+        sale_rows = conn.execute(
+            """
+            SELECT
+                inv.created_at  AS dt,
+                'SALE'          AS type,
+                inv.number      AS ref,
+                cl.name         AS counterparty,
+                NULL            AS warehouse,
+                p.brand         AS brand,
+                p.model         AS model,
+                p.name          AS name,
+                ci.qty          AS qty,
+                ci.unit_price   AS unit_price,
+                ci.total        AS total
+            FROM invoices inv
+            JOIN carts c ON c.id = inv.cart_id
+            JOIN clients cl ON cl.id = c.client_id
+            JOIN cart_items ci ON ci.cart_id = c.id
+            JOIN products p ON p.id = ci.product_id
+            WHERE (
+                  lower(p.brand) LIKE lower(?)
+                  OR lower(p.model) LIKE lower(?)
+                  OR lower(p.name) LIKE lower(?)
+              )
+            """,
+            (like, like, like),
+        ).fetchall()
+
+        events: list[dict[str, Any]] = []
+
+        for r in receive_rows:
+            row = dict(r)
+            inv_id = row["ref"]
+            row["view_url"] = f"/receive/xlsx/view?n={inv_id}"
+            row["download_url"] = f"/receive/xlsx?n={inv_id}"
+            events.append(row)
+
+        for r in sale_rows:
+            row = dict(r)
+            inv_number = row["ref"]
+            row["view_url"] = f"/sale/xlsx/view?n={inv_number}"
+            row["download_url"] = f"/sale/xlsx?n={inv_number}"
+            events.append(row)
+
+        # Sort by dt descending (ISO datetime strings compare correctly).
+        # Rows with a missing/None dt sort to the end (treated as "").
+        events.sort(key=lambda x: x.get("dt") or "", reverse=True)
+
+        return events[:limit]
+    finally:
+        conn.close()

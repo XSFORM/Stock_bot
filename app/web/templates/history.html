@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <h4>History</h4>
+
+  <form class="row g-2 mb-3" method="get" action="/history">
+    <div class="col-auto">
+      <input type="text" class="form-control" name="q" value="{{ search_q }}"
+             placeholder="Search brand / model / name…">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary">Search</button>
+    </div>
+    {% if search_q %}
+    <div class="col-auto">
+      <a href="/history" class="btn btn-outline-secondary">Clear</a>
+    </div>
+    {% endif %}
+  </form>
+
+  <table class="table table-sm table-striped align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th>Date / Time</th>
+        <th>Type</th>
+        <th>Ref</th>
+        <th>Counterparty</th>
+        <th>Warehouse</th>
+        <th>Product</th>
+        <th class="text-end">Qty</th>
+        <th class="text-end">Unit Price</th>
+        <th class="text-end">Total</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ev in events %}
+      <tr>
+        <td>{{ ev.dt }}</td>
+        <td>
+          {% if ev.type == 'RECEIVE' %}
+          <span class="badge bg-success">RECEIVE</span>
+          {% else %}
+          <span class="badge bg-primary">SALE</span>
+          {% endif %}
+        </td>
+        <td>{{ ev.ref }}</td>
+        <td>{{ ev.counterparty or '—' }}</td>
+        <td>{{ ev.warehouse or '—' }}</td>
+        <td>{{ ev.brand }} {{ ev.model }} {{ ev.name }}</td>
+        <td class="text-end">
+          {% if ev.type == 'SALE' %}
+          <span class="text-danger">-{{ "%.2f"|format(ev.qty) }}</span>
+          {% else %}
+          {{ "%.2f"|format(ev.qty) }}
+          {% endif %}
+        </td>
+        <td class="text-end">{{ "%.2f"|format(ev.unit_price) }}</td>
+        <td class="text-end">{{ "%.2f"|format(ev.total) }}</td>
+        <td>
+          <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank">View</a>
+          <a class="btn btn-sm btn-outline-success" href="{{ ev.download_url }}">Download</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="10" class="text-muted text-center">No history events found.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
