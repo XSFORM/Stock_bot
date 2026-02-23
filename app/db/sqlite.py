@@ -1738,6 +1738,7 @@ def add_product_simple(
             INSERT INTO products(brand, model, name, wh_price, barcode, note)
             VALUES (?, ?, ?, 0, ?, ?)
             """,
+            # wh_price=0: selling price is not set at receive time; update via Products page later
             (brand, model, name, barcode, note),
         )
         conn.commit()

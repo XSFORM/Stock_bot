@@ -291,7 +291,7 @@
       searchInput.value = item.brand + ' ' + item.model + ' - ' + item.name;
       productIdIn.value = item.product_id;
       // prefill last purchase price if available
-      if (item.last_purchase_price != null && item.last_purchase_price !== '') {
+      if (item.last_purchase_price != null && item.last_purchase_price !== '' && !isNaN(parseFloat(item.last_purchase_price))) {
         priceIn.value = parseFloat(item.last_purchase_price).toFixed(2);
         priceIn.title = 'Last purchase price: ' + parseFloat(item.last_purchase_price).toFixed(2);
       }
