@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS stock (
 CREATE TABLE IF NOT EXISTS carts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   client_id INTEGER NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
   status TEXT NOT NULL DEFAULT 'OPEN', -- OPEN / CLOSED
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
 );
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   cart_id INTEGER NOT NULL UNIQUE,
   number INTEGER NOT NULL UNIQUE,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
   currency TEXT NOT NULL DEFAULT 'USD',
   total REAL NOT NULL,
   FOREIGN KEY (cart_id) REFERENCES carts(id) ON DELETE CASCADE
