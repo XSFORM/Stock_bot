@@ -29,6 +29,7 @@ def init_db() -> None:
             
         _ensure_clients_columns(conn)
         _ensure_product_extra_columns(conn)
+        _migrate_localtime_defaults(conn)
         for code, title in WAREHOUSES.items():
             conn.execute(
                 "INSERT OR IGNORE INTO warehouses(code, title) VALUES(?, ?)",
@@ -214,6 +215,60 @@ def _ensure_clients_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE clients ADD COLUMN phone TEXT NOT NULL DEFAULT '';")
     if "note" not in existing:
         conn.execute("ALTER TABLE clients ADD COLUMN note TEXT NOT NULL DEFAULT '';")        
+
+
+def _migrate_localtime_defaults(conn: sqlite3.Connection) -> None:
+    """Migrate carts and invoices to use datetime('now','localtime') DEFAULT for created_at.
+
+    SQLite does not support ALTER COLUMN DEFAULT, so the migration recreates each
+    table that still has the old datetime('now') default using the recommended
+    rename-based approach (PRAGMA foreign_keys = OFF for the duration).
+    Existing row data is copied verbatim; only future rows benefit from the new default.
+    """
+    migrations = [
+        (
+            "carts",
+            """CREATE TABLE carts_new (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              client_id INTEGER NOT NULL,
+              created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+              status TEXT NOT NULL DEFAULT 'OPEN',
+              FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+            )""",
+        ),
+        (
+            "invoices",
+            """CREATE TABLE invoices_new (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              cart_id INTEGER NOT NULL UNIQUE,
+              number INTEGER NOT NULL UNIQUE,
+              created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+              currency TEXT NOT NULL DEFAULT 'USD',
+              total REAL NOT NULL,
+              FOREIGN KEY (cart_id) REFERENCES carts(id) ON DELETE CASCADE
+            )""",
+        ),
+    ]
+    _ALLOWED_TABLES = {"carts", "invoices"}
+    for table, create_sql in migrations:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone()
+        if row is None:
+            continue
+        if "localtime" in (row["sql"] or ""):
+            continue
+        if table not in _ALLOWED_TABLES:
+            continue
+        # Temporarily disable FK enforcement for safe table recreation
+        conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            conn.execute(create_sql)
+            conn.execute(f"INSERT INTO {table}_new SELECT * FROM {table}")
+            conn.execute(f"DROP TABLE {table}")
+            conn.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
 
 
 def _ensure_product_extra_columns(conn: sqlite3.Connection) -> None:
