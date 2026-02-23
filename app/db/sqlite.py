@@ -1894,15 +1894,45 @@ def list_history(q: str = "", limit: int = 500) -> list[dict[str, Any]]:
     Each row has normalized keys:
       dt, type, ref, counterparty, warehouse, brand, model, name,
       qty, unit_price, total, view_url, download_url
+
+    ``q`` is split on whitespace into tokens; every token must appear somewhere
+    in the concatenated search blob (AND semantics, case-insensitive, partial
+    match via LIKE).  For SALE the blob is: client name + brand + model + name
+    + invoice number.  For RECEIVE: supplier + brand + model + name + invoice
+    id + warehouse.
     """
     init_db()
     conn = _connect()
     try:
-        like = f"%{q.strip()}%" if q.strip() else "%"
+        tokens = q.strip().lower().split() if q.strip() else []
+
+        # Build per-token LIKE conditions for each query.
+        receive_blob = (
+            "lower(coalesce(inv.supplier,'') || ' ' || coalesce(p.brand,'') || ' '"
+            " || coalesce(p.model,'') || ' ' || coalesce(p.name,'') || ' '"
+            " || coalesce(cast(inv.id as text),'') || ' '"
+            " || coalesce(inv.destination_warehouse,''))"
+        )
+        sale_blob = (
+            "lower(coalesce(cl.name,'') || ' ' || coalesce(p.brand,'') || ' '"
+            " || coalesce(p.model,'') || ' ' || coalesce(p.name,'') || ' '"
+            " || coalesce(cast(inv.number as text),''))"
+        )
+
+        # receive_blob / sale_blob are fixed SQL expressions (not user input);
+        # token values are passed as parameterized `?` placeholders — no SQL
+        # injection risk.
+        receive_filter = "".join(
+            f" AND {receive_blob} LIKE ?" for _ in tokens
+        )
+        sale_filter = "".join(
+            f" AND {sale_blob} LIKE ?" for _ in tokens
+        )
+        token_params = [f"%{t}%" for t in tokens]
 
         # ---- RECEIVE events ----
         receive_rows = conn.execute(
-            """
+            f"""
             SELECT
                 inv.created_at            AS dt,
                 'RECEIVE'                 AS type,
@@ -1919,18 +1949,14 @@ def list_history(q: str = "", limit: int = 500) -> list[dict[str, Any]]:
             JOIN receive_items ri ON ri.invoice_id = inv.id
             JOIN products p ON p.id = ri.product_id
             WHERE inv.status = 'DONE'
-              AND (
-                  lower(p.brand) LIKE lower(?)
-                  OR lower(p.model) LIKE lower(?)
-                  OR lower(p.name) LIKE lower(?)
-              )
+            {receive_filter}
             """,
-            (like, like, like),
+            token_params,
         ).fetchall()
 
         # ---- SALE events ----
         sale_rows = conn.execute(
-            """
+            f"""
             SELECT
                 inv.created_at  AS dt,
                 'SALE'          AS type,
@@ -1948,13 +1974,10 @@ def list_history(q: str = "", limit: int = 500) -> list[dict[str, Any]]:
             JOIN clients cl ON cl.id = c.client_id
             JOIN cart_items ci ON ci.cart_id = c.id
             JOIN products p ON p.id = ci.product_id
-            WHERE (
-                  lower(p.brand) LIKE lower(?)
-                  OR lower(p.model) LIKE lower(?)
-                  OR lower(p.name) LIKE lower(?)
-              )
+            WHERE 1=1  -- sale invoices have no status gate; dynamic filters append here
+            {sale_filter}
             """,
-            (like, like, like),
+            token_params,
         ).fetchall()
 
         events: list[dict[str, Any]] = []
