@@ -64,6 +64,7 @@ from app.db.sqlite import (
     # invoices listing
     list_sale_invoices_done,
     list_receive_invoices_done,
+    list_history,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xlsx_bytes
@@ -589,3 +590,10 @@ def invoices_get(request: Request, tab: str = "sale"):
             "active_tab": tab,
         },
     )
+
+# ---------------- history ----------------
+
+@app.get("/history", response_class=HTMLResponse)
+def history_get(request: Request, q: str = ""):
+    events = list_history(q=q, limit=500)
+    return _render(request, "history.html", {"events": events, "search_q": q})
