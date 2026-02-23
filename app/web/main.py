@@ -61,6 +61,9 @@ from app.db.sqlite import (
     add_product_simple,
     # NEW: suppliers list for UI suggestions
     list_receive_suppliers,
+    # invoices listing
+    list_sale_invoices_done,
+    list_receive_invoices_done,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xlsx_bytes
@@ -569,3 +572,20 @@ def brands_add(name: str = Form(...)):
     ok, err = add_brand(name)
     msg = "OK" if ok else err
     return RedirectResponse(url=f"/brands?msg={msg}", status_code=303)
+
+
+# ---------------- invoices ----------------
+
+@app.get("/invoices", response_class=HTMLResponse)
+def invoices_get(request: Request, tab: str = "sale"):
+    sale_invoices = list_sale_invoices_done()
+    receive_invoices = list_receive_invoices_done()
+    return _render(
+        request,
+        "invoices.html",
+        {
+            "sale_invoices": sale_invoices,
+            "receive_invoices": receive_invoices,
+            "active_tab": tab,
+        },
+    )

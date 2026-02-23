@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <h4>Invoices</h4>
+
+  <ul class="nav nav-tabs mb-3" id="invoiceTabs">
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab != 'receive' %}active{% endif %}"
+         href="/invoices?tab=sale">Sale invoices (DONE)</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'receive' %}active{% endif %}"
+         href="/invoices?tab=receive">Receive invoices (DONE)</a>
+    </li>
+  </ul>
+
+  {% if active_tab != 'receive' %}
+  {# ---- Sale tab ---- #}
+  <table class="table table-sm table-striped">
+    <thead class="table-dark">
+      <tr>
+        <th>Invoice #</th>
+        <th>Date/Time</th>
+        <th>Client</th>
+        <th class="text-end">Total</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for inv in sale_invoices %}
+      <tr>
+        <td>{{ inv.number }}</td>
+        <td>{{ inv.created_at }}</td>
+        <td>{{ inv.client or '—' }}</td>
+        <td class="text-end">{{ "%.2f"|format(inv.total) }} {{ inv.currency }}</td>
+        <td>
+          <a class="btn btn-sm btn-outline-primary" href="/sale/xlsx/view?n={{ inv.number }}" target="_blank">View XLSX</a>
+          <a class="btn btn-sm btn-outline-success" href="/sale/xlsx?n={{ inv.number }}">Download XLSX</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="text-muted text-center">No completed sale invoices.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  {# ---- Receive tab ---- #}
+  <table class="table table-sm table-striped">
+    <thead class="table-dark">
+      <tr>
+        <th>Purchase Invoice #</th>
+        <th>Date/Time</th>
+        <th>Supplier</th>
+        <th>Destination</th>
+        <th class="text-end">Total</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for inv in receive_invoices %}
+      <tr>
+        <td>{{ inv.number }}</td>
+        <td>{{ inv.created_at }}</td>
+        <td>{{ inv.supplier or '—' }}</td>
+        <td>{{ inv.destination_warehouse or '—' }}</td>
+        <td class="text-end">{{ "%.2f"|format(inv.total) }}</td>
+        <td>
+          <a class="btn btn-sm btn-outline-primary" href="/receive/xlsx/view?n={{ inv.id }}" target="_blank">View XLSX</a>
+          <a class="btn btn-sm btn-outline-success" href="/receive/xlsx?n={{ inv.id }}">Download XLSX</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="text-muted text-center">No completed receive invoices.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}
