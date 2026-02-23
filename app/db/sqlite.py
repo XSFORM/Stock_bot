@@ -247,6 +247,25 @@ def get_product_id_by_brand_model(brand: str, model: str) -> int | None:
         return int(row["id"]) if row else None
     finally:
         conn.close()
+        
+def list_receive_suppliers(limit: int = 200) -> list[str]:
+    """Return unique supplier names from receive_invoices for UI suggestions."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT TRIM(supplier) AS supplier
+            FROM receive_invoices
+            WHERE supplier IS NOT NULL AND TRIM(supplier) != ''
+            ORDER BY supplier
+            LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+        return [str(r["supplier"]) for r in rows if r and r["supplier"]]
+    finally:
+        conn.close()        
 
 
 def add_or_get_product_id(
@@ -629,6 +648,8 @@ def search_products(q: str, limit: int = 30) -> list[dict[str, Any]]:
     """Search all products (catalog) by brand/model/name, case-insensitive.
 
     Returns list of dicts: product_id, brand, model, name, last_purchase_price.
+    last_purchase_price is taken from products.last_purchase_price, and if NULL,
+    falls back to the most recent receive_items.purchase_price for that product.
     """
     term = (q or "").strip().lower()
     like = f"%{term}%"
@@ -637,10 +658,24 @@ def search_products(q: str, limit: int = 30) -> list[dict[str, Any]]:
     try:
         rows = conn.execute(
             """
-            SELECT id as product_id, brand, model, name, last_purchase_price
-            FROM products
-            WHERE lower(brand) LIKE ? OR lower(model) LIKE ? OR lower(name) LIKE ?
-            ORDER BY brand, model
+            SELECT
+              p.id as product_id,
+              p.brand,
+              p.model,
+              p.name,
+              COALESCE(
+                p.last_purchase_price,
+                (
+                  SELECT ri.purchase_price
+                  FROM receive_items ri
+                  WHERE ri.product_id = p.id
+                  ORDER BY ri.id DESC
+                  LIMIT 1
+                )
+              ) as last_purchase_price
+            FROM products p
+            WHERE lower(p.brand) LIKE ? OR lower(p.model) LIKE ? OR lower(p.name) LIKE ?
+            ORDER BY p.brand, p.model
             LIMIT ?
             """,
             (like, like, like, int(limit)),

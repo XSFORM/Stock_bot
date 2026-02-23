@@ -59,6 +59,8 @@ from app.db.sqlite import (
     receive_invoice_get,
     receive_invoice_get_items,
     add_product_simple,
+    # NEW: suppliers list for UI suggestions
+    list_receive_suppliers,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xlsx_bytes
@@ -114,7 +116,8 @@ def api_products_search(q: str = "", limit: int = 30):
     """Search all products catalog by brand/model/name. Returns up to 30 items."""
     items = search_products(q, limit=min(int(limit), 30))
     return JSONResponse({"results": items})
-    
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return _render(request, "index.html", {})
@@ -174,6 +177,8 @@ def stock_get(request: Request, warehouse: str = "", q: str = ""):
 @app.get("/receive", response_class=HTMLResponse)
 def receive_get(request: Request, msg: str = ""):
     open_inv = receive_invoice_get_open()
+    suppliers = list_receive_suppliers()
+
     inv_items: list = []
     inv_total: float = 0.0
     inv_qty: float = 0.0
@@ -181,6 +186,7 @@ def receive_get(request: Request, msg: str = ""):
         inv_items = receive_invoice_get_items(open_inv["id"])
         inv_total = sum(float(i["total"]) for i in inv_items)
         inv_qty = sum(float(i["qty"]) for i in inv_items)
+
     return _render(
         request,
         "receive.html",
@@ -190,6 +196,7 @@ def receive_get(request: Request, msg: str = ""):
             "inv_items": inv_items,
             "inv_total": inv_total,
             "inv_qty": inv_qty,
+            "suppliers": suppliers,
         },
     )
 
@@ -343,7 +350,8 @@ def move_all_post(
     ok, err, moved = move_all(src, dst)
     msg = f"OK moved={moved}" if ok else err
     return RedirectResponse(url=f"/move-all?msg={msg}", status_code=303)
-    
+
+
 # ---------------- clients --------------------
 
 @app.get("/clients", response_class=HTMLResponse)
@@ -360,9 +368,9 @@ def clients_add(
 ):
     ok, err = add_client(name, phone, note)
     msg = "OK" if ok else err
-    return RedirectResponse(url=f"/clients?msg={msg}", status_code=303)    
-    
-    
+    return RedirectResponse(url=f"/clients?msg={msg}", status_code=303)
+
+
 @app.get("/clients/{client_id}/edit", response_class=HTMLResponse)
 def client_edit_get(request: Request, client_id: int, msg: str = ""):
     c = get_client(int(client_id))
@@ -380,7 +388,7 @@ def client_edit_post(
 ):
     ok, err = update_client(int(client_id), name, phone, note)
     msg = "OK" if ok else err
-    return RedirectResponse(url=f"/clients/{int(client_id)}/edit?msg={msg}", status_code=303)    
+    return RedirectResponse(url=f"/clients/{int(client_id)}/edit?msg={msg}", status_code=303)
 
 
 # ---------------- sale (cart) ----------------
@@ -533,7 +541,8 @@ def download(path: str):
     # MVP: доверяем path. Потом обязательно ограничим директории!
     p = Path(path)
     return FileResponse(str(p), filename=p.name)
-    
+
+
 @app.get("/brands", response_class=HTMLResponse)
 def brands_get(request: Request, msg: str = ""):
     brands = list_brands()
@@ -544,6 +553,7 @@ def brands_get(request: Request, msg: str = ""):
         {"brands": brands, "prefix_map": prefix_map, "message": msg},
     )
 
+
 @app.post("/brands/prefix/add")
 def brand_prefix_add(
     brand_name: str = Form(...),
@@ -553,8 +563,9 @@ def brand_prefix_add(
     msg = "OK" if ok else err
     return RedirectResponse(url=f"/brands?msg={msg}", status_code=303)
 
+
 @app.post("/brands/add")
 def brands_add(name: str = Form(...)):
     ok, err = add_brand(name)
     msg = "OK" if ok else err
-    return RedirectResponse(url=f"/brands?msg={msg}", status_code=303)    
+    return RedirectResponse(url=f"/brands?msg={msg}", status_code=303)

@@ -56,7 +56,16 @@
             <form method="post" action="/receive/start" class="d-flex flex-wrap gap-2 align-items-end mt-1">
               <div>
                 <label class="form-label form-label-sm mb-1">Supplier</label>
-                <input class="form-control form-control-sm" name="supplier" placeholder="Supplier name" style="width:160px">
+                <input class="form-control form-control-sm"
+                       name="supplier"
+                       placeholder="Supplier name"
+                       style="width:160px"
+                       list="supplier-list">
+                <datalist id="supplier-list">
+                  {% for s in suppliers or [] %}
+                    <option value="{{ s }}"></option>
+                  {% endfor %}
+                </datalist>
               </div>
               <div>
                 <label class="form-label form-label-sm mb-1">Destination</label>
@@ -243,7 +252,6 @@
     const suggestions  = document.getElementById('product-suggestions');
     const productIdIn  = document.getElementById('add-product-id');
     const priceIn      = document.getElementById('add-purchase-price');
-    const addBtn       = document.getElementById('add-btn');
     const form         = document.getElementById('add-item-form');
     const newToggle    = document.getElementById('new-product-toggle');
     const newRow       = document.getElementById('new-product-row');
@@ -290,11 +298,17 @@
     function selectProduct(item) {
       searchInput.value = item.brand + ' ' + item.model + ' - ' + item.name;
       productIdIn.value = item.product_id;
+
       // prefill last purchase price if available
       if (item.last_purchase_price != null && item.last_purchase_price !== '' && !isNaN(parseFloat(item.last_purchase_price))) {
-        priceIn.value = parseFloat(item.last_purchase_price).toFixed(2);
-        priceIn.title = 'Last purchase price: ' + parseFloat(item.last_purchase_price).toFixed(2);
+        const p = parseFloat(item.last_purchase_price);
+        priceIn.value = p.toFixed(2);
+        priceIn.title = 'Last purchase price: ' + p.toFixed(2);
+      } else {
+        // do not overwrite user's value, but clear title
+        priceIn.title = '';
       }
+
       hideSuggestions();
     }
 
