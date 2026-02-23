@@ -95,3 +95,28 @@ CREATE TABLE IF NOT EXISTS brand_model_prefixes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_brand_model_prefixes_brand ON brand_model_prefixes(brand_name);
+
+-- Receive (purchase) invoices
+CREATE TABLE IF NOT EXISTS receive_invoices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  number INTEGER NOT NULL UNIQUE,
+  supplier TEXT NOT NULL DEFAULT '',
+  destination_warehouse TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'OPEN',  -- OPEN / DONE / CANCELLED
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  note TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (destination_warehouse) REFERENCES warehouses(code)
+);
+
+CREATE TABLE IF NOT EXISTS receive_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_id INTEGER NOT NULL,
+  product_id INTEGER NOT NULL,
+  qty REAL NOT NULL,
+  purchase_price REAL NOT NULL,
+  total REAL NOT NULL,
+  FOREIGN KEY (invoice_id) REFERENCES receive_invoices(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_receive_items_invoice ON receive_items(invoice_id);

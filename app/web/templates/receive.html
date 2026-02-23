@@ -1,127 +1,328 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
+  .erp-header { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+  .erp-header .row > div { border-right: 1px solid #dee2e6; }
+  .erp-header .row > div:last-child { border-right: none; }
+  .erp-label { font-size: 0.72rem; text-transform: uppercase; color: #6c757d; font-weight: 600; letter-spacing: .05em; margin-bottom: 2px; }
+  .erp-value { font-size: 1rem; font-weight: 600; color: #212529; }
   #product-suggestions { position: absolute; z-index: 1000; background: #fff; border: 1px solid #dee2e6; border-radius: 4px; width: 100%; max-height: 260px; overflow-y: auto; display: none; }
   #product-suggestions .suggestion-item { padding: 6px 12px; cursor: pointer; font-size: 0.9rem; }
   #product-suggestions .suggestion-item:hover { background: #e9ecef; }
   .search-wrap { position: relative; }
+  .items-table th { white-space: nowrap; }
+  .total-row td { font-weight: 700; background: #f8f9fa; }
+  .edit-inline input[type=number] { min-width: 56px; }
+  .hidden { display: none; }
+  #new-product-panel { background: #fff8e1; border: 1px solid #ffe082; border-radius: 6px; padding: 1rem; }
 </style>
+
 <div class="bg-white p-3 rounded shadow-sm">
-  <h4>Receive</h4>
-  {% if message %}<div class="alert alert-info">{{ message }}</div>{% endif %}
-  <form class="row g-2" method="post" action="/receive" id="receive-form">
-    <div class="col-md-3">
-      <label class="form-label">Warehouse</label>
-      <select class="form-select" name="warehouse">
-        {% for w in warehouses %}
-          <option value="{{ w }}">{{ w }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="col-md-4">
-      <label class="form-label">Product (brand / model / name)</label>
-      <div class="search-wrap">
-        <input type="text" class="form-control" id="product-search" autocomplete="off"
-               placeholder="Start typing brand, model or name…">
-        <div id="product-suggestions"></div>
+  <h4 class="mb-3">Receive <small class="text-muted fs-6">Purchase Invoice</small></h4>
+  {% if message %}<div class="alert alert-info" style="white-space: pre-wrap;">{{ message }}</div>{% endif %}
+
+  {# ── ERP Header ── #}
+  <div class="erp-header mb-3">
+    <div class="row g-0">
+      <div class="col-md-2 pe-3">
+        <div class="erp-label">Invoice #</div>
+        <div class="erp-value">
+          {% if open_inv %}{{ open_inv.number }}{% else %}&mdash;{% endif %}
+        </div>
       </div>
-      <div id="product-error" class="text-danger small mt-1" style="display:none">
-        Please select a product from the suggestions list.
+      <div class="col-md-3 pe-3 ps-3">
+        <div class="erp-label">Date / Time</div>
+        <div class="erp-value">
+          {% if open_inv and open_inv.created_at and open_inv.created_at | length >= 16 %}
+            {{ open_inv.created_at[:16] | replace("T", " ") }}
+          {% else %}
+            &mdash;
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-md-3 pe-3 ps-3">
+        <div class="erp-label">Supplier</div>
+        <div class="erp-value">
+          {% if open_inv %}{{ open_inv.supplier or '—' }}{% else %}&mdash;{% endif %}
+        </div>
+      </div>
+      <div class="col-md-4 ps-3">
+        <div class="erp-label">Destination</div>
+        <div class="erp-value">
+          {% if open_inv %}
+            {{ warehouse_labels.get(open_inv.destination_warehouse, open_inv.destination_warehouse) }}
+            <span class="text-muted fs-6">({{ open_inv.destination_warehouse }})</span>
+          {% else %}
+            <form method="post" action="/receive/start" class="d-flex flex-wrap gap-2 align-items-end mt-1">
+              <div>
+                <label class="form-label form-label-sm mb-1">Supplier</label>
+                <input class="form-control form-control-sm" name="supplier" placeholder="Supplier name" style="width:160px">
+              </div>
+              <div>
+                <label class="form-label form-label-sm mb-1">Destination</label>
+                <select class="form-select form-select-sm" name="destination_warehouse" required style="width:160px">
+                  <option value="" selected disabled>Choose…</option>
+                  {% for w in warehouses %}
+                    <option value="{{ w }}">{{ warehouse_labels[w] }} ({{ w }})</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label class="form-label form-label-sm mb-1">Note</label>
+                <input class="form-control form-control-sm" name="note" placeholder="Optional note" style="width:160px">
+              </div>
+              <div class="d-flex align-items-end">
+                <button class="btn btn-secondary btn-sm">Start</button>
+              </div>
+            </form>
+          {% endif %}
+        </div>
       </div>
     </div>
-    <input type="hidden" name="product_id" id="product-id-input">
-    <input type="hidden" name="brand" id="brand-input">
-    <input type="hidden" name="model" id="model-input">
-    <div class="col-md-2">
-      <label class="form-label">Source</label>
-      <select class="form-select" name="source">
-        {% for s in sources %}
-          <option value="{{ s }}">{{ source_labels[s] }}</option>
-        {% endfor %}
-      </select>
+  </div>
+
+  {% if open_inv %}
+  {# ── Line items card ── #}
+  <div class="card mb-3">
+    <div class="card-header py-2 fw-semibold">Line Items</div>
+    <div class="card-body p-0">
+      <table class="table table-sm table-bordered mb-0 items-table">
+        <thead class="table-light">
+          <tr>
+            <th style="width:40px">#</th>
+            <th>Model</th>
+            <th>Name</th>
+            <th style="width:90px">Qty</th>
+            <th style="width:140px">Purchase Price</th>
+            <th style="width:100px">Total</th>
+            <th style="width:90px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {# ── Add existing product row ── #}
+          <tr class="table-primary">
+            <td colspan="7">
+              <form method="post" action="/receive/item/add" id="add-item-form" class="d-flex flex-wrap gap-2 align-items-end p-1">
+                <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
+                <input type="hidden" name="product_id" id="add-product-id">
+                <div class="search-wrap" style="flex:1;min-width:220px">
+                  <label class="form-label form-label-sm mb-1">Search product (brand/model/name)</label>
+                  <input type="text" class="form-control form-control-sm" id="product-search" autocomplete="off"
+                    placeholder="e.g. Samsung A15…">
+                  <div id="product-suggestions"></div>
+                </div>
+                <div>
+                  <label class="form-label form-label-sm mb-1">Qty</label>
+                  <input class="form-control form-control-sm" name="qty" id="add-qty" type="number" step="1" min="1" style="width:80px" required>
+                </div>
+                <div>
+                  <label class="form-label form-label-sm mb-1">Purchase price</label>
+                  <input class="form-control form-control-sm" name="purchase_price" id="add-purchase-price" type="number" step="0.01" min="0" style="width:110px" required placeholder="0.00">
+                </div>
+                <div class="d-flex align-items-end gap-1">
+                  <button class="btn btn-primary btn-sm" id="add-btn">Add</button>
+                  <button class="btn btn-outline-warning btn-sm" type="button" id="new-product-toggle">+ New product</button>
+                </div>
+              </form>
+            </td>
+          </tr>
+
+          {# ── New product panel ── #}
+          <tr class="hidden" id="new-product-row">
+            <td colspan="7">
+              <div id="new-product-panel">
+                <div class="fw-semibold mb-2">&#43; Add new product &amp; receive</div>
+                <form method="post" action="/receive/item/new" class="d-flex flex-wrap gap-2 align-items-end">
+                  <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
+                  <div>
+                    <label class="form-label form-label-sm mb-1">Brand <span class="text-danger">*</span></label>
+                    <input class="form-control form-control-sm" name="brand" required style="width:110px" placeholder="e.g. Samsung">
+                  </div>
+                  <div>
+                    <label class="form-label form-label-sm mb-1">Model <span class="text-danger">*</span></label>
+                    <input class="form-control form-control-sm" name="model" required style="width:120px" placeholder="e.g. A15">
+                  </div>
+                  <div>
+                    <label class="form-label form-label-sm mb-1">Name <span class="text-danger">*</span></label>
+                    <input class="form-control form-control-sm" name="name" required style="width:160px" placeholder="Full product name">
+                  </div>
+                  <div>
+                    <label class="form-label form-label-sm mb-1">Barcode</label>
+                    <input class="form-control form-control-sm" name="barcode" style="width:120px" placeholder="optional">
+                  </div>
+                  <div>
+                    <label class="form-label form-label-sm mb-1">Note</label>
+                    <input class="form-control form-control-sm" name="product_note" style="width:140px" placeholder="optional">
+                  </div>
+                  <div>
+                    <label class="form-label form-label-sm mb-1">Qty <span class="text-danger">*</span></label>
+                    <input class="form-control form-control-sm" name="qty" type="number" step="1" min="1" required style="width:75px">
+                  </div>
+                  <div>
+                    <label class="form-label form-label-sm mb-1">Purchase price <span class="text-danger">*</span></label>
+                    <input class="form-control form-control-sm" name="purchase_price" type="number" step="0.01" min="0" required style="width:110px" placeholder="0.00">
+                  </div>
+                  <div class="d-flex align-items-end gap-1">
+                    <button class="btn btn-warning btn-sm">Save &amp; Add</button>
+                    <button class="btn btn-outline-secondary btn-sm" type="button" id="new-product-cancel">Cancel</button>
+                  </div>
+                </form>
+              </div>
+            </td>
+          </tr>
+
+          {# ── Existing items ── #}
+          {% if inv_items %}
+            {% for item in inv_items %}
+            <tr>
+              <td class="text-center align-middle">{{ loop.index }}</td>
+              <td class="align-middle">{{ item.brand }} {{ item.model }}</td>
+              <td class="align-middle">{{ item.name }}</td>
+              <td class="edit-inline">
+                <form method="post" action="/receive/item/update" class="d-flex gap-1 align-items-center">
+                  <input type="hidden" name="item_id" value="{{ item.id }}">
+                  <input type="number" name="qty" value="{{ item.qty | int }}" min="1" step="1"
+                    class="form-control form-control-sm text-end" style="width:60px" required>
+                  <input type="hidden" name="purchase_price" value="{{ item.purchase_price }}">
+                  <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Save qty">✓</button>
+                </form>
+              </td>
+              <td class="edit-inline">
+                <form method="post" action="/receive/item/update" class="d-flex gap-1 align-items-center">
+                  <input type="hidden" name="item_id" value="{{ item.id }}">
+                  <input type="hidden" name="qty" value="{{ item.qty | int }}">
+                  <input type="number" name="purchase_price" value="{{ item.purchase_price }}" min="0" step="0.01"
+                    class="form-control form-control-sm text-end" style="width:96px" required>
+                  <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Save price">✓</button>
+                </form>
+              </td>
+              <td class="text-end align-middle">{{ "%.2f"|format(item.total) }}</td>
+              <td class="text-center align-middle">
+                <form method="post" action="/receive/item/delete"
+                  onsubmit="return confirm('Remove this item?')">
+                  <input type="hidden" name="item_id" value="{{ item.id }}">
+                  <button class="btn btn-outline-danger btn-sm py-0">Remove</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+            <tr class="total-row">
+              <td colspan="3" class="text-end">Items qty: {{ inv_qty | int }}</td>
+              <td colspan="2" class="text-end">Total:</td>
+              <td class="text-end">{{ "%.2f"|format(inv_total) }}</td>
+              <td></td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="7" class="text-center text-muted py-3">No items yet. Add a product above.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
     </div>
-    <div class="col-md-2">
-      <label class="form-label">Qty</label>
-      <input class="form-control" name="qty" type="number" step="0.01" required>
-    </div>
-    <div class="col-12">
-      <button class="btn btn-primary mt-2">Receive</button>
-    </div>
-  </form>
-</div>
-<script>
-(function () {
-  const searchInput = document.getElementById('product-search');
-  const suggestions = document.getElementById('product-suggestions');
-  const productIdInput = document.getElementById('product-id-input');
-  const brandInput = document.getElementById('brand-input');
-  const modelInput = document.getElementById('model-input');
-  const productError = document.getElementById('product-error');
-  const form = document.getElementById('receive-form');
+  </div>
 
-  let selectedProduct = null;
-  let debounceTimer;
+  {# ── Actions ── #}
+  <div class="d-flex gap-2">
+    <form method="post" action="/receive/cancel"
+      onsubmit="return confirm('Cancel this receive invoice? Items will not be applied to stock.')">
+      <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
+      <button class="btn btn-outline-danger btn-sm">&#10005; Cancel invoice</button>
+    </form>
+    <form method="post" action="/receive/finish">
+      <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
+      <button class="btn btn-success btn-sm" {% if not inv_items %}disabled title="Add items first"{% endif %}>
+        &#10003; Finish (receive stock)
+      </button>
+    </form>
+  </div>
 
-  searchInput.addEventListener('input', function () {
-    clearTimeout(debounceTimer);
-    selectedProduct = null;
-    productIdInput.value = '';
-    const q = this.value.trim();
-    if (q.length < 1) { hideSuggestions(); return; }
-    debounceTimer = setTimeout(() => fetchSuggestions(q), 220);
-  });
+  <script>
+  (function () {
+    const searchInput  = document.getElementById('product-search');
+    const suggestions  = document.getElementById('product-suggestions');
+    const productIdIn  = document.getElementById('add-product-id');
+    const priceIn      = document.getElementById('add-purchase-price');
+    const addBtn       = document.getElementById('add-btn');
+    const form         = document.getElementById('add-item-form');
+    const newToggle    = document.getElementById('new-product-toggle');
+    const newRow       = document.getElementById('new-product-row');
+    const newCancel    = document.getElementById('new-product-cancel');
 
-  searchInput.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') hideSuggestions();
-  });
+    let debounceTimer;
 
-  document.addEventListener('click', function (e) {
-    if (!suggestions.contains(e.target) && e.target !== searchInput) hideSuggestions();
-  });
-
-  function fetchSuggestions(q) {
-    fetch('/api/products-search?q=' + encodeURIComponent(q) + '&limit=30')
-      .then(r => r.json())
-      .then(data => renderSuggestions(data.results || []))
-      .catch(() => hideSuggestions());
-  }
-
-  function renderSuggestions(items) {
-    suggestions.innerHTML = '';
-    if (!items.length) { hideSuggestions(); return; }
-    items.forEach(item => {
-      const div = document.createElement('div');
-      div.className = 'suggestion-item';
-      div.textContent = item.brand + ' ' + item.model + ' - ' + item.name;
-      div.addEventListener('click', () => selectProduct(item));
-      suggestions.appendChild(div);
+    searchInput.addEventListener('input', function () {
+      clearTimeout(debounceTimer);
+      productIdIn.value = '';
+      const q = this.value.trim();
+      if (q.length < 1) { hideSuggestions(); return; }
+      debounceTimer = setTimeout(() => fetchSuggestions(q), 220);
     });
-    suggestions.style.display = 'block';
-  }
 
-  function selectProduct(item) {
-    selectedProduct = item;
-    searchInput.value = item.brand + ' ' + item.model + ' - ' + item.name;
-    productIdInput.value = item.product_id;
-    brandInput.value = item.brand;
-    modelInput.value = item.model;
-    productError.style.display = 'none';
-    hideSuggestions();
-  }
+    searchInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') hideSuggestions();
+    });
 
-  function hideSuggestions() {
-    suggestions.style.display = 'none';
-  }
+    document.addEventListener('click', function (e) {
+      if (!suggestions.contains(e.target) && e.target !== searchInput) hideSuggestions();
+    });
 
-  form.addEventListener('submit', function (e) {
-    if (!productIdInput.value) {
-      e.preventDefault();
-      productError.style.display = 'block';
-      searchInput.focus();
-    } else {
-      productError.style.display = 'none';
+    function fetchSuggestions(q) {
+      fetch('/api/products-search?q=' + encodeURIComponent(q) + '&limit=30')
+        .then(r => r.json())
+        .then(data => renderSuggestions(data.results || []))
+        .catch(() => hideSuggestions());
     }
-  });
-})();
-</script>
+
+    function renderSuggestions(items) {
+      suggestions.innerHTML = '';
+      if (!items.length) { hideSuggestions(); return; }
+      items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'suggestion-item';
+        div.textContent = item.brand + ' ' + item.model + ' - ' + item.name;
+        div.addEventListener('click', () => selectProduct(item));
+        suggestions.appendChild(div);
+      });
+      suggestions.style.display = 'block';
+    }
+
+    function selectProduct(item) {
+      searchInput.value = item.brand + ' ' + item.model + ' - ' + item.name;
+      productIdIn.value = item.product_id;
+      // prefill last purchase price if available
+      if (item.last_purchase_price != null && item.last_purchase_price !== '' && !isNaN(parseFloat(item.last_purchase_price))) {
+        priceIn.value = parseFloat(item.last_purchase_price).toFixed(2);
+        priceIn.title = 'Last purchase price: ' + parseFloat(item.last_purchase_price).toFixed(2);
+      }
+      hideSuggestions();
+    }
+
+    function hideSuggestions() {
+      suggestions.style.display = 'none';
+    }
+
+    form.addEventListener('submit', function (e) {
+      if (!productIdIn.value) {
+        e.preventDefault();
+        searchInput.setCustomValidity('Please select a product from the list.');
+        searchInput.reportValidity();
+        return;
+      }
+      searchInput.setCustomValidity('');
+    });
+
+    // New product panel toggle
+    newToggle.addEventListener('click', function () {
+      newRow.classList.remove('hidden');
+      newToggle.classList.add('hidden');
+    });
+    newCancel.addEventListener('click', function () {
+      newRow.classList.add('hidden');
+      newToggle.classList.remove('hidden');
+    });
+  })();
+  </script>
+  {% endif %}
+</div>
 {% endblock %}
