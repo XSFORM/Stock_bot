@@ -610,6 +610,31 @@ def get_stock_text(warehouse: Optional[str] = None) -> str:
     return "\n".join(lines)
 
 
+def search_products(q: str, limit: int = 30) -> list[dict[str, Any]]:
+    """Search all products (catalog) by brand/model/name, case-insensitive.
+
+    Returns list of dicts: product_id, brand, model, name.
+    """
+    term = (q or "").strip().lower()
+    like = f"%{term}%"
+
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id as product_id, brand, model, name
+            FROM products
+            WHERE lower(brand) LIKE ? OR lower(model) LIKE ? OR lower(name) LIKE ?
+            ORDER BY brand, model
+            LIMIT ?
+            """,
+            (like, like, like, int(limit)),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def search_stock(warehouse: str, q: str, limit: int = 30) -> list[dict[str, Any]]:
     """Search stock for a specific warehouse by brand/model/name query.
 

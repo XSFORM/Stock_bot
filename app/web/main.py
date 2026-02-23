@@ -39,6 +39,7 @@ from app.db.sqlite import (
     cart_show_by_cart_id,
     cart_finish_by_cart_id_shop1416,
     # new
+    search_products,
     search_stock,
     get_cart_items_list,
     cancel_cart,
@@ -93,6 +94,13 @@ def api_brand_prefixes(brand: str):
 def api_stock_search(warehouse: str = "1416_SHOP", q: str = ""):
     """Search stock for a specific warehouse. Returns up to 30 items."""
     items = search_stock(warehouse, q, limit=30)
+    return JSONResponse({"results": items})
+
+
+@app.get("/api/products-search")
+def api_products_search(q: str = "", limit: int = 30):
+    """Search all products catalog by brand/model/name. Returns up to 30 items."""
+    items = search_products(q, limit=min(int(limit), 30))
     return JSONResponse({"results": items})
     
 @app.get("/", response_class=HTMLResponse)
@@ -152,19 +160,25 @@ def stock_get(request: Request, warehouse: str = "", q: str = ""):
 # ---------------- receive ----------------
 
 @app.get("/receive", response_class=HTMLResponse)
-def receive_get(request: Request):
-    return _render(request, "receive.html", {"ok": None, "message": ""})
+def receive_get(request: Request, msg: str = ""):
+    return _render(request, "receive.html", {"message": msg})
 
 
 @app.post("/receive")
 def receive_post(
     warehouse: str = Form(...),
     source: str = Form(...),
-    brand: str = Form(...),
-    model: str = Form(...),
+    product_id: Optional[int] = Form(None),
+    brand: str = Form(""),
+    model: str = Form(""),
     qty: float = Form(...),
 ):
-    ok, err = receive_stock(warehouse, brand, model, float(qty), source=source)
+    if product_id:
+        ok, err = receive_stock_by_product_id(warehouse, product_id, float(qty), source=source)
+    else:
+        if not brand or not model:
+            return RedirectResponse(url="/receive?msg=Please+select+a+product+from+the+suggestions", status_code=303)
+        ok, err = receive_stock(warehouse, brand, model, float(qty), source=source)
     msg = "OK" if ok else err
     return RedirectResponse(url=f"/receive?msg={msg}", status_code=303)
 
