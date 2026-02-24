@@ -478,6 +478,15 @@ def _get_stock_qty(conn: sqlite3.Connection, warehouse: str, product_id: int) ->
     return float(r["qty"]) if r else 0.0
 
 
+def get_stock_qty(warehouse_code: str, product_id: int) -> float:
+    """Return available qty for a product in a given warehouse (public API)."""
+    conn = _connect()
+    try:
+        return _get_stock_qty(conn, warehouse_code.strip().upper(), int(product_id))
+    finally:
+        conn.close()
+
+
 def _set_stock_qty(conn: sqlite3.Connection, warehouse: str, product_id: int, qty: float) -> None:
     conn.execute(
         """
@@ -574,6 +583,41 @@ def move_stock(src: str, dst: str, brand: str, model: str, qty: float) -> Tuple[
     conn = _connect()
     try:
         pid = int(product["id"])
+        src_qty = _get_stock_qty(conn, src, pid)
+        if src_qty < qty:
+            return False, f"На складе {src} недостаточно: есть {src_qty}, нужно {qty}"
+
+        _set_stock_qty(conn, src, pid, src_qty - qty)
+        dst_qty = _get_stock_qty(conn, dst, pid)
+        _set_stock_qty(conn, dst, pid, dst_qty + qty)
+
+        conn.commit()
+        return True, ""
+    finally:
+        conn.close()
+
+
+def move_stock_by_product_id(src: str, dst: str, product_id: int, qty: float) -> Tuple[bool, str]:
+    """Move stock between warehouses using product_id directly."""
+    src = src.strip().upper()
+    dst = dst.strip().upper()
+    qty = float(qty)
+
+    if qty <= 0:
+        return False, "QTY должно быть > 0"
+    if src == dst:
+        return False, "FROM и TO одинаковые"
+    if src not in WAREHOUSES or dst not in WAREHOUSES:
+        return False, "Неизвестный склад"
+
+    conn = _connect()
+    try:
+        pid = int(product_id)
+        # Verify product exists
+        row = conn.execute("SELECT id FROM products WHERE id=?", (pid,)).fetchone()
+        if not row:
+            return False, "Товар не найден"
+
         src_qty = _get_stock_qty(conn, src, pid)
         if src_qty < qty:
             return False, f"На складе {src} недостаточно: есть {src_qty}, нужно {qty}"

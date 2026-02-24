@@ -18,6 +18,7 @@ from app.db.sqlite import (
     receive_stock_by_product_id,
     add_or_get_product_id,
     move_stock,
+    move_stock_by_product_id,
     move_all,
     cart_finish,
     list_brands,
@@ -65,6 +66,8 @@ from app.db.sqlite import (
     list_sale_invoices_done,
     list_receive_invoices_done,
     list_history,
+    # stock qty api
+    get_stock_qty,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xlsx_bytes
@@ -120,6 +123,13 @@ def api_products_search(q: str = "", limit: int = 30):
     """Search all products catalog by brand/model/name. Returns up to 30 items."""
     items = search_products(q, limit=min(int(limit), 30))
     return JSONResponse({"results": items})
+
+
+@app.get("/api/stock")
+def api_stock(product_id: int, warehouse_id: str):
+    """Return available qty for a product in a given warehouse."""
+    qty = get_stock_qty(warehouse_id, product_id)
+    return JSONResponse({"product_id": product_id, "warehouse_id": warehouse_id, "qty": qty})
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -330,11 +340,10 @@ def move_get(request: Request, msg: str = ""):
 def move_post(
     src: str = Form(...),
     dst: str = Form(...),
-    brand: str = Form(...),
-    model: str = Form(...),
+    product_id: int = Form(...),
     qty: float = Form(...),
 ):
-    ok, err = move_stock(src, dst, brand, model, float(qty))
+    ok, err = move_stock_by_product_id(src, dst, int(product_id), float(qty))
     msg = "OK" if ok else err
     return RedirectResponse(url=f"/move?msg={msg}", status_code=303)
 
