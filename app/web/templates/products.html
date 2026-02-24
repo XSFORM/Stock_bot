@@ -9,20 +9,49 @@
         <div class="alert alert-info">{{ request.query_params.get('msg') }}</div>
       {% endif %}
 
+      <div class="mb-2">
+        <form method="get" action="/products" class="d-inline">
+          {% if show_archived %}
+            <input type="hidden" name="show_archived" value="0">
+            <button class="btn btn-sm btn-secondary">Hide archived</button>
+          {% else %}
+            <input type="hidden" name="show_archived" value="1">
+            <button class="btn btn-sm btn-outline-secondary">Show archived</button>
+          {% endif %}
+        </form>
+      </div>
+
       <table class="table table-sm">
         <thead>
           <tr>
-            <th>Brand</th><th>Model</th><th>Name</th><th>WH</th><th>WH10</th>
+            <th>Brand</th><th>Model</th><th>Name</th><th>WH</th><th>WH10</th><th></th>
           </tr>
         </thead>
         <tbody>
           {% for p in products %}
-          <tr>
+          <tr{% if p.archived %} class="text-muted"{% endif %}>
             <td>{{ p.brand }}</td>
-            <td>{{ p.model }}</td>
+            <td>
+              {{ p.model }}
+              {% if p.archived %}<span class="badge bg-secondary ms-1">ARCHIVED</span>{% endif %}
+            </td>
             <td>{{ p.name }}</td>
             <td>{{ "%.2f"|format(p.wh_price) }}</td>
             <td>{{ "%.2f"|format(p.wh10_price) }}</td>
+            <td class="text-end">
+              {% if p.archived %}
+                <form method="post" action="/products/{{ p.id }}/unarchive">
+                  <input type="hidden" name="show_archived" value="{{ show_archived }}">
+                  <button class="btn btn-sm btn-outline-success">Unarchive</button>
+                </form>
+              {% else %}
+                <form method="post" action="/products/{{ p.id }}/archive"
+                  onsubmit="return confirm('Archive this product?')">
+                  <input type="hidden" name="show_archived" value="{{ show_archived }}">
+                  <button class="btn btn-sm btn-outline-warning">Archive</button>
+                </form>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>

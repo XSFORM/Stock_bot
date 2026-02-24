@@ -152,12 +152,17 @@ def seed_brands_from_products() -> None:
         conn.close()        
 
 
-def list_clients() -> list[dict[str, Any]]:
+def list_clients(include_archived: bool = False) -> list[dict[str, Any]]:
     conn = _connect()
     try:
-        rows = conn.execute(
-            "SELECT id, name, phone, note FROM clients ORDER BY name"
-        ).fetchall()
+        if include_archived:
+            rows = conn.execute(
+                "SELECT id, name, phone, note, archived FROM clients ORDER BY name"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, name, phone, note, archived FROM clients WHERE archived=0 ORDER BY name"
+            ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -205,8 +210,26 @@ def update_client(client_id: int, name: str, phone: str = "", note: str = "") ->
         except Exception:
             return False, "Client name already exists"
     finally:
-        conn.close()        
-        
+        conn.close()
+
+
+def set_client_archived(client_id: int, archived: int) -> tuple[bool, str]:
+    """Set archived=1 (archive) or archived=0 (unarchive) for a client."""
+    conn = _connect()
+    try:
+        r = conn.execute("SELECT id FROM clients WHERE id=?", (int(client_id),)).fetchone()
+        if not r:
+            return False, "Client not found"
+        conn.execute(
+            "UPDATE clients SET archived=? WHERE id=?",
+            (int(archived), int(client_id)),
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
 def _ensure_clients_columns(conn: sqlite3.Connection) -> None:
     cols = conn.execute("PRAGMA table_info(clients);").fetchall()
     existing = {c["name"] for c in cols}
@@ -214,7 +237,9 @@ def _ensure_clients_columns(conn: sqlite3.Connection) -> None:
     if "phone" not in existing:
         conn.execute("ALTER TABLE clients ADD COLUMN phone TEXT NOT NULL DEFAULT '';")
     if "note" not in existing:
-        conn.execute("ALTER TABLE clients ADD COLUMN note TEXT NOT NULL DEFAULT '';")        
+        conn.execute("ALTER TABLE clients ADD COLUMN note TEXT NOT NULL DEFAULT '';")
+    if "archived" not in existing:
+        conn.execute("ALTER TABLE clients ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;")
 
 
 def _migrate_localtime_defaults(conn: sqlite3.Connection) -> None:
@@ -272,7 +297,7 @@ def _migrate_localtime_defaults(conn: sqlite3.Connection) -> None:
 
 
 def _ensure_product_extra_columns(conn: sqlite3.Connection) -> None:
-    """Add barcode, note, last_purchase_price to products if missing (migration)."""
+    """Add barcode, note, last_purchase_price, archived to products if missing (migration)."""
     cols = conn.execute("PRAGMA table_info(products);").fetchall()
     existing = {c["name"] for c in cols}
     if "barcode" not in existing:
@@ -282,6 +307,8 @@ def _ensure_product_extra_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE products ADD COLUMN note TEXT NOT NULL DEFAULT '';")
     if "last_purchase_price" not in existing:
         conn.execute("ALTER TABLE products ADD COLUMN last_purchase_price REAL;")
+    if "archived" not in existing:
+        conn.execute("ALTER TABLE products ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;")
     conn.commit()
 
 
@@ -432,18 +459,42 @@ def receive_stock_by_product_id(
     finally:
         conn.close()
 
-def list_products() -> list[dict[str, Any]]:
+def list_products(include_archived: bool = False) -> list[dict[str, Any]]:
     conn = _connect()
     try:
-        rows = conn.execute(
-            "SELECT id, brand, model, name, wh_price FROM products ORDER BY brand, model"
-        ).fetchall()
+        if include_archived:
+            rows = conn.execute(
+                "SELECT id, brand, model, name, wh_price, archived FROM products ORDER BY brand, model"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, brand, model, name, wh_price, archived FROM products WHERE archived=0 ORDER BY brand, model"
+            ).fetchall()
         out: list[dict[str, Any]] = []
         for r in rows:
             d = dict(r)
             d["wh10_price"] = round(float(d["wh_price"]) * 1.10, 2)
             out.append(d)
         return out
+    finally:
+        conn.close()
+
+
+def set_product_archived(product_id: int, archived: int) -> tuple[bool, str]:
+    """Set archived=1 (archive) or archived=0 (unarchive) for a product."""
+    conn = _connect()
+    try:
+        r = conn.execute("SELECT id FROM products WHERE id=?", (int(product_id),)).fetchone()
+        if not r:
+            return False, "Product not found"
+        conn.execute(
+            "UPDATE products SET archived=? WHERE id=?",
+            (int(archived), int(product_id)),
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
     finally:
         conn.close()
 
@@ -743,7 +794,7 @@ def get_stock_text(warehouse: Optional[str] = None) -> str:
     return "\n".join(lines)
 
 
-def search_products(q: str, limit: int = 30) -> list[dict[str, Any]]:
+def search_products(q: str, limit: int = 30, include_archived: bool = False) -> list[dict[str, Any]]:
     """Search all products (catalog) by brand/model/name, case-insensitive.
 
     Returns list of dicts: product_id, brand, model, name, last_purchase_price.
@@ -773,11 +824,12 @@ def search_products(q: str, limit: int = 30) -> list[dict[str, Any]]:
                 )
               ) as last_purchase_price
             FROM products p
-            WHERE lower(p.brand) LIKE ? OR lower(p.model) LIKE ? OR lower(p.name) LIKE ?
+            WHERE (lower(p.brand) LIKE ? OR lower(p.model) LIKE ? OR lower(p.name) LIKE ?)
+              AND (p.archived = 0 OR ? = 1)
             ORDER BY p.brand, p.model
             LIMIT ?
             """,
-            (like, like, like, int(limit)),
+            (like, like, like, int(include_archived), int(limit)),
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
@@ -810,6 +862,7 @@ def search_stock(warehouse: str, q: str, limit: int = 30) -> list[dict[str, Any]
             JOIN warehouses w ON w.code = s.warehouse_code
             WHERE w.code = ?
               AND s.qty > 0
+              AND p.archived = 0
               AND (lower(p.brand) LIKE ? OR lower(p.model) LIKE ? OR lower(p.name) LIKE ?)
             ORDER BY p.brand, p.model
             LIMIT ?
