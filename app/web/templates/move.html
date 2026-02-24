@@ -1,40 +1,153 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+  #move-product-suggestions { position: absolute; z-index: 1000; background: #fff; border: 1px solid #dee2e6; border-radius: 4px; width: 100%; max-height: 260px; overflow-y: auto; display: none; }
+  #move-product-suggestions .suggestion-item { padding: 6px 12px; cursor: pointer; font-size: 0.9rem; }
+  #move-product-suggestions .suggestion-item:hover { background: #e9ecef; }
+  .search-wrap { position: relative; }
+</style>
 <div class="bg-white p-3 rounded shadow-sm">
   <h4>Move</h4>
-  {% if message %}<div class="alert alert-info">{{ message }}</div>{% endif %}
-  <form class="row g-2" method="post" action="/move">
+  {% if message %}<div class="alert {% if message == 'OK' %}alert-success{% else %}alert-danger{% endif %}">{{ message }}</div>{% endif %}
+  <form class="row g-2" method="post" action="/move" id="move-form">
     <div class="col-md-3">
       <label class="form-label">From</label>
-      <select class="form-select" name="src">
+      <select class="form-select" name="src" id="move-src">
         {% for w in warehouses %}
-          <option value="{{ w }}">{{ w }}</option>
+          <option value="{{ w }}">{{ warehouse_labels[w] }} ({{ w }})</option>
         {% endfor %}
       </select>
     </div>
     <div class="col-md-3">
       <label class="form-label">To</label>
-      <select class="form-select" name="dst">
+      <select class="form-select" name="dst" id="move-dst">
         {% for w in warehouses %}
-          <option value="{{ w }}">{{ w }}</option>
+          <option value="{{ w }}">{{ warehouse_labels[w] }} ({{ w }})</option>
         {% endfor %}
       </select>
     </div>
-    <div class="col-md-2">
-      <label class="form-label">Brand</label>
-      <input class="form-control" name="brand" required>
-    </div>
-    <div class="col-md-2">
-      <label class="form-label">Model</label>
-      <input class="form-control" name="model" required>
+    <div class="col-md-4">
+      <label class="form-label">Product</label>
+      <div class="search-wrap">
+        <input type="text" class="form-control" id="move-product-search" autocomplete="off"
+          placeholder="Search by brand / model / name…" required>
+        <div id="move-product-suggestions"></div>
+      </div>
+      <input type="hidden" name="product_id" id="move-product-id">
     </div>
     <div class="col-md-2">
       <label class="form-label">Qty</label>
-      <input class="form-control" name="qty" type="number" step="0.01" required>
+      <input class="form-control" name="qty" id="move-qty" type="number" step="0.01" min="0.01" required>
     </div>
     <div class="col-12">
-      <button class="btn btn-primary mt-2">Move</button>
+      <div id="move-available-info" class="text-muted small mb-1" style="display:none"></div>
+      <button class="btn btn-primary mt-1">Move</button>
     </div>
   </form>
 </div>
+<script>
+(function () {
+  const searchInput  = document.getElementById('move-product-search');
+  const suggestions  = document.getElementById('move-product-suggestions');
+  const productIdIn  = document.getElementById('move-product-id');
+  const srcSelect    = document.getElementById('move-src');
+  const qtyInput     = document.getElementById('move-qty');
+  const availInfo    = document.getElementById('move-available-info');
+  const form         = document.getElementById('move-form');
+
+  let debounceTimer;
+  let selectedProductId = null;
+  let availableQty = null;
+
+  searchInput.addEventListener('input', function () {
+    clearTimeout(debounceTimer);
+    productIdIn.value = '';
+    selectedProductId = null;
+    availableQty = null;
+    hideAvailable();
+    const q = this.value.trim();
+    if (q.length < 1) { hideSuggestions(); return; }
+    debounceTimer = setTimeout(() => fetchSuggestions(q), 220);
+  });
+
+  searchInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') hideSuggestions();
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!suggestions.contains(e.target) && e.target !== searchInput) hideSuggestions();
+  });
+
+  srcSelect.addEventListener('change', function () {
+    if (selectedProductId) fetchAvailable(selectedProductId, this.value);
+  });
+
+  function fetchSuggestions(q) {
+    fetch('/api/products-search?q=' + encodeURIComponent(q) + '&limit=30')
+      .then(r => r.json())
+      .then(data => renderSuggestions(data.results || []))
+      .catch(() => hideSuggestions());
+  }
+
+  function renderSuggestions(items) {
+    suggestions.innerHTML = '';
+    if (!items.length) { hideSuggestions(); return; }
+    items.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'suggestion-item';
+      div.textContent = item.brand + ' ' + item.model + ' — ' + item.name;
+      div.addEventListener('click', () => selectProduct(item));
+      suggestions.appendChild(div);
+    });
+    suggestions.style.display = 'block';
+  }
+
+  function selectProduct(item) {
+    searchInput.value = item.brand + ' ' + item.model + ' — ' + item.name;
+    productIdIn.value = item.product_id;
+    selectedProductId = item.product_id;
+    hideSuggestions();
+    fetchAvailable(item.product_id, srcSelect.value);
+  }
+
+  function fetchAvailable(productId, warehouseId) {
+    const srcLabel = srcSelect.options[srcSelect.selectedIndex].text;
+    fetch('/api/stock?product_id=' + encodeURIComponent(productId) + '&warehouse_id=' + encodeURIComponent(warehouseId))
+      .then(r => r.json())
+      .then(data => {
+        availableQty = data.qty;
+        availInfo.textContent = 'Available in ' + srcLabel + ': ' + availableQty;
+        availInfo.style.display = '';
+        availInfo.className = availableQty > 0 ? 'text-success small mb-1' : 'text-warning small mb-1';
+      })
+      .catch(() => hideAvailable());
+  }
+
+  function hideSuggestions() {
+    suggestions.style.display = 'none';
+  }
+
+  function hideAvailable() {
+    availInfo.style.display = 'none';
+    availableQty = null;
+  }
+
+  form.addEventListener('submit', function (e) {
+    if (!productIdIn.value) {
+      e.preventDefault();
+      searchInput.setCustomValidity('Please select a product from the list.');
+      searchInput.reportValidity();
+      return;
+    }
+    searchInput.setCustomValidity('');
+
+    const qty = parseFloat(qtyInput.value);
+    if (availableQty !== null && qty > availableQty) {
+      e.preventDefault();
+      alert('Cannot move ' + qty + ' — only ' + availableQty + ' available in FROM warehouse.');
+      return;
+    }
+  });
+})();
+</script>
 {% endblock %}
