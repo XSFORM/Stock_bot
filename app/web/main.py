@@ -30,6 +30,7 @@ from app.db.sqlite import (
     add_client,
     get_client,
     update_client,
+    set_client_archived,
     # sale by id
     get_open_cart,
     cart_start_by_id,
@@ -68,6 +69,8 @@ from app.db.sqlite import (
     list_history,
     # stock qty api
     get_stock_qty,
+    # archive
+    set_product_archived,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xlsx_bytes
@@ -140,10 +143,10 @@ def index(request: Request):
 # ---------------- products ----------------
 
 @app.get("/products", response_class=HTMLResponse)
-def products(request: Request):
-    rows = list_products()
+def products(request: Request, show_archived: int = 0):
+    rows = list_products(include_archived=bool(show_archived))
     brands = list_brands()
-    return _render(request, "products.html", {"products": rows, "brands": brands})
+    return _render(request, "products.html", {"products": rows, "brands": brands, "show_archived": show_archived})
 
 
 @app.post("/products/add")
@@ -167,6 +170,20 @@ def products_add(
     except Exception as e:
         # вместо черного экрана
         return RedirectResponse(url=f"/products?msg=error:{e}", status_code=303)
+
+
+@app.post("/products/{product_id}/archive")
+def product_archive(product_id: int, show_archived: int = Form(0)):
+    ok, err = set_product_archived(int(product_id), 1)
+    msg = "archived" if ok else f"archive_error:{err}"
+    return RedirectResponse(url=f"/products?msg={msg}&show_archived={show_archived}", status_code=303)
+
+
+@app.post("/products/{product_id}/unarchive")
+def product_unarchive(product_id: int, show_archived: int = Form(0)):
+    ok, err = set_product_archived(int(product_id), 0)
+    msg = "unarchived" if ok else f"unarchive_error:{err}"
+    return RedirectResponse(url=f"/products?msg={msg}&show_archived={show_archived}", status_code=303)
 
 
 # ---------------- stock ----------------
@@ -368,9 +385,9 @@ def move_all_post(
 # ---------------- clients --------------------
 
 @app.get("/clients", response_class=HTMLResponse)
-def clients_get(request: Request, msg: str = ""):
-    clients = list_clients()
-    return _render(request, "clients.html", {"clients": clients, "message": msg})
+def clients_get(request: Request, msg: str = "", show_archived: int = 0):
+    clients = list_clients(include_archived=bool(show_archived))
+    return _render(request, "clients.html", {"clients": clients, "message": msg, "show_archived": show_archived})
 
 
 @app.post("/clients/add")
@@ -382,6 +399,20 @@ def clients_add(
     ok, err = add_client(name, phone, note)
     msg = "OK" if ok else err
     return RedirectResponse(url=f"/clients?msg={msg}", status_code=303)
+
+
+@app.post("/clients/{client_id}/archive")
+def client_archive(client_id: int, show_archived: int = Form(0)):
+    ok, err = set_client_archived(int(client_id), 1)
+    msg = "archived" if ok else f"archive_error:{err}"
+    return RedirectResponse(url=f"/clients?msg={msg}&show_archived={show_archived}", status_code=303)
+
+
+@app.post("/clients/{client_id}/unarchive")
+def client_unarchive(client_id: int, show_archived: int = Form(0)):
+    ok, err = set_client_archived(int(client_id), 0)
+    msg = "unarchived" if ok else f"unarchive_error:{err}"
+    return RedirectResponse(url=f"/clients?msg={msg}&show_archived={show_archived}", status_code=303)
 
 
 @app.get("/clients/{client_id}/edit", response_class=HTMLResponse)
