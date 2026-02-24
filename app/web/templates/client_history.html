@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center gap-3 mb-3">
+    <h4 class="mb-0">History — {{ client.name }}</h4>
+    <a class="btn btn-sm btn-outline-secondary" href="/clients">← Back</a>
+  </div>
+
+  <div class="mb-3">
+    <strong>Current balance:</strong>
+    {% if balance > 0 %}
+      <span class="text-danger fw-semibold">{{ "%.2f"|format(balance) }} USD</span>
+      <span class="text-muted">(owes money)</span>
+    {% elif balance < 0 %}
+      <span class="text-success fw-semibold">{{ "%.2f"|format(balance) }} USD</span>
+      <span class="text-muted">(advance)</span>
+    {% else %}
+      <span class="text-muted">0.00 USD</span>
+    {% endif %}
+  </div>
+
+  <table class="table table-sm table-striped align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th>Date / Time</th>
+        <th>Type</th>
+        <th>Ref</th>
+        <th class="text-end">Amount (USD)</th>
+        <th>Note</th>
+        <th class="text-end">Balance after</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ev in events %}
+      <tr>
+        <td>{{ ev.dt }}</td>
+        <td>
+          {% if ev.kind == 'INVOICE' %}
+            <span class="badge bg-primary">INVOICE</span>
+          {% else %}
+            <span class="badge bg-success">ADJUSTMENT</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if ev.kind == 'INVOICE' %}#{{ ev.ref }}{% else %}—{% endif %}
+        </td>
+        <td class="text-end">
+          {% if ev.kind == 'INVOICE' %}
+            <span class="text-danger">+{{ "%.2f"|format(ev.amount) }}</span>
+          {% else %}
+            <span class="text-success">-{{ "%.2f"|format(ev.amount) }}</span>
+          {% endif %}
+        </td>
+        <td>{{ ev.note or '—' }}</td>
+        <td class="text-end">
+          {% if ev.balance_after > 0 %}
+            <span class="text-danger">{{ "%.2f"|format(ev.balance_after) }}</span>
+          {% elif ev.balance_after < 0 %}
+            <span class="text-success">{{ "%.2f"|format(ev.balance_after) }}</span>
+          {% else %}
+            <span class="text-muted">0.00</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if ev.kind == 'INVOICE' %}
+            <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank">View</a>
+            <a class="btn btn-sm btn-outline-success" href="{{ ev.download_url }}">Download</a>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" class="text-muted text-center">No history yet.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

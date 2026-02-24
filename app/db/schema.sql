@@ -120,3 +120,15 @@ CREATE TABLE IF NOT EXISTS receive_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_receive_items_invoice ON receive_items(invoice_id);
+
+-- Client ledger: tracks debt adjustments (payments / write-offs)
+CREATE TABLE IF NOT EXISTS client_ledger (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  amount REAL NOT NULL,  -- positive value; reduces client debt
+  note TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_client_ledger_client ON client_ledger(client_id);

@@ -31,6 +31,10 @@ from app.db.sqlite import (
     get_client,
     update_client,
     set_client_archived,
+    add_client_adjustment,
+    get_client_balance,
+    list_clients_with_balance,
+    get_client_history,
     # sale by id
     get_open_cart,
     cart_start_by_id,
@@ -386,7 +390,7 @@ def move_all_post(
 
 @app.get("/clients", response_class=HTMLResponse)
 def clients_get(request: Request, msg: str = "", show_archived: int = 0):
-    clients = list_clients(include_archived=bool(show_archived))
+    clients = list_clients_with_balance(include_archived=bool(show_archived))
     return _render(request, "clients.html", {"clients": clients, "message": msg, "show_archived": show_archived})
 
 
@@ -435,7 +439,32 @@ def client_edit_post(
     return RedirectResponse(url=f"/clients/{int(client_id)}/edit?msg={msg}", status_code=303)
 
 
-# ---------------- sale (cart) ----------------
+@app.post("/clients/{client_id}/adjustment")
+def client_adjustment_post(
+    client_id: int,
+    amount: float = Form(...),
+    note: str = Form(""),
+    show_archived: int = Form(0),
+):
+    ok, err = add_client_adjustment(int(client_id), amount, note)
+    msg = "adjustment_ok" if ok else f"adjustment_error:{err}"
+    return RedirectResponse(url=f"/clients?msg={msg}&show_archived={show_archived}", status_code=303)
+
+
+@app.get("/clients/{client_id}/history", response_class=HTMLResponse)
+def client_history_get(request: Request, client_id: int):
+    c = get_client(int(client_id))
+    if not c:
+        return RedirectResponse(url="/clients?msg=client_not_found", status_code=303)
+    events = get_client_history(int(client_id))
+    balance = get_client_balance(int(client_id))
+    return _render(request, "client_history.html", {
+        "client": c,
+        "events": events,
+        "balance": balance,
+    })
+
+
 
 @app.get("/sale", response_class=HTMLResponse)
 def sale_get(request: Request, msg: str = ""):
