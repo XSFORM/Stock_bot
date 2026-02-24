@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="row g-3">
-  <div class="col-lg-7">
+  <div class="col-lg-8">
     <div class="bg-white p-3 rounded shadow-sm">
       <h4>Clients</h4>
 
@@ -21,47 +21,77 @@
         </form>
       </div>
 
-      <table class="table table-sm">
+      <table class="table table-sm align-middle">
         <thead>
-  <tr>
-    <th>Name</th>
-    <th>Phone</th>
-    <th>Note</th>
-    <th></th>
-  </tr>
-</thead>
-<tbody>
-  {% for c in clients %}
-  <tr{% if c.archived %} class="text-muted"{% endif %}>
-    <td>
-      {{ c.name }}
-      {% if c.archived %}<span class="badge bg-secondary ms-1">ARCHIVED</span>{% endif %}
-    </td>
-    <td>{{ c.phone }}</td>
-    <td>{{ c.note }}</td>
-    <td class="text-end d-flex gap-1 justify-content-end">
-      <a class="btn btn-sm btn-outline-secondary" href="/clients/{{ c.id }}/edit">Edit</a>
-      {% if c.archived %}
-        <form method="post" action="/clients/{{ c.id }}/unarchive">
-          <input type="hidden" name="show_archived" value="{{ show_archived }}">
-          <button class="btn btn-sm btn-outline-success">Unarchive</button>
-        </form>
-      {% else %}
-        <form method="post" action="/clients/{{ c.id }}/archive"
-          onsubmit="return confirm('Archive this client?')">
-          <input type="hidden" name="show_archived" value="{{ show_archived }}">
-          <button class="btn btn-sm btn-outline-warning">Archive</button>
-        </form>
-      {% endif %}
-    </td>
-  </tr>
-  {% endfor %}
-</tbody>
+          <tr>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Note</th>
+            <th class="text-end">Balance (Debt)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in clients %}
+          <tr{% if c.archived %} class="text-muted"{% endif %}>
+            <td>
+              {{ c.name }}
+              {% if c.archived %}<span class="badge bg-secondary ms-1">ARCHIVED</span>{% endif %}
+            </td>
+            <td>{{ c.phone }}</td>
+            <td>{{ c.note }}</td>
+            <td class="text-end">
+              {% if c.balance > 0 %}
+                <span class="text-danger fw-semibold">{{ "%.2f"|format(c.balance) }} USD</span>
+              {% elif c.balance < 0 %}
+                <span class="text-success fw-semibold">{{ "%.2f"|format(c.balance) }} USD</span>
+              {% else %}
+                <span class="text-muted">0.00 USD</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <div class="dropdown">
+                <button class="btn btn-sm btn-outline-secondary" type="button"
+                        data-bs-toggle="dropdown" aria-expanded="false">⋯</button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  <li>
+                    <a class="dropdown-item" href="/clients/{{ c.id }}/history">History</a>
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="#"
+                       onclick="openAdjustment({{ c.id }}, '{{ c.name|e }}', {{ show_archived }}); return false;">
+                      Снять с долга
+                    </a>
+                  </li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li>
+                    <a class="dropdown-item" href="/clients/{{ c.id }}/edit">Edit</a>
+                  </li>
+                  <li>
+                    {% if c.archived %}
+                      <form method="post" action="/clients/{{ c.id }}/unarchive" class="d-inline">
+                        <input type="hidden" name="show_archived" value="{{ show_archived }}">
+                        <button class="dropdown-item" type="submit">Unarchive</button>
+                      </form>
+                    {% else %}
+                      <form method="post" action="/clients/{{ c.id }}/archive" class="d-inline"
+                            onsubmit="return confirm('Archive this client?')">
+                        <input type="hidden" name="show_archived" value="{{ show_archived }}">
+                        <button class="dropdown-item text-warning" type="submit">Archive</button>
+                      </form>
+                    {% endif %}
+                  </li>
+                </ul>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
       </table>
     </div>
   </div>
 
-  <div class="col-lg-5">
+  <div class="col-lg-4">
     <div class="bg-white p-3 rounded shadow-sm">
       <h4>Add client</h4>
       <form method="post" action="/clients/add">
@@ -82,4 +112,45 @@
     </div>
   </div>
 </div>
+
+<!-- Adjustment modal -->
+<div class="modal fade" id="adjustmentModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" id="adjustmentForm">
+        <input type="hidden" name="show_archived" id="adj_show_archived">
+        <div class="modal-header">
+          <h5 class="modal-title">Снять с долга — <span id="adj_client_name"></span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Сумма (USD) <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" name="amount" id="adj_amount"
+                   min="0.01" step="0.01" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Примечание (необязательно)</label>
+            <input type="text" class="form-control" name="note" id="adj_note">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function openAdjustment(clientId, clientName, showArchived) {
+  document.getElementById('adj_client_name').textContent = clientName;
+  document.getElementById('adjustmentForm').action = '/clients/' + clientId + '/adjustment';
+  document.getElementById('adj_show_archived').value = showArchived;
+  document.getElementById('adj_amount').value = '';
+  document.getElementById('adj_note').value = '';
+  new bootstrap.Modal(document.getElementById('adjustmentModal')).show();
+}
+</script>
 {% endblock %}

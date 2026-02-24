@@ -28,6 +28,7 @@ def init_db() -> None:
             conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
             
         _ensure_clients_columns(conn)
+        _ensure_client_ledger_table(conn)
         _ensure_product_extra_columns(conn)
         _migrate_localtime_defaults(conn)
         for code, title in WAREHOUSES.items():
@@ -230,6 +231,143 @@ def set_client_archived(client_id: int, archived: int) -> tuple[bool, str]:
         return False, str(e)
     finally:
         conn.close()
+
+
+def add_client_adjustment(client_id: int, amount: float, note: str = "") -> tuple[bool, str]:
+    """Add a ledger entry that reduces client debt by `amount`.
+    Positive amount = payment/write-off (reduces debt).
+    Amount is allowed to push the balance negative (advance).
+    """
+    amount = float(amount)
+    if amount <= 0:
+        return False, "amount must be > 0"
+    note = (note or "").strip()
+    conn = _connect()
+    try:
+        r = conn.execute("SELECT id FROM clients WHERE id=?", (int(client_id),)).fetchone()
+        if not r:
+            return False, "Client not found"
+        conn.execute(
+            "INSERT INTO client_ledger(client_id, amount, note) VALUES(?, ?, ?)",
+            (int(client_id), amount, note),
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def get_client_balance(client_id: int) -> float:
+    """Return client balance (positive = owes money, negative = advance).
+    balance = sum of SALE invoice totals - sum of ledger adjustments.
+    """
+    conn = _connect()
+    try:
+        debt_row = conn.execute(
+            """
+            SELECT COALESCE(SUM(inv.total), 0) AS total_debt
+            FROM invoices inv
+            JOIN carts c ON c.id = inv.cart_id
+            WHERE c.client_id = ?
+            """,
+            (int(client_id),),
+        ).fetchone()
+        paid_row = conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS total_paid FROM client_ledger WHERE client_id=?",
+            (int(client_id),),
+        ).fetchone()
+        debt = float(debt_row["total_debt"]) if debt_row else 0.0
+        paid = float(paid_row["total_paid"]) if paid_row else 0.0
+        return round(debt - paid, 2)
+    finally:
+        conn.close()
+
+
+def list_clients_with_balance(include_archived: bool = False) -> list[dict[str, Any]]:
+    """Return clients list enriched with computed balance field."""
+    conn = _connect()
+    try:
+        if include_archived:
+            rows = conn.execute(
+                "SELECT id, name, phone, note, archived FROM clients ORDER BY name"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, name, phone, note, archived FROM clients WHERE archived=0 ORDER BY name"
+            ).fetchall()
+        clients = [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+    for c in clients:
+        c["balance"] = get_client_balance(c["id"])
+    return clients
+
+
+def get_client_history(client_id: int) -> list[dict[str, Any]]:
+    """Return combined history of SALE invoices and ledger adjustments for a client,
+    sorted by date ascending. Each entry has keys:
+    dt, kind ('INVOICE' | 'ADJUSTMENT'), ref, amount, note, view_url, download_url.
+    Also includes a running balance_after field.
+    """
+    conn = _connect()
+    try:
+        invoices = conn.execute(
+            """
+            SELECT inv.created_at AS dt,
+                   'INVOICE' AS kind,
+                   inv.number AS ref,
+                   inv.total AS amount,
+                   '' AS note
+            FROM invoices inv
+            JOIN carts c ON c.id = inv.cart_id
+            WHERE c.client_id = ?
+            ORDER BY inv.created_at
+            """,
+            (int(client_id),),
+        ).fetchall()
+
+        adjustments = conn.execute(
+            """
+            SELECT created_at AS dt,
+                   'ADJUSTMENT' AS kind,
+                   id AS ref,
+                   amount,
+                   note
+            FROM client_ledger
+            WHERE client_id = ?
+            ORDER BY created_at
+            """,
+            (int(client_id),),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    events: list[dict[str, Any]] = []
+    for r in invoices:
+        events.append(dict(r))
+    for r in adjustments:
+        events.append(dict(r))
+
+    events.sort(key=lambda x: x["dt"])
+
+    running = 0.0
+    for ev in events:
+        if ev["kind"] == "INVOICE":
+            running = round(running + float(ev["amount"]), 2)
+            ev["view_url"] = f"/sale/xlsx/view?n={ev['ref']}"
+            ev["download_url"] = f"/sale/xlsx?n={ev['ref']}"
+        else:
+            running = round(running - float(ev["amount"]), 2)
+            ev["view_url"] = ""
+            ev["download_url"] = ""
+        ev["balance_after"] = running
+
+    return events
+
+
 def _ensure_clients_columns(conn: sqlite3.Connection) -> None:
     cols = conn.execute("PRAGMA table_info(clients);").fetchall()
     existing = {c["name"] for c in cols}
@@ -240,6 +378,25 @@ def _ensure_clients_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE clients ADD COLUMN note TEXT NOT NULL DEFAULT '';")
     if "archived" not in existing:
         conn.execute("ALTER TABLE clients ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;")
+
+
+def _ensure_client_ledger_table(conn: sqlite3.Connection) -> None:
+    """Create client_ledger table if it does not exist (migration for existing DBs)."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS client_ledger (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          client_id INTEGER NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+          amount REAL NOT NULL,
+          note TEXT NOT NULL DEFAULT '',
+          FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_client_ledger_client ON client_ledger(client_id)"
+    )
 
 
 def _migrate_localtime_defaults(conn: sqlite3.Connection) -> None:
