@@ -525,7 +525,7 @@ def sale_add(
     brand: str = Form(...),
     model: str = Form(...),
     qty: float = Form(...),
-    price_mode: str = Form("wh25"),
+    price_mode: str = Form("wh10"),
     custom_price: Optional[float] = Form(None),
 ):
     ok, err = cart_add_by_cart_id(int(cart_id), brand, model, float(qty), price_mode, custom_price)

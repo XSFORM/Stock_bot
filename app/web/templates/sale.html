@@ -104,7 +104,7 @@
                 <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
                 <input type="hidden" name="brand" id="add-brand">
                 <input type="hidden" name="model" id="add-model">
-                <input type="hidden" name="price_mode" id="add-price-mode" value="wh25">
+                <input type="hidden" name="price_mode" id="add-price-mode" value="wh10">
                 <div class="search-wrap" style="flex:1;min-width:220px">
                   <label class="form-label form-label-sm mb-1">Search product (brand/model/name)</label>
                   <input type="text" class="form-control form-control-sm" id="product-search" autocomplete="off"
@@ -114,6 +114,17 @@
                 <div>
                   <label class="form-label form-label-sm mb-1">Qty</label>
                   <input class="form-control form-control-sm" name="qty" id="add-qty" type="number" step="1" min="1" style="width:80px" required>
+                </div>
+                <div>
+                  <label class="form-label form-label-sm mb-1">Price mode</label>
+                  <div class="btn-group btn-group-sm" role="group" id="price-mode-group">
+                    <input type="radio" class="btn-check" name="price_mode_radio" id="pm-wh10" value="wh10" autocomplete="off" checked>
+                    <label class="btn btn-outline-secondary" for="pm-wh10">+10%</label>
+                    <input type="radio" class="btn-check" name="price_mode_radio" id="pm-wh25" value="wh25" autocomplete="off">
+                    <label class="btn btn-outline-secondary" for="pm-wh25">+25%</label>
+                    <input type="radio" class="btn-check" name="price_mode_radio" id="pm-custom" value="custom" autocomplete="off">
+                    <label class="btn btn-outline-secondary" for="pm-custom">Manual</label>
+                  </div>
                 </div>
                 <div>
                   <label class="form-label form-label-sm mb-1">Unit price</label>
@@ -206,9 +217,38 @@
     const priceMode   = document.getElementById('add-price-mode');
     const customPrice = document.getElementById('add-custom-price');
     const form        = document.getElementById('add-item-form');
+    const pmRadios    = document.querySelectorAll('input[name="price_mode_radio"]');
 
     let selectedProduct = null;
     let debounceTimer;
+    const DEFAULT_MODE = 'wh10';
+
+    function getSelectedRadio() {
+      for (const r of pmRadios) { if (r.checked) return r.value; }
+      return DEFAULT_MODE;
+    }
+
+    function setRadio(value) {
+      for (const r of pmRadios) { r.checked = (r.value === value); }
+      priceMode.value = value;
+    }
+
+    function autoFillPrice(mode) {
+      if (!selectedProduct) return;
+      if (mode === 'wh10') {
+        customPrice.value = parseFloat(selectedProduct.wh10_price).toFixed(2);
+      } else if (mode === 'wh25') {
+        customPrice.value = parseFloat(selectedProduct.wh25_price).toFixed(2);
+      }
+    }
+
+    // Sync hidden input with radio on change; auto-fill if not Manual
+    pmRadios.forEach(function (r) {
+      r.addEventListener('change', function () {
+        priceMode.value = this.value;
+        autoFillPrice(this.value);
+      });
+    });
 
     searchInput.addEventListener('input', function () {
       clearTimeout(debounceTimer);
@@ -251,8 +291,8 @@
       brandInput.value  = item.brand;
       modelInput.value  = item.model;
       qtyInput.max      = item.qty_available;
-      customPrice.value = parseFloat(item.wh25_price).toFixed(2);
-      priceMode.value   = 'wh25';
+      const mode = getSelectedRadio();
+      autoFillPrice(mode);
       hideSuggestions();
     }
 
@@ -260,23 +300,18 @@
       suggestions.style.display = 'none';
     }
 
-    // When user edits price manually, switch to custom mode
+    // When user edits price manually, switch to Manual if it deviates from the auto price
     customPrice.addEventListener('input', function () {
-      if (selectedProduct) {
-        const entered = parseFloat(this.value);
-        if (isNaN(entered)) { priceMode.value = 'custom'; return; }
-        const wh25 = parseFloat(selectedProduct.wh25_price);
-        const wh10 = parseFloat(selectedProduct.wh10_price);
-        const wh   = parseFloat(selectedProduct.wh_price);
-        if (!isNaN(wh25) && Math.abs(entered - wh25) < 0.001) {
-          priceMode.value = 'wh25';
-        } else if (!isNaN(wh10) && Math.abs(entered - wh10) < 0.001) {
-          priceMode.value = 'wh10';
-        } else if (!isNaN(wh) && Math.abs(entered - wh) < 0.001) {
-          priceMode.value = 'wh';
-        } else {
-          priceMode.value = 'custom';
-        }
+      if (!selectedProduct) return;
+      const entered = parseFloat(this.value);
+      const mode = getSelectedRadio();
+      if (mode === 'custom') return;
+      if (isNaN(entered)) { setRadio('custom'); return; }
+      let autoPrice = NaN;
+      if (mode === 'wh10') autoPrice = parseFloat(selectedProduct.wh10_price);
+      else if (mode === 'wh25') autoPrice = parseFloat(selectedProduct.wh25_price);
+      if (isNaN(autoPrice) || Math.abs(entered - autoPrice) >= 0.001) {
+        setRadio('custom');
       }
     });
 
