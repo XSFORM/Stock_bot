@@ -150,6 +150,10 @@ def api_last_sale_price(product_id: int, client_id: Optional[int] = None):
     """Return the last sale unit_price for a product (optionally for a specific client)."""
     price = get_last_sale_price(int(product_id), int(client_id) if client_id else None)
     return JSONResponse({"product_id": product_id, "last_sale_price": price})
+
+
+@app.get("/api/stock")
+def api_stock(product_id: int, warehouse_id: str):
     """Return available qty for a product in a given warehouse."""
     qty = get_stock_qty(warehouse_id, product_id)
     return JSONResponse({"product_id": product_id, "warehouse_id": warehouse_id, "qty": qty})
