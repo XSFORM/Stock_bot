@@ -27,6 +27,10 @@ git show --stat <commit-sha>
 
 ---
 
+## 2026-03-02
+
+- Document nginx Basic Auth setup for securing the web UI (README + docs/nginx-basic-auth.conf)
+
 ## 2026-02-24
 
 - Clients: balance tracking, ⋯ action menu, and per-client history page ([#14](https://github.com/XSFORM/Stock_bot/pull/14))

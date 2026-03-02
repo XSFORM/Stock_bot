@@ -39,6 +39,81 @@ git log --merges --oneline --after="7 days ago" --format="%as  %s"
 git show --stat <commit-sha>
 ```
 
+## Безопасность: nginx Basic Auth
+
+По умолчанию веб-интерфейс доступен на публичном IP без авторизации.
+Рекомендуется закрыть его с помощью HTTP Basic Auth через nginx.
+
+### 1. Установите необходимые пакеты
+
+```bash
+sudo apt update
+sudo apt install -y nginx apache2-utils
+```
+
+### 2. Создайте файл паролей
+
+Замените `myuser` на желаемое имя пользователя:
+
+```bash
+sudo htpasswd -c /etc/nginx/.htpasswd myuser
+```
+
+Чтобы добавить ещё одного пользователя (без флага `-c`):
+
+```bash
+sudo htpasswd /etc/nginx/.htpasswd anotheruser
+```
+
+### 3. Настройте nginx
+
+Создайте конфигурационный файл, например `/etc/nginx/sites-available/stockweb`:
+
+```nginx
+server {
+    listen 80;
+    server_name YOUR_DOMAIN_OR_IP;
+
+    auth_basic "Stock Bot";
+    auth_basic_user_file /etc/nginx/.htpasswd;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+> Замените `YOUR_DOMAIN_OR_IP` на ваш домен или публичный IP-адрес.
+> Порт `5000` — стандартный для Flask; измените при необходимости.
+
+Готовый пример файла с комментариями: [`docs/nginx-basic-auth.conf`](docs/nginx-basic-auth.conf).
+
+### 4. Активируйте конфигурацию и перезапустите nginx
+
+```bash
+sudo ln -s /etc/nginx/sites-available/stockweb /etc/nginx/sites-enabled/
+sudo nginx -t          # проверка конфигурации
+sudo systemctl reload nginx
+```
+
+### 5. Рекомендация: HTTPS (Let's Encrypt)
+
+Basic Auth передаёт учётные данные в открытом виде при использовании HTTP.
+Настоятельно рекомендуется включить HTTPS с помощью Let's Encrypt:
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d YOUR_DOMAIN
+```
+
+После этого certbot автоматически добавит SSL-сертификат и настроит редирект с HTTP на HTTPS.
+
+---
+
 ## Установка на Ubuntu одной командой
 
 ```bash
