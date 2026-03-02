@@ -9,7 +9,7 @@
       <select class="form-select" name="warehouse">
         <option value="">All warehouses</option>
         {% for w in warehouses %}
-          <option value="{{ w }}" {% if selected_warehouse==w %}selected{% endif %}>{{ w }}</option>
+          <option value="{{ w }}" {% if selected_warehouse==w %}selected{% endif %}>{{ warehouse_labels[w] }}</option>
         {% endfor %}
       </select>
     </div>
@@ -21,6 +21,10 @@
 
     <div class="col-auto">
       <button class="btn btn-secondary">Filter</button>
+    </div>
+
+    <div class="col-auto">
+      <a class="btn btn-success" href="/stock/xlsx?warehouse={{ selected_warehouse }}&q={{ search_q }}">⬇ Download XLSX</a>
     </div>
   </form>
 
@@ -39,7 +43,7 @@
     <tbody>
       {% for r in rows %}
       <tr>
-        <td>{{ r.warehouse }}</td>
+        <td>{{ warehouse_labels.get(r.warehouse, r.warehouse) }}</td>
         <td>{{ r.brand }}</td>
         <td>{{ r.model }}</td>
         <td>{{ r.name }}</td>
