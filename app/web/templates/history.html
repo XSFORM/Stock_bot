@@ -40,6 +40,8 @@
         <td>
           {% if ev.type == 'RECEIVE' %}
           <span class="badge bg-success">RECEIVE</span>
+          {% elif ev.type == 'RETURN' %}
+          <span class="badge bg-warning text-dark">RETURN</span>
           {% else %}
           <span class="badge bg-primary">SALE</span>
           {% endif %}
@@ -51,6 +53,8 @@
         <td class="text-end">
           {% if ev.type == 'SALE' %}
           <span class="text-danger">-{{ "%.2f"|format(ev.qty) }}</span>
+          {% elif ev.type == 'RETURN' %}
+          <span class="text-warning">+{{ "%.2f"|format(ev.qty) }}</span>
           {% else %}
           {{ "%.2f"|format(ev.qty) }}
           {% endif %}

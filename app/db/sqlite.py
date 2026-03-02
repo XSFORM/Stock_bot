@@ -31,6 +31,7 @@ def init_db() -> None:
         _ensure_client_ledger_table(conn)
         _ensure_product_extra_columns(conn)
         _migrate_localtime_defaults(conn)
+        _ensure_return_tables(conn)
         for code, title in WAREHOUSES.items():
             conn.execute(
                 "INSERT OR IGNORE INTO warehouses(code, title) VALUES(?, ?)",
@@ -261,7 +262,7 @@ def add_client_adjustment(client_id: int, amount: float, note: str = "") -> tupl
 
 def get_client_balance(client_id: int) -> float:
     """Return client balance (positive = owes money, negative = advance).
-    balance = sum of SALE invoice totals - sum of ledger adjustments.
+    balance = sum of SALE invoice totals - sum of RETURN invoice totals - sum of ledger adjustments.
     """
     conn = _connect()
     try:
@@ -278,9 +279,18 @@ def get_client_balance(client_id: int) -> float:
             "SELECT COALESCE(SUM(amount), 0) AS total_paid FROM client_ledger WHERE client_id=?",
             (int(client_id),),
         ).fetchone()
+        return_row = conn.execute(
+            """
+            SELECT COALESCE(SUM(total), 0) AS total_returned
+            FROM return_invoices
+            WHERE client_id = ? AND status = 'DONE'
+            """,
+            (int(client_id),),
+        ).fetchone()
         debt = float(debt_row["total_debt"]) if debt_row else 0.0
         paid = float(paid_row["total_paid"]) if paid_row else 0.0
-        return round(debt - paid, 2)
+        returned = float(return_row["total_returned"]) if return_row else 0.0
+        return round(debt - paid - returned, 2)
     finally:
         conn.close()
 
@@ -307,9 +317,9 @@ def list_clients_with_balance(include_archived: bool = False) -> list[dict[str, 
 
 
 def get_client_history(client_id: int) -> list[dict[str, Any]]:
-    """Return combined history of SALE invoices and ledger adjustments for a client,
+    """Return combined history of SALE invoices, RETURN invoices, and ledger adjustments for a client,
     sorted by date ascending. Each entry has keys:
-    dt, kind ('INVOICE' | 'ADJUSTMENT'), ref, amount, note, view_url, download_url.
+    dt, kind ('INVOICE' | 'RETURN' | 'ADJUSTMENT'), ref, amount, note, view_url, download_url.
     Also includes a running balance_after field.
     """
     conn = _connect()
@@ -325,6 +335,20 @@ def get_client_history(client_id: int) -> list[dict[str, Any]]:
             JOIN carts c ON c.id = inv.cart_id
             WHERE c.client_id = ?
             ORDER BY inv.created_at
+            """,
+            (int(client_id),),
+        ).fetchall()
+
+        returns = conn.execute(
+            """
+            SELECT created_at AS dt,
+                   'RETURN' AS kind,
+                   id AS ref,
+                   total AS amount,
+                   note
+            FROM return_invoices
+            WHERE client_id = ? AND status = 'DONE'
+            ORDER BY created_at
             """,
             (int(client_id),),
         ).fetchall()
@@ -348,6 +372,8 @@ def get_client_history(client_id: int) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     for r in invoices:
         events.append(dict(r))
+    for r in returns:
+        events.append(dict(r))
     for r in adjustments:
         events.append(dict(r))
 
@@ -359,6 +385,10 @@ def get_client_history(client_id: int) -> list[dict[str, Any]]:
             running = round(running + float(ev["amount"]), 2)
             ev["view_url"] = f"/sale/xlsx/view?n={ev['ref']}"
             ev["download_url"] = f"/sale/xlsx?n={ev['ref']}"
+        elif ev["kind"] == "RETURN":
+            running = round(running - float(ev["amount"]), 2)
+            ev["view_url"] = f"/return/xlsx/view?n={ev['ref']}"
+            ev["download_url"] = f"/return/xlsx?n={ev['ref']}"
         else:
             running = round(running - float(ev["amount"]), 2)
             ev["view_url"] = ""
@@ -466,6 +496,45 @@ def _ensure_product_extra_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE products ADD COLUMN last_purchase_price REAL;")
     if "archived" not in existing:
         conn.execute("ALTER TABLE products ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;")
+    conn.commit()
+
+
+def _ensure_return_tables(conn: sqlite3.Connection) -> None:
+    """Create return_invoices and return_items tables if they do not exist (migration)."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS return_invoices (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          number INTEGER NOT NULL UNIQUE,
+          client_id INTEGER NOT NULL,
+          warehouse_code TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'OPEN',
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+          currency TEXT NOT NULL DEFAULT 'USD',
+          total REAL NOT NULL DEFAULT 0,
+          note TEXT NOT NULL DEFAULT '',
+          FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+          FOREIGN KEY (warehouse_code) REFERENCES warehouses(code)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS return_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_id INTEGER NOT NULL,
+          product_id INTEGER NOT NULL,
+          qty REAL NOT NULL,
+          unit_price REAL NOT NULL,
+          total REAL NOT NULL,
+          FOREIGN KEY (invoice_id) REFERENCES return_invoices(id) ON DELETE CASCADE,
+          FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_return_items_invoice ON return_items(invoice_id)"
+    )
     conn.commit()
 
 
@@ -1013,7 +1082,8 @@ def search_stock(warehouse: str, q: str, limit: int = 30) -> list[dict[str, Any]
               p.name,
               s.qty as qty_available,
               p.wh_price,
-              ROUND(p.wh_price * 1.10, 2) as wh10_price
+              ROUND(p.wh_price * 1.10, 2) as wh10_price,
+              ROUND(p.wh_price * 1.25, 2) as wh25_price
             FROM stock s
             JOIN products p ON p.id = s.product_id
             JOIN warehouses w ON w.code = s.warehouse_code
@@ -1223,8 +1293,8 @@ def cart_add_by_cart_id(
         return False, "QTY должно быть > 0"
 
     price_mode = price_mode.strip().lower()
-    if price_mode not in ("wh", "wh10", "custom"):
-        return False, "price_mode должен быть: wh / wh10 / custom"
+    if price_mode not in ("wh", "wh10", "wh25", "custom"):
+        return False, "price_mode должен быть: wh / wh10 / wh25 / custom"
 
     product = find_product(brand, model)
     if not product:
@@ -1235,6 +1305,8 @@ def cart_add_by_cart_id(
         unit = round(wh_price, 2)
     elif price_mode == "wh10":
         unit = round(wh_price * 1.10, 2)
+    elif price_mode == "wh25":
+        unit = round(wh_price * 1.25, 2)
     else:
         if custom_price is None:
             return False, "Для custom нужно указать custom_price"
@@ -2142,6 +2214,305 @@ def list_receive_invoices_done(limit: int = 200) -> list[dict[str, Any]]:
         conn.close()
 
 
+# ============================================================
+# Return invoices
+# ============================================================
+
+def return_invoice_get_open() -> Optional[dict[str, Any]]:
+    """Return the current OPEN return invoice or None."""
+    init_db()
+    conn = _connect()
+    try:
+        r = conn.execute(
+            """
+            SELECT ri.id, ri.number, ri.client_id, ri.warehouse_code, ri.status,
+                   ri.created_at, ri.note, cl.name as client_name
+            FROM return_invoices ri
+            JOIN clients cl ON cl.id = ri.client_id
+            WHERE ri.status = 'OPEN'
+            ORDER BY ri.id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        return dict(r) if r else None
+    finally:
+        conn.close()
+
+
+def return_invoice_start(client_id: int, warehouse_code: str, note: str = "") -> Tuple[bool, str, Optional[int]]:
+    """Create a new OPEN return invoice. Only one OPEN invoice allowed at a time."""
+    init_db()
+    conn = _connect()
+    try:
+        existing = conn.execute(
+            "SELECT id FROM return_invoices WHERE status='OPEN' LIMIT 1"
+        ).fetchone()
+        if existing:
+            return False, "Уже есть открытый возврат. Завершите или отмените его.", None
+
+        last = conn.execute("SELECT COALESCE(MAX(number), 0) as n FROM return_invoices").fetchone()
+        num = int(last["n"]) + 1
+
+        cur = conn.execute(
+            "INSERT INTO return_invoices(number, client_id, warehouse_code, note) VALUES(?, ?, ?, ?)",
+            (num, int(client_id), warehouse_code.strip().upper(), (note or "").strip()),
+        )
+        conn.commit()
+        return True, "", int(cur.lastrowid)
+    except Exception as e:
+        return False, str(e), None
+    finally:
+        conn.close()
+
+
+def return_invoice_cancel(invoice_id: int) -> Tuple[bool, str]:
+    """Cancel an OPEN return invoice."""
+    init_db()
+    conn = _connect()
+    try:
+        r = conn.execute(
+            "SELECT status FROM return_invoices WHERE id=?", (int(invoice_id),)
+        ).fetchone()
+        if not r:
+            return False, "Возврат не найден"
+        if r["status"] != "OPEN":
+            return False, f"Нельзя отменить возврат со статусом {r['status']}"
+        conn.execute(
+            "UPDATE return_invoices SET status='CANCELLED' WHERE id=?", (int(invoice_id),)
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def return_item_add(invoice_id: int, product_id: int, qty: float, unit_price: float) -> Tuple[bool, str]:
+    """Add a line item to an OPEN return invoice."""
+    init_db()
+    qty = float(qty)
+    unit_price = float(unit_price)
+    if qty <= 0:
+        return False, "Количество должно быть > 0"
+    if unit_price < 0:
+        return False, "Цена не может быть отрицательной"
+
+    conn = _connect()
+    try:
+        r = conn.execute(
+            "SELECT status FROM return_invoices WHERE id=?", (int(invoice_id),)
+        ).fetchone()
+        if not r:
+            return False, "Возврат не найден"
+        if r["status"] != "OPEN":
+            return False, "Возврат уже закрыт"
+
+        total = round(qty * unit_price, 2)
+        conn.execute(
+            "INSERT INTO return_items(invoice_id, product_id, qty, unit_price, total) VALUES(?, ?, ?, ?, ?)",
+            (int(invoice_id), int(product_id), qty, unit_price, total),
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def return_item_update(item_id: int, qty: float, unit_price: float) -> Tuple[bool, str]:
+    """Update qty and price of a return item."""
+    init_db()
+    qty = float(qty)
+    unit_price = float(unit_price)
+    if qty <= 0:
+        return False, "Количество должно быть > 0"
+    if unit_price < 0:
+        return False, "Цена не может быть отрицательной"
+
+    conn = _connect()
+    try:
+        total = round(qty * unit_price, 2)
+        n = conn.execute(
+            "UPDATE return_items SET qty=?, unit_price=?, total=? WHERE id=?",
+            (qty, unit_price, total, int(item_id)),
+        ).rowcount
+        conn.commit()
+        if n == 0:
+            return False, "Позиция не найдена"
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def return_item_delete(item_id: int) -> Tuple[bool, str]:
+    """Delete a return item."""
+    init_db()
+    conn = _connect()
+    try:
+        n = conn.execute("DELETE FROM return_items WHERE id=?", (int(item_id),)).rowcount
+        conn.commit()
+        if n == 0:
+            return False, "Позиция не найдена"
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def return_invoice_finish(invoice_id: int) -> Tuple[bool, str]:
+    """Finish a return invoice: add stock to warehouse and set status=DONE."""
+    init_db()
+    conn = _connect()
+    try:
+        inv = conn.execute(
+            "SELECT id, client_id, warehouse_code, status FROM return_invoices WHERE id=?",
+            (int(invoice_id),),
+        ).fetchone()
+        if not inv:
+            return False, "Возврат не найден"
+        if inv["status"] != "OPEN":
+            return False, f"Возврат уже {inv['status']}"
+
+        items = conn.execute(
+            """
+            SELECT ri.id, ri.product_id, ri.qty, ri.unit_price, ri.total
+            FROM return_items ri
+            WHERE ri.invoice_id = ?
+            """,
+            (int(invoice_id),),
+        ).fetchall()
+
+        if not items:
+            return False, "Нет позиций в возврате"
+
+        warehouse = inv["warehouse_code"]
+        total_sum = round(sum(float(it["total"]) for it in items), 2)
+
+        # Add stock back to warehouse
+        for it in items:
+            pid = int(it["product_id"])
+            qty = float(it["qty"])
+            current = _get_stock_qty(conn, warehouse, pid)
+            _set_stock_qty(conn, warehouse, pid, current + qty)
+
+        conn.execute(
+            "UPDATE return_invoices SET status='DONE', total=? WHERE id=?",
+            (total_sum, int(invoice_id)),
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def return_invoice_get(invoice_id: int) -> Optional[dict[str, Any]]:
+    """Return a return invoice dict by id."""
+    init_db()
+    conn = _connect()
+    try:
+        r = conn.execute(
+            """
+            SELECT ri.id, ri.number, ri.created_at, ri.currency, ri.total,
+                   ri.warehouse_code, ri.note,
+                   cl.name as client
+            FROM return_invoices ri
+            JOIN clients cl ON cl.id = ri.client_id
+            WHERE ri.id = ?
+            """,
+            (int(invoice_id),),
+        ).fetchone()
+        return dict(r) if r else None
+    finally:
+        conn.close()
+
+
+def return_invoice_get_items(invoice_id: int) -> list[dict[str, Any]]:
+    """Return line items for a return invoice."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT p.brand, p.model, p.name, ri.qty, ri.unit_price, ri.total, ri.id
+            FROM return_items ri
+            JOIN products p ON p.id = ri.product_id
+            WHERE ri.invoice_id = ?
+            ORDER BY ri.id
+            """,
+            (int(invoice_id),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def list_return_invoices_done(limit: int = 200) -> list[dict[str, Any]]:
+    """Return list of DONE return invoices (most recent first)."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT ri.id, ri.number, ri.created_at, ri.total, ri.currency,
+                   ri.warehouse_code, cl.name as client
+            FROM return_invoices ri
+            JOIN clients cl ON cl.id = ri.client_id
+            WHERE ri.status = 'DONE'
+            ORDER BY ri.number DESC
+            LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_last_sale_price(product_id: int, client_id: Optional[int] = None) -> Optional[float]:
+    """Return the last sale unit_price for a product, optionally filtered by client."""
+    init_db()
+    conn = _connect()
+    try:
+        if client_id:
+            r = conn.execute(
+                """
+                SELECT ci.unit_price
+                FROM cart_items ci
+                JOIN carts c ON c.id = ci.cart_id
+                JOIN invoices inv ON inv.cart_id = c.id
+                WHERE ci.product_id = ? AND c.client_id = ?
+                ORDER BY inv.created_at DESC
+                LIMIT 1
+                """,
+                (int(product_id), int(client_id)),
+            ).fetchone()
+        else:
+            r = None
+        if not r:
+            r = conn.execute(
+                """
+                SELECT ci.unit_price
+                FROM cart_items ci
+                JOIN carts c ON c.id = ci.cart_id
+                JOIN invoices inv ON inv.cart_id = c.id
+                WHERE ci.product_id = ?
+                ORDER BY inv.created_at DESC
+                LIMIT 1
+                """,
+                (int(product_id),),
+            ).fetchone()
+        return float(r["unit_price"]) if r else None
+    finally:
+        conn.close()
+
+
 def list_history(q: str = "", limit: int = 500) -> list[dict[str, Any]]:
     """Return merged RECEIVE and SALE line items sorted by datetime desc.
 
@@ -2248,6 +2619,48 @@ def list_history(q: str = "", limit: int = 500) -> list[dict[str, Any]]:
             inv_number = row["ref"]
             row["view_url"] = f"/sale/xlsx/view?n={inv_number}"
             row["download_url"] = f"/sale/xlsx?n={inv_number}"
+            events.append(row)
+
+        # ---- RETURN events ----
+        return_blob = (
+            "lower(coalesce(cl.name,'') || ' ' || coalesce(p.brand,'') || ' '"
+            " || coalesce(p.model,'') || ' ' || coalesce(p.name,'') || ' '"
+            " || coalesce(cast(inv.id as text),'') || ' '"
+            " || coalesce(inv.warehouse_code,''))"
+        )
+        return_filter = "".join(
+            f" AND {return_blob} LIKE ?" for _ in tokens
+        )
+
+        return_rows = conn.execute(
+            f"""
+            SELECT
+                inv.created_at  AS dt,
+                'RETURN'        AS type,
+                inv.id          AS ref,
+                cl.name         AS counterparty,
+                inv.warehouse_code AS warehouse,
+                p.brand         AS brand,
+                p.model         AS model,
+                p.name          AS name,
+                ri.qty          AS qty,
+                ri.unit_price   AS unit_price,
+                ri.total        AS total
+            FROM return_invoices inv
+            JOIN return_items ri ON ri.invoice_id = inv.id
+            JOIN products p ON p.id = ri.product_id
+            JOIN clients cl ON cl.id = inv.client_id
+            WHERE inv.status = 'DONE'
+            {return_filter}
+            """,
+            token_params,
+        ).fetchall()
+
+        for r in return_rows:
+            row = dict(r)
+            inv_id = row["ref"]
+            row["view_url"] = f"/return/xlsx/view?n={inv_id}"
+            row["download_url"] = f"/return/xlsx?n={inv_id}"
             events.append(row)
 
         # Sort by dt descending (ISO datetime strings compare correctly).
