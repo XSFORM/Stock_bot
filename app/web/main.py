@@ -75,10 +75,23 @@ from app.db.sqlite import (
     get_stock_qty,
     # archive
     set_product_archived,
+    # return invoices
+    return_invoice_get_open,
+    return_invoice_start,
+    return_invoice_cancel,
+    return_item_add,
+    return_item_update,
+    return_item_delete,
+    return_invoice_finish,
+    return_invoice_get,
+    return_invoice_get_items,
+    list_return_invoices_done,
+    get_last_sale_price,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xlsx_bytes
 from app.services.receive_xlsx import generate_receive_xlsx_bytes
+from app.services.return_xlsx import generate_return_xlsx_bytes
 from app.services.backup import make_backup
 
 
@@ -130,6 +143,13 @@ def api_products_search(q: str = "", limit: int = 30):
     """Search all products catalog by brand/model/name. Returns up to 30 items."""
     items = search_products(q, limit=min(int(limit), 30))
     return JSONResponse({"results": items})
+
+
+@app.get("/api/last-sale-price")
+def api_last_sale_price(product_id: int, client_id: Optional[int] = None):
+    """Return the last sale unit_price for a product (optionally for a specific client)."""
+    price = get_last_sale_price(int(product_id), int(client_id) if client_id else None)
+    return JSONResponse({"product_id": product_id, "last_sale_price": price})
 
 
 @app.get("/api/stock")
@@ -505,7 +525,7 @@ def sale_add(
     brand: str = Form(...),
     model: str = Form(...),
     qty: float = Form(...),
-    price_mode: str = Form("wh10"),
+    price_mode: str = Form("wh25"),
     custom_price: Optional[float] = Form(None),
 ):
     ok, err = cart_add_by_cart_id(int(cart_id), brand, model, float(qty), price_mode, custom_price)
@@ -650,12 +670,14 @@ def brands_add(name: str = Form(...)):
 def invoices_get(request: Request, tab: str = "sale"):
     sale_invoices = list_sale_invoices_done()
     receive_invoices = list_receive_invoices_done()
+    return_invoices = list_return_invoices_done()
     return _render(
         request,
         "invoices.html",
         {
             "sale_invoices": sale_invoices,
             "receive_invoices": receive_invoices,
+            "return_invoices": return_invoices,
             "active_tab": tab,
         },
     )
@@ -666,3 +688,118 @@ def invoices_get(request: Request, tab: str = "sale"):
 def history_get(request: Request, q: str = ""):
     events = list_history(q=q, limit=500)
     return _render(request, "history.html", {"events": events, "search_q": q})
+
+
+# ---------------- return ----------------
+
+@app.get("/return", response_class=HTMLResponse)
+def return_get(request: Request, msg: str = ""):
+    clients = list_clients()
+    open_inv = return_invoice_get_open()
+    inv_items: list = []
+    inv_total: float = 0.0
+    inv_qty: float = 0.0
+    if open_inv:
+        inv_items = return_invoice_get_items(open_inv["id"])
+        inv_total = sum(float(i["total"]) for i in inv_items)
+        inv_qty = sum(float(i["qty"]) for i in inv_items)
+    return _render(
+        request,
+        "return.html",
+        {
+            "message": msg,
+            "clients": clients,
+            "open_inv": open_inv,
+            "inv_items": inv_items,
+            "inv_total": inv_total,
+            "inv_qty": inv_qty,
+        },
+    )
+
+
+@app.post("/return/start")
+def return_start(
+    client_id: int = Form(...),
+    warehouse_code: str = Form(...),
+    note: str = Form(""),
+):
+    ok, err, inv_id = return_invoice_start(int(client_id), warehouse_code, note)
+    if not ok:
+        return RedirectResponse(url=f"/return?msg={err}", status_code=303)
+    return RedirectResponse(url="/return?msg=return_started", status_code=303)
+
+
+@app.post("/return/cancel")
+def return_cancel(invoice_id: int = Form(...)):
+    ok, err = return_invoice_cancel(int(invoice_id))
+    msg = "return_cancelled" if ok else f"cancel_error:{err}"
+    return RedirectResponse(url=f"/return?msg={msg}", status_code=303)
+
+
+@app.post("/return/item/add")
+def return_item_add_post(
+    invoice_id: int = Form(...),
+    product_id: int = Form(...),
+    qty: float = Form(...),
+    unit_price: float = Form(...),
+):
+    ok, err = return_item_add(int(invoice_id), int(product_id), float(qty), float(unit_price))
+    msg = "item_added" if ok else f"add_error:{err}"
+    return RedirectResponse(url=f"/return?msg={msg}", status_code=303)
+
+
+@app.post("/return/item/update")
+def return_item_update_post(
+    item_id: int = Form(...),
+    qty: float = Form(...),
+    unit_price: float = Form(...),
+):
+    ok, err = return_item_update(int(item_id), float(qty), float(unit_price))
+    msg = "item_updated" if ok else f"update_error:{err}"
+    return RedirectResponse(url=f"/return?msg={msg}", status_code=303)
+
+
+@app.post("/return/item/delete")
+def return_item_delete_post(item_id: int = Form(...)):
+    ok, err = return_item_delete(int(item_id))
+    msg = "item_removed" if ok else f"delete_error:{err}"
+    return RedirectResponse(url=f"/return?msg={msg}", status_code=303)
+
+
+@app.post("/return/finish")
+def return_finish(invoice_id: int = Form(...)):
+    ok, err = return_invoice_finish(int(invoice_id))
+    if not ok:
+        return RedirectResponse(url=f"/return?msg=finish_error:{err}", status_code=303)
+    inv = return_invoice_get(int(invoice_id))
+    make_backup()
+    return RedirectResponse(url=f"/return/xlsx/view?n={invoice_id}", status_code=303)
+
+
+@app.get("/return/xlsx")
+def return_xlsx(n: int):
+    inv = return_invoice_get(int(n))
+    if not inv:
+        return RedirectResponse(url="/return?msg=invoice_not_found", status_code=303)
+    items = return_invoice_get_items(int(n))
+    data = generate_return_xlsx_bytes(inv, items)
+    filename = f"return_{inv['number']:06d}.xlsx"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/return/xlsx/view", response_class=HTMLResponse)
+def return_xlsx_view(request: Request, n: int):
+    inv = return_invoice_get(int(n))
+    if not inv:
+        return RedirectResponse(url="/return?msg=invoice_not_found", status_code=303)
+    items = return_invoice_get_items(int(n))
+    inv_total = sum(float(i["total"]) for i in items)
+    return _render(
+        request,
+        "return_xlsx_view.html",
+        {"invoice": inv, "items": items, "inv_total": inv_total},
+    )

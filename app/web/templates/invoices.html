@@ -5,16 +5,20 @@
 
   <ul class="nav nav-tabs mb-3" id="invoiceTabs">
     <li class="nav-item">
-      <a class="nav-link {% if active_tab != 'receive' %}active{% endif %}"
+      <a class="nav-link {% if active_tab == 'sale' %}active{% endif %}"
          href="/invoices?tab=sale">Sale invoices (DONE)</a>
     </li>
     <li class="nav-item">
       <a class="nav-link {% if active_tab == 'receive' %}active{% endif %}"
          href="/invoices?tab=receive">Receive invoices (DONE)</a>
     </li>
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'return' %}active{% endif %}"
+         href="/invoices?tab=return">Return invoices (DONE)</a>
+    </li>
   </ul>
 
-  {% if active_tab != 'receive' %}
+  {% if active_tab == 'sale' %}
   {# ---- Sale tab ---- #}
   <table class="table table-sm table-striped">
     <thead class="table-dark">
@@ -43,7 +47,7 @@
       {% endfor %}
     </tbody>
   </table>
-  {% else %}
+  {% elif active_tab == 'receive' %}
   {# ---- Receive tab ---- #}
   <table class="table table-sm table-striped">
     <thead class="table-dark">
@@ -71,6 +75,37 @@
       </tr>
       {% else %}
       <tr><td colspan="6" class="text-muted text-center">No completed receive invoices.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% elif active_tab == 'return' %}
+  {# ---- Return tab ---- #}
+  <table class="table table-sm table-striped">
+    <thead class="table-dark">
+      <tr>
+        <th>Return #</th>
+        <th>Date/Time</th>
+        <th>Client</th>
+        <th>Warehouse</th>
+        <th class="text-end">Total</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for inv in return_invoices %}
+      <tr>
+        <td>{{ inv.number }}</td>
+        <td>{{ inv.created_at }}</td>
+        <td>{{ inv.client or '—' }}</td>
+        <td>{{ inv.warehouse_code or '—' }}</td>
+        <td class="text-end">{{ "%.2f"|format(inv.total) }} {{ inv.currency }}</td>
+        <td>
+          <a class="btn btn-sm btn-outline-primary" href="/return/xlsx/view?n={{ inv.id }}" target="_blank">View XLSX</a>
+          <a class="btn btn-sm btn-outline-warning" href="/return/xlsx?n={{ inv.id }}">Download XLSX</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="text-muted text-center">No completed return invoices.</td></tr>
       {% endfor %}
     </tbody>
   </table>

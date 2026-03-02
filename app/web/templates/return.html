@@ -17,72 +17,80 @@
 </style>
 
 <div class="bg-white p-3 rounded shadow-sm">
-  <h4 class="mb-3">Sale <small class="text-muted fs-6">from 1416_SHOP</small></h4>
+  <h4 class="mb-3">Return <small class="text-muted fs-6">from client to warehouse</small></h4>
   {% if message %}<div class="alert alert-info" style="white-space: pre-wrap;">{{ message }}</div>{% endif %}
 
   {# ── ERP Header ── #}
   <div class="erp-header mb-3">
     <div class="row g-0">
-      <div class="col-md-3 pe-3">
-        <div class="erp-label">Invoice #</div>
+      <div class="col-md-2 pe-3">
+        <div class="erp-label">Return #</div>
         <div class="erp-value">
-          {% if open_cart %}{{ open_cart.cart_id }}{% else %}&mdash;{% endif %}
+          {% if open_inv %}{{ open_inv.id }}{% else %}&mdash;{% endif %}
         </div>
       </div>
       <div class="col-md-3 pe-3 ps-3">
         <div class="erp-label">Date / Time</div>
-        <div class="erp-value" id="erp-datetime">
-          {% if open_cart and open_cart.created_at and open_cart.created_at | length >= 16 %}
-            {{ open_cart.created_at[:16] | replace("T", " ") }}
+        <div class="erp-value">
+          {% if open_inv and open_inv.created_at and open_inv.created_at | length >= 16 %}
+            {{ open_inv.created_at[:16] | replace("T", " ") }}
           {% else %}
             &mdash;
           {% endif %}
         </div>
       </div>
-      <div class="col-md-6 ps-3">
+      <div class="col-md-3 pe-3 ps-3">
         <div class="erp-label">Client</div>
         <div class="erp-value">
-          {% if open_cart %}
-            <span id="client-display">
-              {{ open_cart.client_name }}
-              <button class="btn btn-outline-secondary btn-sm ms-2 py-0" type="button" id="client-edit-btn">
-                &#9998; Edit
-              </button>
-            </span>
-            <form id="client-edit-form" method="post" action="/sale/client/update"
-              class="d-flex gap-2 align-items-center mt-1 hidden">
-              <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
-              <select class="form-select form-select-sm" name="client_id" required style="max-width:260px">
-                {% for c in clients %}
-                  <option value="{{ c.id }}"{% if c.id == open_cart.client_id %} selected{% endif %}>
-                    {{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}
-                  </option>
-                {% endfor %}
-              </select>
-              <button class="btn btn-sm btn-primary">Save</button>
-              <button class="btn btn-sm btn-outline-secondary" type="button" id="client-edit-cancel">Cancel</button>
-            </form>
-          {% else %}
-            <form method="post" action="/sale/start" class="d-flex gap-2 align-items-center mt-1">
-              <select class="form-select form-select-sm" name="client_id" required style="max-width:260px">
-                <option value="" selected disabled>Select client…</option>
-                {% for c in clients %}
-                  <option value="{{ c.id }}">{{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}</option>
-                {% endfor %}
-              </select>
-              <button class="btn btn-sm btn-secondary">Start</button>
-              <a href="/clients" class="btn btn-sm btn-outline-secondary">+ Client</a>
-            </form>
-          {% endif %}
+          {% if open_inv %}{{ open_inv.client_name }}{% else %}&mdash;{% endif %}
+        </div>
+      </div>
+      <div class="col-md-4 ps-3">
+        <div class="erp-label">Warehouse</div>
+        <div class="erp-value">
+          {% if open_inv %}{{ warehouse_labels.get(open_inv.warehouse_code, open_inv.warehouse_code) }}{% else %}&mdash;{% endif %}
         </div>
       </div>
     </div>
   </div>
 
-  {% if open_cart %}
+  {% if not open_inv %}
+  {# ── Start return form ── #}
+  <div class="card mb-3">
+    <div class="card-header py-2 fw-semibold">Start New Return</div>
+    <div class="card-body">
+      <form method="post" action="/return/start" class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Client</label>
+          <select class="form-select" name="client_id" required>
+            <option value="" selected disabled>Select client…</option>
+            {% for c in clients %}
+              <option value="{{ c.id }}">{{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Return to warehouse</label>
+          <select class="form-select" name="warehouse_code" required>
+            {% for code in warehouses %}
+              <option value="{{ code }}">{{ warehouse_labels.get(code, code) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Note (optional)</label>
+          <input type="text" class="form-control" name="note" placeholder="Reason for return…">
+        </div>
+        <div class="col-12">
+          <button class="btn btn-warning">Start Return</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% else %}
   {# ── Add item + Items table ── #}
   <div class="card mb-3">
-    <div class="card-header py-2 fw-semibold">Line Items</div>
+    <div class="card-header py-2 fw-semibold">Return Items</div>
     <div class="card-body p-0">
       <table class="table table-sm table-bordered mb-0 items-table">
         <thead class="table-light">
@@ -98,13 +106,11 @@
         </thead>
         <tbody>
           {# ── Add item row ── #}
-          <tr class="table-primary">
+          <tr class="table-warning">
             <td colspan="7">
-              <form method="post" action="/sale/add" id="add-item-form" class="d-flex flex-wrap gap-2 align-items-end p-1">
-                <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
-                <input type="hidden" name="brand" id="add-brand">
-                <input type="hidden" name="model" id="add-model">
-                <input type="hidden" name="price_mode" id="add-price-mode" value="wh25">
+              <form method="post" action="/return/item/add" id="add-item-form" class="d-flex flex-wrap gap-2 align-items-end p-1">
+                <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
+                <input type="hidden" name="product_id" id="add-product-id">
                 <div class="search-wrap" style="flex:1;min-width:220px">
                   <label class="form-label form-label-sm mb-1">Search product (brand/model/name)</label>
                   <input type="text" class="form-control form-control-sm" id="product-search" autocomplete="off"
@@ -117,24 +123,24 @@
                 </div>
                 <div>
                   <label class="form-label form-label-sm mb-1">Unit price</label>
-                  <input class="form-control form-control-sm" name="custom_price" id="add-custom-price" type="number" step="0.01" style="width:100px" placeholder="auto">
+                  <input class="form-control form-control-sm" name="unit_price" id="add-unit-price" type="number" step="0.01" min="0" style="width:100px" placeholder="0.00" required>
                 </div>
                 <div class="d-flex align-items-end">
-                  <button class="btn btn-primary btn-sm">Add</button>
+                  <button class="btn btn-warning btn-sm">Add</button>
                 </div>
               </form>
             </td>
           </tr>
 
           {# ── Existing items ── #}
-          {% if cart_items %}
-            {% for item in cart_items %}
+          {% if inv_items %}
+            {% for item in inv_items %}
             <tr>
               <td class="text-center align-middle">{{ loop.index }}</td>
               <td class="align-middle">{{ item.brand }} {{ item.model }}</td>
               <td class="align-middle">{{ item.name }}</td>
               <td class="edit-inline">
-                <form method="post" action="/sale/item/update" class="d-flex gap-1 align-items-center">
+                <form method="post" action="/return/item/update" class="d-flex gap-1 align-items-center">
                   <input type="hidden" name="item_id" value="{{ item.id }}">
                   <input type="number" name="qty" value="{{ item.qty | int }}" min="1" step="1"
                     class="form-control form-control-sm text-end" style="width:60px" required>
@@ -143,7 +149,7 @@
                 </form>
               </td>
               <td class="edit-inline">
-                <form method="post" action="/sale/item/update" class="d-flex gap-1 align-items-center">
+                <form method="post" action="/return/item/update" class="d-flex gap-1 align-items-center">
                   <input type="hidden" name="item_id" value="{{ item.id }}">
                   <input type="hidden" name="qty" value="{{ item.qty | int }}">
                   <input type="number" name="unit_price" value="{{ item.unit_price }}" min="0" step="0.01"
@@ -153,7 +159,7 @@
               </td>
               <td class="text-end align-middle">{{ "%.2f"|format(item.total) }}</td>
               <td class="text-center align-middle">
-                <form method="post" action="/sale/item/delete"
+                <form method="post" action="/return/item/delete"
                   onsubmit="return confirm('Remove this item?')">
                   <input type="hidden" name="item_id" value="{{ item.id }}">
                   <button class="btn btn-outline-danger btn-sm py-0">Remove</button>
@@ -162,9 +168,9 @@
             </tr>
             {% endfor %}
             <tr class="total-row">
-              <td colspan="3" class="text-end">Items qty: {{ cart_qty | int }}</td>
+              <td colspan="3" class="text-end">Items qty: {{ inv_qty | int }}</td>
               <td colspan="2" class="text-end">Total:</td>
-              <td class="text-end">{{ "%.2f"|format(cart_total) }}</td>
+              <td class="text-end">{{ "%.2f"|format(inv_total) }}</td>
               <td></td>
             </tr>
           {% else %}
@@ -179,36 +185,30 @@
 
   {# ── Actions ── #}
   <div class="d-flex gap-2">
-    <form method="post" action="/sale/cancel"
-      onsubmit="return confirm('Cancel this invoice? All items will be removed and the invoice deleted.')">
-      <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
-      <button class="btn btn-outline-danger btn-sm">&#10005; Cancel invoice</button>
+    <form method="post" action="/return/cancel"
+      onsubmit="return confirm('Cancel this return? All items will be removed.')">
+      <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
+      <button class="btn btn-outline-danger btn-sm">&#10005; Cancel return</button>
     </form>
-    <form method="post" action="/sale/show">
-      <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
-      <button class="btn btn-outline-secondary btn-sm">&#8635; Refresh</button>
-    </form>
-    <form method="post" action="/sale/finish">
-      <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
-      <button class="btn btn-success btn-sm" {% if not cart_items %}disabled title="Add items first"{% endif %}>
-        &#10003; Finish (PDF + Backup)
+    <form method="post" action="/return/finish">
+      <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
+      <button class="btn btn-warning btn-sm" {% if not inv_items %}disabled title="Add items first"{% endif %}>
+        &#10003; Finish Return
       </button>
     </form>
   </div>
 
   <script>
   (function () {
-    const searchInput = document.getElementById('product-search');
-    const suggestions = document.getElementById('product-suggestions');
-    const brandInput  = document.getElementById('add-brand');
-    const modelInput  = document.getElementById('add-model');
-    const qtyInput    = document.getElementById('add-qty');
-    const priceMode   = document.getElementById('add-price-mode');
-    const customPrice = document.getElementById('add-custom-price');
-    const form        = document.getElementById('add-item-form');
+    const searchInput  = document.getElementById('product-search');
+    const suggestions  = document.getElementById('product-suggestions');
+    const productIdInput = document.getElementById('add-product-id');
+    const unitPriceInput = document.getElementById('add-unit-price');
+    const form         = document.getElementById('add-item-form');
+    const clientId     = {{ open_inv.client_id }};
 
-    let selectedProduct = null;
     let debounceTimer;
+    let selectedProductId = null;
 
     searchInput.addEventListener('input', function () {
       clearTimeout(debounceTimer);
@@ -226,7 +226,7 @@
     });
 
     function fetchSuggestions(q) {
-      fetch('/api/stock-search?warehouse=1416_SHOP&q=' + encodeURIComponent(q))
+      fetch('/api/products-search?q=' + encodeURIComponent(q) + '&limit=30')
         .then(r => r.json())
         .then(data => renderSuggestions(data.results || []))
         .catch(() => hideSuggestions());
@@ -238,7 +238,7 @@
       items.forEach(item => {
         const div = document.createElement('div');
         div.className = 'suggestion-item';
-        div.textContent = item.brand + ' ' + item.model + ' - ' + item.name + ' (' + item.qty_available + ' available)';
+        div.textContent = item.brand + ' ' + item.model + ' - ' + item.name;
         div.addEventListener('click', () => selectProduct(item));
         suggestions.appendChild(div);
       });
@@ -246,42 +246,29 @@
     }
 
     function selectProduct(item) {
-      selectedProduct = item;
-      searchInput.value = item.brand + ' ' + item.model + ' - ' + item.name + ' (' + item.qty_available + ' available)';
-      brandInput.value  = item.brand;
-      modelInput.value  = item.model;
-      qtyInput.max      = item.qty_available;
-      customPrice.value = parseFloat(item.wh25_price).toFixed(2);
-      priceMode.value   = 'wh25';
+      selectedProductId = item.product_id;
+      searchInput.value = item.brand + ' ' + item.model + ' - ' + item.name;
+      productIdInput.value = item.product_id;
       hideSuggestions();
+      // Fetch last sale price for this product and client
+      fetch('/api/last-sale-price?product_id=' + item.product_id + '&client_id=' + clientId)
+        .then(r => r.json())
+        .then(data => {
+          if (data.last_sale_price !== null && data.last_sale_price !== undefined) {
+            unitPriceInput.value = parseFloat(data.last_sale_price).toFixed(2);
+          } else {
+            unitPriceInput.value = '';
+          }
+        })
+        .catch(() => {});
     }
 
     function hideSuggestions() {
       suggestions.style.display = 'none';
     }
 
-    // When user edits price manually, switch to custom mode
-    customPrice.addEventListener('input', function () {
-      if (selectedProduct) {
-        const entered = parseFloat(this.value);
-        if (isNaN(entered)) { priceMode.value = 'custom'; return; }
-        const wh25 = parseFloat(selectedProduct.wh25_price);
-        const wh10 = parseFloat(selectedProduct.wh10_price);
-        const wh   = parseFloat(selectedProduct.wh_price);
-        if (!isNaN(wh25) && Math.abs(entered - wh25) < 0.001) {
-          priceMode.value = 'wh25';
-        } else if (!isNaN(wh10) && Math.abs(entered - wh10) < 0.001) {
-          priceMode.value = 'wh10';
-        } else if (!isNaN(wh) && Math.abs(entered - wh) < 0.001) {
-          priceMode.value = 'wh';
-        } else {
-          priceMode.value = 'custom';
-        }
-      }
-    });
-
     form.addEventListener('submit', function (e) {
-      if (!brandInput.value || !modelInput.value) {
+      if (!productIdInput.value) {
         e.preventDefault();
         searchInput.setCustomValidity('Please select a product from the list.');
         searchInput.reportValidity();
@@ -289,26 +276,6 @@
       }
       searchInput.setCustomValidity('');
     });
-  })();
-
-  // Client edit toggle
-  (function () {
-    const editBtn = document.getElementById('client-edit-btn');
-    const cancelBtn = document.getElementById('client-edit-cancel');
-    const display = document.getElementById('client-display');
-    const editForm = document.getElementById('client-edit-form');
-    if (editBtn) {
-      editBtn.addEventListener('click', function () {
-        display.classList.add('hidden');
-        editForm.classList.remove('hidden');
-      });
-    }
-    if (cancelBtn) {
-      cancelBtn.addEventListener('click', function () {
-        editForm.classList.add('hidden');
-        display.classList.remove('hidden');
-      });
-    }
   })();
   </script>
   {% endif %}

@@ -121,6 +121,34 @@ CREATE TABLE IF NOT EXISTS receive_items (
 
 CREATE INDEX IF NOT EXISTS idx_receive_items_invoice ON receive_items(invoice_id);
 
+-- Return invoices
+CREATE TABLE IF NOT EXISTS return_invoices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  number INTEGER NOT NULL UNIQUE,
+  client_id INTEGER NOT NULL,
+  warehouse_code TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'OPEN',  -- OPEN / DONE / CANCELLED
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  currency TEXT NOT NULL DEFAULT 'USD',
+  total REAL NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (warehouse_code) REFERENCES warehouses(code)
+);
+
+CREATE TABLE IF NOT EXISTS return_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_id INTEGER NOT NULL,
+  product_id INTEGER NOT NULL,
+  qty REAL NOT NULL,
+  unit_price REAL NOT NULL,
+  total REAL NOT NULL,
+  FOREIGN KEY (invoice_id) REFERENCES return_invoices(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_return_items_invoice ON return_items(invoice_id);
+
 -- Client ledger: tracks debt adjustments (payments / write-offs)
 CREATE TABLE IF NOT EXISTS client_ledger (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

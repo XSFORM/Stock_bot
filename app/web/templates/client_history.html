@@ -38,16 +38,22 @@
         <td>
           {% if ev.kind == 'INVOICE' %}
             <span class="badge bg-primary">INVOICE</span>
+          {% elif ev.kind == 'RETURN' %}
+            <span class="badge bg-warning text-dark">RETURN</span>
           {% else %}
             <span class="badge bg-success">ADJUSTMENT</span>
           {% endif %}
         </td>
         <td>
-          {% if ev.kind == 'INVOICE' %}#{{ ev.ref }}{% else %}—{% endif %}
+          {% if ev.kind == 'INVOICE' %}#{{ ev.ref }}
+          {% elif ev.kind == 'RETURN' %}RET-{{ ev.ref }}
+          {% else %}—{% endif %}
         </td>
         <td class="text-end">
           {% if ev.kind == 'INVOICE' %}
             <span class="text-danger">+{{ "%.2f"|format(ev.amount) }}</span>
+          {% elif ev.kind == 'RETURN' %}
+            <span class="text-warning">-{{ "%.2f"|format(ev.amount) }}</span>
           {% else %}
             <span class="text-success">-{{ "%.2f"|format(ev.amount) }}</span>
           {% endif %}
@@ -66,6 +72,9 @@
           {% if ev.kind == 'INVOICE' %}
             <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank">View</a>
             <a class="btn btn-sm btn-outline-success" href="{{ ev.download_url }}">Download</a>
+          {% elif ev.kind == 'RETURN' %}
+            <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank">View</a>
+            <a class="btn btn-sm btn-outline-warning" href="{{ ev.download_url }}">Download</a>
           {% else %}
             —
           {% endif %}
