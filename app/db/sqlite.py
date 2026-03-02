@@ -983,6 +983,7 @@ def get_stock(warehouse: Optional[str] = None, q: Optional[str] = None) -> list[
             )
             params.extend([like, like, like])
 
+        where_parts.append("p.archived=0")
         where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
 
         rows = conn.execute(

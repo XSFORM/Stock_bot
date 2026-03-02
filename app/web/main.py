@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import date
 from typing import Any, Optional
 
 from fastapi import FastAPI, Form, Request, Response
@@ -92,6 +93,7 @@ from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xlsx_bytes
 from app.services.receive_xlsx import generate_receive_xlsx_bytes
 from app.services.return_xlsx import generate_return_xlsx_bytes
+from app.services.stock_xlsx import generate_stock_xlsx_bytes
 from app.services.backup import make_backup
 
 
@@ -224,6 +226,29 @@ def stock_get(request: Request, warehouse: str = "", q: str = ""):
             "selected_warehouse": (warehouse or "").strip().upper(),
             "search_q": q or "",
         },
+    )
+
+
+@app.get("/stock/xlsx")
+def stock_xlsx(warehouse: str = "", q: str = ""):
+    rows = get_stock(warehouse if warehouse else None, q if q else None)
+    wh_key = (warehouse or "").strip().upper()
+    today = date.today().isoformat()
+    if wh_key == "TM_DEPO":
+        label = WAREHOUSES["TM_DEPO"]
+        suffix = "depo"
+    elif wh_key == "1416_SHOP":
+        label = WAREHOUSES["1416_SHOP"]
+        suffix = "shop"
+    else:
+        label = "All Warehouses"
+        suffix = "all"
+    data = generate_stock_xlsx_bytes(rows, label)
+    filename = f"stock_{suffix}_{today}.xlsx"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
