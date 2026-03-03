@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="bg-white p-3 rounded shadow-sm">
-  <h4>Invoices</h4>
+  <h4>{{ t.invoices_title }}</h4>
 
   <ul class="nav nav-tabs mb-3" id="invoiceTabs">
     <li class="nav-item">
       <a class="nav-link {% if active_tab == 'sale' %}active{% endif %}"
-         href="/invoices?tab=sale">Sale invoices (DONE)</a>
+         href="/invoices?tab=sale">{{ t.invoices_tab_sale }}</a>
     </li>
     <li class="nav-item">
       <a class="nav-link {% if active_tab == 'receive' %}active{% endif %}"
-         href="/invoices?tab=receive">Receive invoices (DONE)</a>
+         href="/invoices?tab=receive">{{ t.invoices_tab_receive }}</a>
     </li>
     <li class="nav-item">
       <a class="nav-link {% if active_tab == 'return' %}active{% endif %}"
-         href="/invoices?tab=return">Return invoices (DONE)</a>
+         href="/invoices?tab=return">{{ t.invoices_tab_return }}</a>
     </li>
   </ul>
 
@@ -23,11 +23,11 @@
   <table class="table table-sm table-striped">
     <thead class="table-dark">
       <tr>
-        <th>Invoice #</th>
-        <th>Date/Time</th>
-        <th>Client</th>
-        <th class="text-end">Total</th>
-        <th>Actions</th>
+        <th>{{ t.lbl_invoice_no }}</th>
+        <th>{{ t.lbl_date_time }}</th>
+        <th>{{ t.invoices_col_client }}</th>
+        <th class="text-end">{{ t.lbl_total }}</th>
+        <th>{{ t.lbl_actions }}</th>
       </tr>
     </thead>
     <tbody>
@@ -38,12 +38,12 @@
         <td>{{ inv.client or '—' }}</td>
         <td class="text-end">{{ "%.2f"|format(inv.total) }} {{ inv.currency }}</td>
         <td>
-          <a class="btn btn-sm btn-outline-primary" href="/sale/xlsx/view?n={{ inv.number }}" target="_blank">View XLSX</a>
-          <a class="btn btn-sm btn-outline-success" href="/sale/xlsx?n={{ inv.number }}">Download XLSX</a>
+          <a class="btn btn-sm btn-outline-primary" href="/sale/xlsx/view?n={{ inv.number }}" target="_blank">{{ t.btn_view_xlsx }}</a>
+          <a class="btn btn-sm btn-outline-success" href="/sale/xlsx?n={{ inv.number }}">{{ t.btn_download_xlsx }}</a>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="5" class="text-muted text-center">No completed sale invoices.</td></tr>
+      <tr><td colspan="5" class="text-muted text-center">{{ t.invoices_no_sale }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -52,12 +52,12 @@
   <table class="table table-sm table-striped">
     <thead class="table-dark">
       <tr>
-        <th>Purchase Invoice #</th>
-        <th>Date/Time</th>
-        <th>Supplier</th>
-        <th>Destination</th>
-        <th class="text-end">Total</th>
-        <th>Actions</th>
+        <th>{{ t.invoices_col_purchase_no }}</th>
+        <th>{{ t.lbl_date_time }}</th>
+        <th>{{ t.lbl_supplier }}</th>
+        <th>{{ t.lbl_destination }}</th>
+        <th class="text-end">{{ t.lbl_total }}</th>
+        <th>{{ t.lbl_actions }}</th>
       </tr>
     </thead>
     <tbody>
@@ -69,12 +69,12 @@
         <td>{{ inv.destination_warehouse or '—' }}</td>
         <td class="text-end">{{ "%.2f"|format(inv.total) }}</td>
         <td>
-          <a class="btn btn-sm btn-outline-primary" href="/receive/xlsx/view?n={{ inv.id }}" target="_blank">View XLSX</a>
-          <a class="btn btn-sm btn-outline-success" href="/receive/xlsx?n={{ inv.id }}">Download XLSX</a>
+          <a class="btn btn-sm btn-outline-primary" href="/receive/xlsx/view?n={{ inv.id }}" target="_blank">{{ t.btn_view_xlsx }}</a>
+          <a class="btn btn-sm btn-outline-success" href="/receive/xlsx?n={{ inv.id }}">{{ t.btn_download_xlsx }}</a>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="text-muted text-center">No completed receive invoices.</td></tr>
+      <tr><td colspan="6" class="text-muted text-center">{{ t.invoices_no_receive }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -83,12 +83,12 @@
   <table class="table table-sm table-striped">
     <thead class="table-dark">
       <tr>
-        <th>Return #</th>
-        <th>Date/Time</th>
-        <th>Client</th>
-        <th>Warehouse</th>
-        <th class="text-end">Total</th>
-        <th>Actions</th>
+        <th>{{ t.invoices_col_return_no }}</th>
+        <th>{{ t.lbl_date_time }}</th>
+        <th>{{ t.invoices_col_client }}</th>
+        <th>{{ t.lbl_warehouse }}</th>
+        <th class="text-end">{{ t.lbl_total }}</th>
+        <th>{{ t.lbl_actions }}</th>
       </tr>
     </thead>
     <tbody>
@@ -100,12 +100,12 @@
         <td>{{ inv.warehouse_code or '—' }}</td>
         <td class="text-end">{{ "%.2f"|format(inv.total) }} {{ inv.currency }}</td>
         <td>
-          <a class="btn btn-sm btn-outline-primary" href="/return/xlsx/view?n={{ inv.id }}" target="_blank">View XLSX</a>
-          <a class="btn btn-sm btn-outline-warning" href="/return/xlsx?n={{ inv.id }}">Download XLSX</a>
+          <a class="btn btn-sm btn-outline-primary" href="/return/xlsx/view?n={{ inv.id }}" target="_blank">{{ t.btn_view_xlsx }}</a>
+          <a class="btn btn-sm btn-outline-warning" href="/return/xlsx?n={{ inv.id }}">{{ t.btn_download_xlsx }}</a>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="text-muted text-center">No completed return invoices.</td></tr>
+      <tr><td colspan="6" class="text-muted text-center">{{ t.invoices_no_return }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

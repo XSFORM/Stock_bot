@@ -35,17 +35,17 @@
       <div class="container-fluid">
         <a class="navbar-brand" href="/">Stock Web</a>
         <div class="navbar-nav me-auto">
-          <a class="nav-link" href="/products">Products</a>
-          <a class="nav-link" href="/stock">Stock</a>
-          <a class="nav-link" href="/receive">Receive</a>
-          <a class="nav-link" href="/move">Move</a>
-          <a class="nav-link" href="/move-all">Move all</a>
-          <a class="nav-link" href="/sale">Sale</a>
-          <a class="nav-link" href="/return">Return</a>
-		  <a class="nav-link" href="/brands">Brands</a>
-		  <a class="nav-link" href="/clients">Clients</a>
-		  <a class="nav-link" href="/invoices">Invoices</a>
-		  <a class="nav-link" href="/history">History</a>
+          <a class="nav-link" href="/products">{{ t.nav_products if t is defined else 'Products' }}</a>
+          <a class="nav-link" href="/stock">{{ t.nav_stock if t is defined else 'Stock' }}</a>
+          <a class="nav-link" href="/receive">{{ t.nav_receive if t is defined else 'Receive' }}</a>
+          <a class="nav-link" href="/move">{{ t.nav_move if t is defined else 'Move' }}</a>
+          <a class="nav-link" href="/move-all">{{ t.nav_move_all if t is defined else 'Move all' }}</a>
+          <a class="nav-link" href="/sale">{{ t.nav_sale if t is defined else 'Sale' }}</a>
+          <a class="nav-link" href="/return">{{ t.nav_return if t is defined else 'Return' }}</a>
+		  <a class="nav-link" href="/brands">{{ t.nav_brands if t is defined else 'Brands' }}</a>
+		  <a class="nav-link" href="/clients">{{ t.nav_clients if t is defined else 'Clients' }}</a>
+		  <a class="nav-link" href="/invoices">{{ t.nav_invoices if t is defined else 'Invoices' }}</a>
+		  <a class="nav-link" href="/history">{{ t.nav_history if t is defined else 'History' }}</a>
           <a class="nav-link" href="/admin/settings">{{ t.nav_admin if t is defined else 'Admin' }}</a>
         </div>
         <!-- Language selector -->

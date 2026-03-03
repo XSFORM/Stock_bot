@@ -17,20 +17,20 @@
 </style>
 
 <div class="bg-white p-3 rounded shadow-sm">
-  <h4 class="mb-3">Sale <small class="text-muted fs-6" id="sale-warehouse-label">{% if open_cart %}from {{ warehouse_labels.get(open_cart.warehouse_code, open_cart.warehouse_code) }}{% else %}from warehouse{% endif %}</small></h4>
+  <h4 class="mb-3">{{ t.sale_title }} <small class="text-muted fs-6" id="sale-warehouse-label">{% if open_cart %}from {{ warehouse_labels.get(open_cart.warehouse_code, open_cart.warehouse_code) }}{% else %}from warehouse{% endif %}</small></h4>
   {% if message %}<div class="alert alert-info" style="white-space: pre-wrap;">{{ message }}</div>{% endif %}
 
   {# ── ERP Header ── #}
   <div class="erp-header mb-3">
     <div class="row g-0">
       <div class="col-md-2 pe-3">
-        <div class="erp-label">Invoice #</div>
+        <div class="erp-label">{{ t.lbl_invoice_no }}</div>
         <div class="erp-value">
           {% if open_cart %}{{ open_cart.cart_id }}{% else %}&mdash;{% endif %}
         </div>
       </div>
       <div class="col-md-2 pe-3 ps-3">
-        <div class="erp-label">Date / Time</div>
+        <div class="erp-label">{{ t.lbl_date_time }}</div>
         <div class="erp-value" id="erp-datetime">
           {% if open_cart and open_cart.created_at and open_cart.created_at | length >= 16 %}
             {{ open_cart.created_at[:16] | replace("T", " ") }}
@@ -40,7 +40,7 @@
         </div>
       </div>
       <div class="col-md-3 pe-3 ps-3">
-        <div class="erp-label">FROM (warehouse)</div>
+        <div class="erp-label">{{ t.sale_lbl_from_warehouse }}</div>
         <div class="erp-value">
           {% if open_cart %}
             {{ warehouse_labels.get(open_cart.warehouse_code, open_cart.warehouse_code) }}
@@ -51,13 +51,13 @@
         </div>
       </div>
       <div class="col-md-5 ps-3">
-        <div class="erp-label">Client</div>
+        <div class="erp-label">{{ t.lbl_client }}</div>
         <div class="erp-value">
           {% if open_cart %}
             <span id="client-display">
               {{ open_cart.client_name }}
               <button class="btn btn-outline-secondary btn-sm ms-2 py-0" type="button" id="client-edit-btn">
-                &#9998; Edit
+                &#9998; {{ t.btn_edit }}
               </button>
             </span>
             <form id="client-edit-form" method="post" action="/sale/client/update"
@@ -70,13 +70,13 @@
                   </option>
                 {% endfor %}
               </select>
-              <button class="btn btn-sm btn-primary">Save</button>
-              <button class="btn btn-sm btn-outline-secondary" type="button" id="client-edit-cancel">Cancel</button>
+              <button class="btn btn-sm btn-primary">{{ t.btn_save }}</button>
+              <button class="btn btn-sm btn-outline-secondary" type="button" id="client-edit-cancel">{{ t.btn_cancel }}</button>
             </form>
           {% else %}
             <form method="post" action="/sale/start" class="d-flex gap-2 align-items-center mt-1">
               <select class="form-select form-select-sm" name="client_id" required style="max-width:260px">
-                <option value="" selected disabled>Select client…</option>
+                <option value="" selected disabled>{{ t.sale_select_client }}</option>
                 {% for c in clients %}
                   <option value="{{ c.id }}">{{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}</option>
                 {% endfor %}
@@ -86,8 +86,8 @@
                   <option value="{{ w }}"{% if w == '1416_SHOP' %} selected{% endif %}>{{ warehouse_labels.get(w, w) }} ({{ w }})</option>
                 {% endfor %}
               </select>
-              <button class="btn btn-sm btn-secondary">Start</button>
-              <a href="/clients" class="btn btn-sm btn-outline-secondary">+ Client</a>
+              <button class="btn btn-sm btn-secondary">{{ t.btn_start }}</button>
+              <a href="/clients" class="btn btn-sm btn-outline-secondary">+ {{ t.nav_clients }}</a>
             </form>
           {% endif %}
         </div>
@@ -98,17 +98,17 @@
   {% if open_cart %}
   {# ── Add item + Items table ── #}
   <div class="card mb-3">
-    <div class="card-header py-2 fw-semibold">Line Items</div>
+    <div class="card-header py-2 fw-semibold">{{ t.sale_col_line_items }}</div>
     <div class="card-body p-0">
       <table class="table table-sm table-bordered mb-0 items-table">
         <thead class="table-light">
           <tr>
             <th style="width:40px">#</th>
-            <th>Model</th>
-            <th>Name</th>
-            <th style="width:90px">Qty</th>
-            <th style="width:130px">Unit Price</th>
-            <th style="width:100px">Total</th>
+            <th>{{ t.lbl_model }}</th>
+            <th>{{ t.lbl_name }}</th>
+            <th style="width:90px">{{ t.lbl_qty }}</th>
+            <th style="width:130px">{{ t.lbl_unit_price }}</th>
+            <th style="width:100px">{{ t.lbl_total }}</th>
             <th style="width:90px"></th>
           </tr>
         </thead>
@@ -122,32 +122,32 @@
                 <input type="hidden" name="model" id="add-model">
                 <input type="hidden" name="price_mode" id="add-price-mode" value="wh10">
                 <div class="search-wrap" style="flex:1;min-width:220px">
-                  <label class="form-label form-label-sm mb-1">Search product (brand/model/name)</label>
+                  <label class="form-label form-label-sm mb-1">{{ t.sale_search_label }}</label>
                   <input type="text" class="form-control form-control-sm" id="product-search" autocomplete="off"
                     placeholder="e.g. Samsung A15…" required>
                   <div id="product-suggestions"></div>
                 </div>
                 <div>
-                  <label class="form-label form-label-sm mb-1">Qty</label>
+                  <label class="form-label form-label-sm mb-1">{{ t.lbl_qty }}</label>
                   <input class="form-control form-control-sm" name="qty" id="add-qty" type="number" step="1" min="1" style="width:80px" required>
                 </div>
                 <div>
-                  <label class="form-label form-label-sm mb-1">Price mode</label>
+                  <label class="form-label form-label-sm mb-1">{{ t.sale_lbl_price_mode }}</label>
                   <div class="btn-group btn-group-sm" role="group" id="price-mode-group">
                     <input type="radio" class="btn-check" name="price_mode_radio" id="pm-wh10" value="wh10" autocomplete="off" checked>
                     <label class="btn btn-outline-secondary" for="pm-wh10">+10%</label>
                     <input type="radio" class="btn-check" name="price_mode_radio" id="pm-wh25" value="wh25" autocomplete="off">
                     <label class="btn btn-outline-secondary" for="pm-wh25">+25%</label>
                     <input type="radio" class="btn-check" name="price_mode_radio" id="pm-custom" value="custom" autocomplete="off">
-                    <label class="btn btn-outline-secondary" for="pm-custom">Manual</label>
+                    <label class="btn btn-outline-secondary" for="pm-custom">{{ t.sale_price_mode_manual }}</label>
                   </div>
                 </div>
                 <div>
-                  <label class="form-label form-label-sm mb-1">Unit price</label>
+                  <label class="form-label form-label-sm mb-1">{{ t.sale_lbl_unit_price }}</label>
                   <input class="form-control form-control-sm" name="custom_price" id="add-custom-price" type="number" step="0.01" style="width:100px" placeholder="auto">
                 </div>
                 <div class="d-flex align-items-end">
-                  <button class="btn btn-primary btn-sm">Add</button>
+                  <button class="btn btn-primary btn-sm">{{ t.btn_add }}</button>
                 </div>
               </form>
             </td>
@@ -181,22 +181,22 @@
               <td class="text-end align-middle">{{ "%.2f"|format(item.total) }}</td>
               <td class="text-center align-middle">
                 <form method="post" action="/sale/item/delete"
-                  onsubmit="return confirm('Remove this item?')">
+                  onsubmit="return confirm('{{ t.confirm_remove_item }}')">
                   <input type="hidden" name="item_id" value="{{ item.id }}">
-                  <button class="btn btn-outline-danger btn-sm py-0">Remove</button>
+                  <button class="btn btn-outline-danger btn-sm py-0">{{ t.btn_remove }}</button>
                 </form>
               </td>
             </tr>
             {% endfor %}
             <tr class="total-row">
-              <td colspan="3" class="text-end">Items qty: {{ cart_qty | int }}</td>
-              <td colspan="2" class="text-end">Total:</td>
+              <td colspan="3" class="text-end">{{ t.sale_items_qty }} {{ cart_qty | int }}</td>
+              <td colspan="2" class="text-end">{{ t.lbl_total }}:</td>
               <td class="text-end">{{ "%.2f"|format(cart_total) }}</td>
               <td></td>
             </tr>
           {% else %}
             <tr>
-              <td colspan="7" class="text-center text-muted py-3">No items yet. Add a product above.</td>
+              <td colspan="7" class="text-center text-muted py-3">{{ t.sale_no_items }}</td>
             </tr>
           {% endif %}
         </tbody>
@@ -207,18 +207,18 @@
   {# ── Actions ── #}
   <div class="d-flex gap-2">
     <form method="post" action="/sale/cancel"
-      onsubmit="return confirm('Cancel this invoice? All items will be removed and the invoice deleted.')">
+      onsubmit="return confirm('{{ t.confirm_cancel_invoice }}')">
       <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
-      <button class="btn btn-outline-danger btn-sm">&#10005; Cancel invoice</button>
+      <button class="btn btn-outline-danger btn-sm">{{ t.btn_cancel_invoice }}</button>
     </form>
     <form method="post" action="/sale/show">
       <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
-      <button class="btn btn-outline-secondary btn-sm">&#8635; Refresh</button>
+      <button class="btn btn-outline-secondary btn-sm">&#8635; {{ t.btn_refresh }}</button>
     </form>
     <form method="post" action="/sale/finish">
       <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
       <button class="btn btn-success btn-sm" {% if not cart_items %}disabled title="Add items first"{% endif %}>
-        &#10003; Finish (PDF + Backup)
+        {{ t.sale_finish }}
       </button>
     </form>
   </div>

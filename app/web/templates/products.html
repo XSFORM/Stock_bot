@@ -3,7 +3,7 @@
 <div class="row g-3">
   <div class="col-lg-7">
     <div class="bg-white p-3 rounded shadow-sm">
-      <h4>Products</h4>
+      <h4>{{ t.products_title }}</h4>
 
       {% if request.query_params.get('msg') %}
         <div class="alert alert-info">{{ request.query_params.get('msg') }}</div>
@@ -13,10 +13,10 @@
         <form method="get" action="/products" class="d-inline">
           {% if show_archived %}
             <input type="hidden" name="show_archived" value="0">
-            <button class="btn btn-sm btn-secondary">Hide archived</button>
+            <button class="btn btn-sm btn-secondary">{{ t.hide_archived }}</button>
           {% else %}
             <input type="hidden" name="show_archived" value="1">
-            <button class="btn btn-sm btn-outline-secondary">Show archived</button>
+            <button class="btn btn-sm btn-outline-secondary">{{ t.show_archived }}</button>
           {% endif %}
         </form>
       </div>
@@ -24,7 +24,7 @@
       <table class="table table-sm">
         <thead>
           <tr>
-            <th>Brand</th><th>Model</th><th>Name</th><th>WH</th><th>WH10</th><th></th>
+            <th>{{ t.lbl_brand }}</th><th>{{ t.lbl_model }}</th><th>{{ t.lbl_name }}</th><th>{{ t.stock_col_wh }}</th><th>{{ t.products_col_wh10 }}</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -33,7 +33,7 @@
             <td>{{ p.brand }}</td>
             <td>
               {{ p.model }}
-              {% if p.archived %}<span class="badge bg-secondary ms-1">ARCHIVED</span>{% endif %}
+              {% if p.archived %}<span class="badge bg-secondary ms-1">{{ t.badge_archived }}</span>{% endif %}
             </td>
             <td>{{ p.name }}</td>
             <td>{{ "%.2f"|format(p.wh_price) }}</td>
@@ -42,13 +42,13 @@
               {% if p.archived %}
                 <form method="post" action="/products/{{ p.id }}/unarchive">
                   <input type="hidden" name="show_archived" value="{{ show_archived }}">
-                  <button class="btn btn-sm btn-outline-success">Unarchive</button>
+                  <button class="btn btn-sm btn-outline-success">{{ t.btn_unarchive }}</button>
                 </form>
               {% else %}
                 <form method="post" action="/products/{{ p.id }}/archive"
-                  onsubmit="return confirm('Archive this product?')">
+                  onsubmit="return confirm('{{ t.confirm_archive_product }}')">
                   <input type="hidden" name="show_archived" value="{{ show_archived }}">
-                  <button class="btn btn-sm btn-outline-warning">Archive</button>
+                  <button class="btn btn-sm btn-outline-warning">{{ t.btn_archive }}</button>
                 </form>
               {% endif %}
             </td>
@@ -61,27 +61,27 @@
 
   <div class="col-lg-5">
     <div class="bg-white p-3 rounded shadow-sm">
-      <h4>Add product + Receive</h4>
+      <h4>{{ t.products_add_title }}</h4>
 
       <form method="post" action="/products/add" id="productForm">
         <div class="mb-2">
-          <label class="form-label">Brand</label>
+          <label class="form-label">{{ t.lbl_brand }}</label>
           <select class="form-select" name="brand" id="brandSelect" required>
             {% for b in brands %}
               <option value="{{ b }}">{{ b }}</option>
             {% endfor %}
           </select>
           <div class="form-text">
-            If brand is missing, add it in <a href="/brands">Brands</a>.
+            {{ t.products_brand_help }} <a href="/brands">{{ t.nav_brands }}</a>.
           </div>
         </div>
 
         <!-- Model builder: prefix dropdown + suffix input, hidden full model -->
         <div class="mb-2">
-          <label class="form-label">Model</label>
+          <label class="form-label">{{ t.lbl_model }}</label>
           <div class="input-group">
             <select class="form-select" id="modelPrefixSelect" style="max-width: 45%;">
-              <option value="">(no prefix)</option>
+              <option value="">{{ t.products_model_no_prefix }}</option>
             </select>
             <input class="form-control" id="modelSuffixInput" placeholder="1086A" required>
           </div>
@@ -90,19 +90,19 @@
         </div>
 
         <div class="mb-2">
-          <label class="form-label">Name</label>
+          <label class="form-label">{{ t.lbl_name }}</label>
           <input class="form-control" name="name" required>
         </div>
 
         <div class="mb-2">
-          <label class="form-label">Wholesale cost (WH)</label>
+          <label class="form-label">{{ t.products_lbl_wh_cost }}</label>
           <input class="form-control" name="wh_price" type="number" step="0.01" required>
         </div>
 
         <hr/>
 
         <div class="mb-2">
-          <label class="form-label">Source</label>
+          <label class="form-label">{{ t.lbl_source }}</label>
           <select class="form-select" name="source" required>
             {% for s in sources %}
               <option value="{{ s }}">{{ source_labels[s] }}</option>
@@ -111,7 +111,7 @@
         </div>
 
         <div class="mb-2">
-          <label class="form-label">Warehouse (destination)</label>
+          <label class="form-label">{{ t.products_lbl_warehouse_dest }}</label>
           <select class="form-select" name="warehouse" required>
             {% for w in warehouses %}
               <option value="{{ w }}">{{ warehouse_labels[w] }}</option>
@@ -120,11 +120,11 @@
         </div>
 
         <div class="mb-2">
-          <label class="form-label">Qty</label>
+          <label class="form-label">{{ t.lbl_qty }}</label>
           <input class="form-control" name="qty" type="number" step="0.01" required>
         </div>
 
-        <button class="btn btn-primary">Save</button>
+        <button class="btn btn-primary">{{ t.btn_save }}</button>
       </form>
     </div>
   </div>
@@ -133,7 +133,7 @@
 <script>
 async function loadPrefixes(brand) {
   const prefixSelect = document.getElementById("modelPrefixSelect");
-  prefixSelect.innerHTML = '<option value="">(no prefix)</option>';
+  prefixSelect.innerHTML = '<option value="">{{ t.products_model_no_prefix }}</option>';
 
   try {
     const res = await fetch(`/api/brand-prefixes?brand=${encodeURIComponent(brand)}`);

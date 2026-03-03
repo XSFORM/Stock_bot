@@ -3,14 +3,14 @@
 <div class="row g-3">
   <div class="col-lg-6">
     <div class="bg-white p-3 rounded shadow-sm">
-      <h4>Brands</h4>
+      <h4>{{ t.brands_title }}</h4>
       {% if message %}<div class="alert alert-info">{{ message }}</div>{% endif %}
 
       <table class="table table-sm align-middle">
         <thead>
           <tr>
-            <th>Brand</th>
-            <th>Model prefixes</th>
+            <th>{{ t.lbl_brand }}</th>
+            <th>{{ t.brands_col_model_prefixes }}</th>
           </tr>
         </thead>
         <tbody>
@@ -24,7 +24,7 @@
                   <span class="badge bg-secondary me-1">{{ p }}-</span>
                 {% endfor %}
               {% else %}
-                <span class="text-muted">no prefixes</span>
+                <span class="text-muted">{{ t.brands_no_prefixes }}</span>
               {% endif %}
             </td>
           </tr>
@@ -33,10 +33,10 @@
       </table>
 
       <hr/>
-      <h5>Add model prefix</h5>
+      <h5>{{ t.brands_add_prefix_title }}</h5>
       <form method="post" action="/brands/prefix/add" class="row g-2">
         <div class="col-6">
-          <label class="form-label">Brand</label>
+          <label class="form-label">{{ t.lbl_brand }}</label>
           <select class="form-select" name="brand_name" required>
             {% for b in brands %}
               <option value="{{ b }}">{{ b }}</option>
@@ -44,12 +44,12 @@
           </select>
         </div>
         <div class="col-6">
-          <label class="form-label">Prefix (without dash)</label>
+          <label class="form-label">{{ t.lbl_prefix }}</label>
           <input class="form-control" name="prefix" placeholder="tf" required>
-          <div class="form-text">We will use it as: tf-XXXX</div>
+          <div class="form-text">{{ t.brands_prefix_help }}</div>
         </div>
         <div class="col-12">
-          <button class="btn btn-primary">Save prefix</button>
+          <button class="btn btn-primary">{{ t.btn_save_prefix }}</button>
         </div>
       </form>
     </div>
@@ -57,13 +57,13 @@
 
   <div class="col-lg-6">
     <div class="bg-white p-3 rounded shadow-sm">
-      <h4>Add brand</h4>
+      <h4>{{ t.brands_add_title }}</h4>
       <form method="post" action="/brands/add">
         <div class="mb-2">
-          <label class="form-label">Name</label>
+          <label class="form-label">{{ t.lbl_name }}</label>
           <input class="form-control" name="name" required>
         </div>
-        <button class="btn btn-primary">Save</button>
+        <button class="btn btn-primary">{{ t.btn_save }}</button>
       </form>
     </div>
   </div>

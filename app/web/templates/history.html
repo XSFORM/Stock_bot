@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="bg-white p-3 rounded shadow-sm">
-  <h4>History</h4>
+  <h4>{{ t.history_title }}</h4>
 
   <form class="row g-2 mb-3" method="get" action="/history">
     <div class="col-auto">
       <input type="text" class="form-control" name="q" value="{{ search_q }}"
-             placeholder="Search product, client, supplier… (multi-word)">
+             placeholder="{{ t.history_search_placeholder }}">
     </div>
     <div class="col-auto">
-      <button type="submit" class="btn btn-primary">Search</button>
+      <button type="submit" class="btn btn-primary">{{ t.btn_search }}</button>
     </div>
     {% if search_q %}
     <div class="col-auto">
-      <a href="/history" class="btn btn-outline-secondary">Clear</a>
+      <a href="/history" class="btn btn-outline-secondary">{{ t.btn_clear }}</a>
     </div>
     {% endif %}
   </form>
@@ -21,16 +21,16 @@
   <table class="table table-sm table-striped align-middle">
     <thead class="table-dark">
       <tr>
-        <th>Date / Time</th>
-        <th>Type</th>
-        <th>Ref</th>
-        <th>Counterparty</th>
-        <th>Warehouse</th>
-        <th>Product</th>
-        <th class="text-end">Qty</th>
-        <th class="text-end">Unit Price</th>
-        <th class="text-end">Total</th>
-        <th>Actions</th>
+        <th>{{ t.lbl_date_time }}</th>
+        <th>{{ t.lbl_type }}</th>
+        <th>{{ t.lbl_ref }}</th>
+        <th>{{ t.lbl_counterparty }}</th>
+        <th>{{ t.lbl_warehouse }}</th>
+        <th>{{ t.lbl_product }}</th>
+        <th class="text-end">{{ t.lbl_qty }}</th>
+        <th class="text-end">{{ t.lbl_unit_price }}</th>
+        <th class="text-end">{{ t.lbl_total }}</th>
+        <th>{{ t.lbl_actions }}</th>
       </tr>
     </thead>
     <tbody>
@@ -39,11 +39,11 @@
         <td>{{ ev.dt }}</td>
         <td>
           {% if ev.type == 'RECEIVE' %}
-          <span class="badge bg-success">RECEIVE</span>
+          <span class="badge bg-success">{{ t.badge_receive }}</span>
           {% elif ev.type == 'RETURN' %}
-          <span class="badge bg-warning text-dark">RETURN</span>
+          <span class="badge bg-warning text-dark">{{ t.badge_return }}</span>
           {% else %}
-          <span class="badge bg-primary">SALE</span>
+          <span class="badge bg-primary">{{ t.badge_sale }}</span>
           {% endif %}
         </td>
         <td>{{ ev.ref }}</td>
@@ -62,13 +62,13 @@
         <td class="text-end">{{ "%.2f"|format(ev.unit_price) }}</td>
         <td class="text-end">{{ "%.2f"|format(ev.total) }}</td>
         <td>
-          <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank">View</a>
-          <a class="btn btn-sm btn-outline-success" href="{{ ev.download_url }}">Download</a>
+          <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank">{{ t.btn_view }}</a>
+          <a class="btn btn-sm btn-outline-success" href="{{ ev.download_url }}">{{ t.btn_download }}</a>
         </td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="10" class="text-muted text-center">No history events found.</td>
+        <td colspan="10" class="text-muted text-center">{{ t.history_no_events }}</td>
       </tr>
       {% endfor %}
     </tbody>
