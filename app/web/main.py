@@ -76,6 +76,7 @@ from app.db.sqlite import (
     list_sale_invoices_done,
     list_receive_invoices_done,
     list_history,
+    list_history_by_product,
     # stock qty api
     get_stock_qty,
     # archive
@@ -226,7 +227,7 @@ def product_unarchive(product_id: int, show_archived: int = Form(0)):
 # ---------------- stock ----------------
 
 @app.get("/stock", response_class=HTMLResponse)
-def stock_get(request: Request, warehouse: str = "", q: str = ""):
+def stock_get(request: Request, warehouse: str = "", q: str = "", msg: str = ""):
     rows = get_stock(warehouse if warehouse else None, q if q else None)
     return _render(
         request,
@@ -235,8 +236,45 @@ def stock_get(request: Request, warehouse: str = "", q: str = ""):
             "rows": rows,
             "selected_warehouse": (warehouse or "").strip().upper(),
             "search_q": q or "",
+            "msg": msg,
         },
     )
+
+
+@app.post("/stock/product/wh_price")
+def stock_update_wh_price(
+    product_id: int = Form(...),
+    wh_price: float = Form(...),
+    warehouse: str = Form(""),
+    q: str = Form(""),
+):
+    ok, err = update_product_wh_price(product_id, wh_price)
+    msg = "wh_price_updated" if ok else f"error:{err}"
+    return RedirectResponse(url=f"/stock?warehouse={warehouse}&q={q}&msg={msg}", status_code=303)
+
+
+@app.post("/stock/product/{product_id}/archive")
+def stock_product_archive(product_id: int, warehouse: str = Form(""), q: str = Form("")):
+    ok, err = set_product_archived(product_id, 1)
+    msg = "archived" if ok else f"error:{err}"
+    return RedirectResponse(url=f"/stock?warehouse={warehouse}&q={q}&msg={msg}", status_code=303)
+
+
+@app.post("/stock/product/{product_id}/unarchive")
+def stock_product_unarchive(product_id: int, warehouse: str = Form(""), q: str = Form("")):
+    ok, err = set_product_archived(product_id, 0)
+    msg = "unarchived" if ok else f"error:{err}"
+    return RedirectResponse(url=f"/stock?warehouse={warehouse}&q={q}&msg={msg}", status_code=303)
+
+
+@app.get("/products/{product_id}/history", response_class=HTMLResponse)
+def product_history_get(request: Request, product_id: int):
+    prods = list_products(include_archived=True)
+    prod = next((p for p in prods if p["id"] == product_id), None)
+    if not prod:
+        return RedirectResponse(url="/stock?msg=product_not_found", status_code=303)
+    events = list_history_by_product(product_id)
+    return _render(request, "product_history.html", {"product": prod, "events": events})
 
 
 @app.get("/stock/xlsx")

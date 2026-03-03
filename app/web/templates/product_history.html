@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <h4>History: {{ product.brand }} {{ product.model }} <small class="text-muted fs-6">{{ product.name }}</small></h4>
+  <div class="mb-3">
+    <a href="/stock" class="btn btn-sm btn-outline-secondary">← Back to Stock</a>
+  </div>
+
+  <table class="table table-sm table-striped align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th>Date / Time</th>
+        <th>Type</th>
+        <th>Ref</th>
+        <th>Counterparty</th>
+        <th>Warehouse</th>
+        <th class="text-end">Qty</th>
+        <th class="text-end">Unit Price</th>
+        <th class="text-end">Total</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ev in events %}
+      <tr>
+        <td>{{ ev.dt }}</td>
+        <td>
+          {% if ev.type == 'RECEIVE' %}
+          <span class="badge bg-success">RECEIVE</span>
+          {% elif ev.type == 'RETURN' %}
+          <span class="badge bg-warning text-dark">RETURN</span>
+          {% else %}
+          <span class="badge bg-primary">SALE</span>
+          {% endif %}
+        </td>
+        <td>{{ ev.ref }}</td>
+        <td>{{ ev.counterparty or '—' }}</td>
+        <td>{{ ev.warehouse or '—' }}</td>
+        <td class="text-end">
+          {% if ev.type == 'SALE' %}
+          <span class="text-danger">-{{ "%.2f"|format(ev.qty) }}</span>
+          {% elif ev.type == 'RETURN' %}
+          <span class="text-warning">+{{ "%.2f"|format(ev.qty) }}</span>
+          {% else %}
+          {{ "%.2f"|format(ev.qty) }}
+          {% endif %}
+        </td>
+        <td class="text-end">{{ "%.2f"|format(ev.unit_price) }}</td>
+        <td class="text-end">{{ "%.2f"|format(ev.total) }}</td>
+        <td>
+          <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank" rel="noopener noreferrer">View</a>
+          <a class="btn btn-sm btn-outline-success" href="{{ ev.download_url }}">Download</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="9" class="text-muted text-center">No history events found for this product.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

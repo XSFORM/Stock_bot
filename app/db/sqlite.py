@@ -1043,13 +1043,15 @@ def get_stock(warehouse: Optional[str] = None, q: Optional[str] = None) -> list[
         rows = conn.execute(
             f"""
             SELECT
+              p.id as product_id,
               w.code as warehouse,
               p.brand,
               p.model,
               p.name,
               s.qty,
               p.wh_price as wh_price,
-              ROUND(p.wh_price * 1.10, 2) as sale_price
+              ROUND(p.wh_price * 1.10, 2) as sale_price,
+              p.archived
             FROM stock s
             JOIN products p ON p.id=s.product_id
             JOIN warehouses w ON w.code=s.warehouse_code
@@ -2782,6 +2784,112 @@ def list_history(q: str = "", limit: int = 500) -> list[dict[str, Any]]:
 
         # Sort by dt descending (ISO datetime strings compare correctly).
         # Rows with a missing/None dt sort to the end (treated as "").
+        events.sort(key=lambda x: x.get("dt") or "", reverse=True)
+
+        return events[:limit]
+    finally:
+        conn.close()
+
+
+def list_history_by_product(product_id: int, limit: int = 500) -> list[dict[str, Any]]:
+    """Return merged RECEIVE, SALE, and RETURN line items for a specific product, sorted by datetime desc."""
+    init_db()
+    conn = _connect()
+    try:
+        pid = int(product_id)
+
+        receive_rows = conn.execute(
+            """
+            SELECT
+                inv.created_at            AS dt,
+                'RECEIVE'                 AS type,
+                inv.id                    AS ref,
+                inv.supplier              AS counterparty,
+                inv.destination_warehouse AS warehouse,
+                p.brand                   AS brand,
+                p.model                   AS model,
+                p.name                    AS name,
+                ri.qty                    AS qty,
+                ri.purchase_price         AS unit_price,
+                ri.total                  AS total
+            FROM receive_invoices inv
+            JOIN receive_items ri ON ri.invoice_id = inv.id
+            JOIN products p ON p.id = ri.product_id
+            WHERE inv.status = 'DONE' AND p.id = ?
+            """,
+            (pid,),
+        ).fetchall()
+
+        sale_rows = conn.execute(
+            """
+            SELECT
+                inv.created_at  AS dt,
+                'SALE'          AS type,
+                inv.number      AS ref,
+                cl.name         AS counterparty,
+                NULL            AS warehouse,
+                p.brand         AS brand,
+                p.model         AS model,
+                p.name          AS name,
+                ci.qty          AS qty,
+                ci.unit_price   AS unit_price,
+                ci.total        AS total
+            FROM invoices inv
+            JOIN carts c ON c.id = inv.cart_id
+            JOIN clients cl ON cl.id = c.client_id
+            JOIN cart_items ci ON ci.cart_id = c.id
+            JOIN products p ON p.id = ci.product_id
+            WHERE p.id = ?
+            """,
+            (pid,),
+        ).fetchall()
+
+        return_rows = conn.execute(
+            """
+            SELECT
+                inv.created_at     AS dt,
+                'RETURN'           AS type,
+                inv.id             AS ref,
+                cl.name            AS counterparty,
+                inv.warehouse_code AS warehouse,
+                p.brand            AS brand,
+                p.model            AS model,
+                p.name             AS name,
+                ri.qty             AS qty,
+                ri.unit_price      AS unit_price,
+                ri.total           AS total
+            FROM return_invoices inv
+            JOIN return_items ri ON ri.invoice_id = inv.id
+            JOIN products p ON p.id = ri.product_id
+            JOIN clients cl ON cl.id = inv.client_id
+            WHERE inv.status = 'DONE' AND p.id = ?
+            """,
+            (pid,),
+        ).fetchall()
+
+        events: list[dict[str, Any]] = []
+
+        for r in receive_rows:
+            row = dict(r)
+            inv_id = row["ref"]
+            row["view_url"] = f"/receive/xlsx/view?n={inv_id}"
+            row["download_url"] = f"/receive/xlsx?n={inv_id}"
+            events.append(row)
+
+        for r in sale_rows:
+            row = dict(r)
+            inv_number = row["ref"]
+            row["view_url"] = f"/sale/xlsx/view?n={inv_number}"
+            row["download_url"] = f"/sale/xlsx?n={inv_number}"
+            events.append(row)
+
+        for r in return_rows:
+            row = dict(r)
+            inv_id = row["ref"]
+            row["view_url"] = f"/return/xlsx/view?n={inv_id}"
+            row["download_url"] = f"/return/xlsx?n={inv_id}"
+            events.append(row)
+
         events.sort(key=lambda x: x.get("dt") or "", reverse=True)
 
         return events[:limit]
