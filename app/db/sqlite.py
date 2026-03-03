@@ -32,6 +32,7 @@ def init_db() -> None:
         _ensure_client_ledger_table(conn)
         _ensure_product_extra_columns(conn)
         _migrate_localtime_defaults(conn)
+        _ensure_carts_warehouse_column(conn)
         _ensure_return_tables(conn)
         for code, title in WAREHOUSES.items():
             conn.execute(
@@ -539,6 +540,17 @@ def _ensure_product_extra_columns(conn: sqlite3.Connection) -> None:
     if "archived" not in existing:
         conn.execute("ALTER TABLE products ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;")
     conn.commit()
+
+
+def _ensure_carts_warehouse_column(conn: sqlite3.Connection) -> None:
+    """Add warehouse_code column to carts if missing (migration)."""
+    cols = conn.execute("PRAGMA table_info(carts);").fetchall()
+    existing = {c["name"] for c in cols}
+    if "warehouse_code" not in existing:
+        conn.execute(
+            "ALTER TABLE carts ADD COLUMN warehouse_code TEXT NOT NULL DEFAULT '1416_SHOP';"
+        )
+        conn.commit()
 
 
 def _ensure_return_tables(conn: sqlite3.Connection) -> None:
@@ -1396,16 +1408,17 @@ def cart_add_by_cart_id(
     conn = _connect()
     try:
         # ensure cart exists and open
-        r = conn.execute("SELECT status FROM carts WHERE id=?", (int(cart_id),)).fetchone()
+        r = conn.execute("SELECT status, warehouse_code FROM carts WHERE id=?", (int(cart_id),)).fetchone()
         if not r:
             return False, "Cart not found"
         if r["status"] != "OPEN":
             return False, "Cart is closed"
+        cart_wh = r["warehouse_code"] or "1416_SHOP"
 
-        # validate against 1416_SHOP stock
-        available = _get_stock_qty(conn, "1416_SHOP", int(product["id"]))
+        # validate against cart's warehouse stock
+        available = _get_stock_qty(conn, cart_wh, int(product["id"]))
         if qty > available:
-            return False, f"Недостаточно на складе 1416_SHOP: доступно {available:.0f}, запрошено {qty:.0f}"
+            return False, f"Недостаточно на складе {cart_wh}: доступно {available:.0f}, запрошено {qty:.0f}"
 
         conn.execute(
             """
@@ -1466,14 +1479,14 @@ def cart_show_by_cart_id(cart_id: int) -> Tuple[bool, str]:
 
 def cart_finish_by_cart_id_shop1416(cart_id: int):
     """
-    Finish cart by cart_id, selling strictly from 1416_SHOP.
-    Internally maps cart->client_name and uses existing logic.
+    Finish cart by cart_id, selling from the warehouse stored in the cart.
+    Falls back to 1416_SHOP for backwards compatibility.
     """
     conn = _connect()
     try:
         r = conn.execute(
             """
-            SELECT cl.name as client_name
+            SELECT cl.name as client_name, c.warehouse_code
             FROM carts c
             JOIN clients cl ON cl.id=c.client_id
             WHERE c.id=?
@@ -1483,11 +1496,11 @@ def cart_finish_by_cart_id_shop1416(cart_id: int):
         if not r:
             return False, "Корзина не найдена.", {}, []
         client_name = r["client_name"]
+        warehouse = r["warehouse_code"] or "1416_SHOP"
     finally:
         conn.close()
 
-    # IMPORTANT: sells only from 1416_SHOP
-    return cart_finish_from_shop(client_name, "1416_SHOP")
+    return cart_finish_from_shop(client_name, warehouse)
 
 def _get_or_create_client_id(conn: sqlite3.Connection, client_name: str) -> int:
     client = conn.execute(
@@ -1501,13 +1514,14 @@ def _get_or_create_client_id(conn: sqlite3.Connection, client_name: str) -> int:
     
 
 def get_open_cart() -> Optional[dict]:
-    """Return the current OPEN cart (cart_id, client_id, client_name, created_at) or None."""
+    """Return the current OPEN cart (cart_id, client_id, client_name, warehouse_code, created_at) or None."""
     init_db()
     conn = _connect()
     try:
         r = conn.execute(
             """
-            SELECT c.id as cart_id, c.client_id, cl.name as client_name, c.created_at
+            SELECT c.id as cart_id, c.client_id, cl.name as client_name,
+                   c.warehouse_code, c.created_at
             FROM carts c
             JOIN clients cl ON cl.id = c.client_id
             WHERE c.status = 'OPEN'
@@ -1520,7 +1534,7 @@ def get_open_cart() -> Optional[dict]:
         conn.close()
 
 
-def cart_start_by_id(client_id: int) -> Tuple[bool, str, Optional[int]]:
+def cart_start_by_id(client_id: int, warehouse_code: str = "1416_SHOP") -> Tuple[bool, str, Optional[int]]:
     """Start a new OPEN cart for client_id.
 
     Returns (True, "", cart_id) on success.
@@ -1534,8 +1548,14 @@ def cart_start_by_id(client_id: int) -> Tuple[bool, str, Optional[int]]:
         ).fetchone()
         if existing:
             return False, "Уже есть активный инвойс. Завершите его перед началом нового.", None
+        wh = (warehouse_code or "1416_SHOP").strip().upper()
+        if not _is_valid_warehouse_code(conn, wh):
+            return False, f"Склад не найден: {wh}", None
         cid = int(client_id)
-        conn.execute("INSERT INTO carts(client_id, status) VALUES(?, 'OPEN')", (cid,))
+        conn.execute(
+            "INSERT INTO carts(client_id, warehouse_code, status) VALUES(?, ?, 'OPEN')",
+            (cid, wh),
+        )
         cart_id = int(conn.execute("SELECT last_insert_rowid() as id").fetchone()["id"])
         conn.commit()
         return True, "", cart_id
