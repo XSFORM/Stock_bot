@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any, Optional, Tuple
@@ -43,6 +44,47 @@ def init_db() -> None:
         
     finally:
         conn.close()
+
+
+# -------- warehouses --------
+
+def list_warehouses() -> list[dict[str, Any]]:
+    """Return all warehouses from DB as list of {code, title}."""
+    conn = _connect()
+    try:
+        rows = conn.execute("SELECT code, title FROM warehouses ORDER BY code").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def add_warehouse(code: str, title: str) -> tuple[bool, str]:
+    """Add a new warehouse. Returns (ok, err)."""
+    code = (code or "").strip().upper()
+    title = (title or "").strip()
+    if not code:
+        return False, "Warehouse code is required"
+    if not title:
+        return False, "Warehouse name is required"
+    if not re.match(r'^[A-Z0-9_]+$', code):
+        return False, "Warehouse code must contain only letters, digits, and underscores"
+    conn = _connect()
+    try:
+        conn.execute("INSERT INTO warehouses(code, title) VALUES(?, ?)", (code, title))
+        conn.commit()
+        return True, ""
+    except sqlite3.IntegrityError:
+        return False, f"Warehouse with code '{code}' already exists"
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def _is_valid_warehouse_code(conn: sqlite3.Connection, code: str) -> bool:
+    """Check if a warehouse code exists in the DB."""
+    row = conn.execute("SELECT 1 FROM warehouses WHERE code=?", (code,)).fetchone()
+    return row is not None
 
 
 # -------- clients --------
@@ -850,8 +892,6 @@ def move_stock(src: str, dst: str, brand: str, model: str, qty: float) -> Tuple[
         return False, "QTY должно быть > 0"
     if src == dst:
         return False, "FROM и TO одинаковые"
-    if src not in WAREHOUSES or dst not in WAREHOUSES:
-        return False, "Неизвестный склад"
 
     product = find_product(brand, model)
     if not product:
@@ -859,6 +899,8 @@ def move_stock(src: str, dst: str, brand: str, model: str, qty: float) -> Tuple[
 
     conn = _connect()
     try:
+        if not _is_valid_warehouse_code(conn, src) or not _is_valid_warehouse_code(conn, dst):
+            return False, "Неизвестный склад"
         pid = int(product["id"])
         src_qty = _get_stock_qty(conn, src, pid)
         if src_qty < qty:
@@ -884,11 +926,11 @@ def move_stock_by_product_id(src: str, dst: str, product_id: int, qty: float) ->
         return False, "QTY должно быть > 0"
     if src == dst:
         return False, "FROM и TO одинаковые"
-    if src not in WAREHOUSES or dst not in WAREHOUSES:
-        return False, "Неизвестный склад"
 
     conn = _connect()
     try:
+        if not _is_valid_warehouse_code(conn, src) or not _is_valid_warehouse_code(conn, dst):
+            return False, "Неизвестный склад"
         pid = int(product_id)
         # Verify product exists
         row = conn.execute("SELECT id FROM products WHERE id=?", (pid,)).fetchone()
@@ -914,13 +956,13 @@ def move_all(src: str, dst: str = "SHOP") -> tuple[bool, str, int]:
     src = src.strip().upper()
     dst = dst.strip().upper()
 
-    if src not in WAREHOUSES or dst not in WAREHOUSES:
-        return False, "Неизвестный склад", 0
     if src == dst:
         return False, "FROM и TO одинаковые", 0
 
     conn = _connect()
     try:
+        if not _is_valid_warehouse_code(conn, src) or not _is_valid_warehouse_code(conn, dst):
+            return False, "Неизвестный склад", 0
         rows = conn.execute(
             "SELECT product_id, qty FROM stock WHERE warehouse_code=? AND qty > 0",
             (src,),
@@ -1021,43 +1063,79 @@ def get_stock_text(warehouse: Optional[str] = None) -> str:
     return "\n".join(lines)
 
 
-def search_products(q: str, limit: int = 30, include_archived: bool = False) -> list[dict[str, Any]]:
+def search_products(
+    q: str,
+    limit: int = 30,
+    include_archived: bool = False,
+    warehouse: str = "",
+) -> list[dict[str, Any]]:
     """Search all products (catalog) by brand/model/name, case-insensitive.
 
     Returns list of dicts: product_id, brand, model, name, last_purchase_price.
+    If warehouse is provided, also includes qty_in_wh (stock qty in that warehouse, 0 if none).
     last_purchase_price is taken from products.last_purchase_price, and if NULL,
     falls back to the most recent receive_items.purchase_price for that product.
     """
     term = (q or "").strip().lower()
     like = f"%{term}%"
+    wh = (warehouse or "").strip().upper()
 
     conn = _connect()
     try:
-        rows = conn.execute(
-            """
-            SELECT
-              p.id as product_id,
-              p.brand,
-              p.model,
-              p.name,
-              COALESCE(
-                p.last_purchase_price,
-                (
-                  SELECT ri.purchase_price
-                  FROM receive_items ri
-                  WHERE ri.product_id = p.id
-                  ORDER BY ri.id DESC
-                  LIMIT 1
-                )
-              ) as last_purchase_price
-            FROM products p
-            WHERE (lower(p.brand) LIKE ? OR lower(p.model) LIKE ? OR lower(p.name) LIKE ?)
-              AND (p.archived = 0 OR ? = 1)
-            ORDER BY p.brand, p.model
-            LIMIT ?
-            """,
-            (like, like, like, int(include_archived), int(limit)),
-        ).fetchall()
+        if wh:
+            rows = conn.execute(
+                """
+                SELECT
+                  p.id as product_id,
+                  p.brand,
+                  p.model,
+                  p.name,
+                  COALESCE(
+                    p.last_purchase_price,
+                    (
+                      SELECT ri.purchase_price
+                      FROM receive_items ri
+                      WHERE ri.product_id = p.id
+                      ORDER BY ri.id DESC
+                      LIMIT 1
+                    )
+                  ) as last_purchase_price,
+                  COALESCE(s.qty, 0) as qty_in_wh
+                FROM products p
+                LEFT JOIN stock s ON s.product_id = p.id AND s.warehouse_code = ?
+                WHERE (lower(p.brand) LIKE ? OR lower(p.model) LIKE ? OR lower(p.name) LIKE ?)
+                  AND (p.archived = 0 OR ? = 1)
+                ORDER BY qty_in_wh DESC, p.brand, p.model
+                LIMIT ?
+                """,
+                (wh, like, like, like, int(include_archived), int(limit)),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT
+                  p.id as product_id,
+                  p.brand,
+                  p.model,
+                  p.name,
+                  COALESCE(
+                    p.last_purchase_price,
+                    (
+                      SELECT ri.purchase_price
+                      FROM receive_items ri
+                      WHERE ri.product_id = p.id
+                      ORDER BY ri.id DESC
+                      LIMIT 1
+                    )
+                  ) as last_purchase_price
+                FROM products p
+                WHERE (lower(p.brand) LIKE ? OR lower(p.model) LIKE ? OR lower(p.name) LIKE ?)
+                  AND (p.archived = 0 OR ? = 1)
+                ORDER BY p.brand, p.model
+                LIMIT ?
+                """,
+                (like, like, like, int(include_archived), int(limit)),
+            ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -1737,11 +1815,11 @@ def cart_finish_from_shop(client_name: str, shop_code: str) -> Tuple[bool, str, 
     """
     init_db()
     shop = shop_code.strip().upper()
-    if shop not in WAREHOUSES:
-        return False, "Неизвестный склад магазина", {}, []
 
     conn = _connect()
     try:
+        if not _is_valid_warehouse_code(conn, shop):
+            return False, "Неизвестный склад магазина", {}, []
         cart_id = _get_open_cart_id(conn, client_name)
         if not cart_id:
             return False, "Корзина не начата.", {}, []
@@ -2127,6 +2205,7 @@ def add_product_simple(
     name: str,
     barcode: str = "",
     note: str = "",
+    wh_price: float = 0.0,
 ) -> tuple[bool, str, Optional[int]]:
     """Add a new product (for receive screen). Returns (ok, err, product_id)."""
     init_db()
@@ -2135,6 +2214,7 @@ def add_product_simple(
     name = (name or "").strip()
     barcode = (barcode or "").strip()
     note = (note or "").strip()
+    wh_price = float(wh_price) if wh_price else 0.0
 
     if not brand:
         return False, "brand is required", None
@@ -2153,10 +2233,9 @@ def add_product_simple(
         cur = conn.execute(
             """
             INSERT INTO products(brand, model, name, wh_price, barcode, note)
-            VALUES (?, ?, ?, 0, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            # wh_price=0: selling price is not set at receive time; update via Products page later
-            (brand, model, name, barcode, note),
+            (brand, model, name, wh_price, barcode, note),
         )
         conn.commit()
         # Also seed the brand
