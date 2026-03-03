@@ -147,9 +147,13 @@ def api_stock_search(warehouse: str = "1416_SHOP", q: str = ""):
 
 
 @app.get("/api/products-search")
-def api_products_search(q: str = "", limit: int = 30):
-    """Search all products catalog by brand/model/name. Returns up to 30 items."""
-    items = search_products(q, limit=min(int(limit), 30))
+def api_products_search(q: str = "", limit: int = 30, warehouse: str = ""):
+    """Search all products catalog by brand/model/name. Returns up to 30 items.
+
+    Optional ``warehouse`` param augments results with qty_in_wh for that warehouse
+    and sorts products available there to the top.
+    """
+    items = search_products(q, limit=min(int(limit), 30), warehouse=warehouse)
     return JSONResponse({"results": items})
 
 
@@ -333,10 +337,11 @@ def receive_item_new_post(
     name: str = Form(...),
     barcode: str = Form(""),
     product_note: str = Form(""),
+    wh_price: float = Form(0.0),
     qty: float = Form(...),
     purchase_price: float = Form(...),
 ):
-    ok, err, product_id = add_product_simple(brand, model, name, barcode, product_note)
+    ok, err, product_id = add_product_simple(brand, model, name, barcode, product_note, wh_price)
     if not ok:
         return RedirectResponse(url=f"/receive?msg=new_product_error:{err}", status_code=303)
     ok2, err2 = receive_item_add(int(invoice_id), int(product_id), float(qty), float(purchase_price))
