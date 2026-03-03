@@ -1,17 +1,40 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ ui_lang | default('en') }}" data-bs-theme="{{ 'dark' if ui_theme == 'dark' else 'light' }}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Stock Web</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 	<link rel="stylesheet" href="/static/site.css">
+    {% if ui_theme == "system" %}
+    <script>
+      (function(){
+        var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
+      })();
+    </script>
+    {% endif %}
+    {% set overlay_alpha = (bg_overlay | default(25) | int) / 100 %}
+    <style>
+    body.bg-light {
+      {% if bg_enabled | default(true) %}
+      background-image:
+        linear-gradient(rgba(0,0,0,{{ overlay_alpha }}), rgba(0,0,0,{{ overlay_alpha }})),
+        url("/static/bg.jpg");
+      background-size: {{ bg_size | default('cover') }};
+      background-position: center;
+      background-attachment: fixed;
+      {% else %}
+      background-image: none;
+      {% endif %}
+    }
+    </style>
   </head>
-  <body class="bg-light">
+  <body class="{% if ui_theme != 'dark' %}bg-light{% endif %}">
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
       <div class="container-fluid">
         <a class="navbar-brand" href="/">Stock Web</a>
-        <div class="navbar-nav">
+        <div class="navbar-nav me-auto">
           <a class="nav-link" href="/products">Products</a>
           <a class="nav-link" href="/stock">Stock</a>
           <a class="nav-link" href="/receive">Receive</a>
@@ -23,7 +46,32 @@
 		  <a class="nav-link" href="/clients">Clients</a>
 		  <a class="nav-link" href="/invoices">Invoices</a>
 		  <a class="nav-link" href="/history">History</a>
+          <a class="nav-link" href="/admin/settings">{{ t.nav_admin if t is defined else 'Admin' }}</a>
         </div>
+        <!-- Language selector -->
+        <form method="post" action="/set-lang" class="d-flex me-2 align-items-center">
+          <input type="hidden" name="next" value="{{ request.url.path }}">
+          <select name="lang" class="form-select form-select-sm" style="width:auto"
+                  onchange="this.form.submit()" title="{{ t.lang_toggle_label if t is defined else 'Language' }}">
+            <option value="en" {% if ui_lang == 'en' %}selected{% endif %}>EN</option>
+            <option value="ru" {% if ui_lang == 'ru' %}selected{% endif %}>RU</option>
+            <option value="tm" {% if ui_lang == 'tm' %}selected{% endif %}>TM</option>
+          </select>
+        </form>
+        <!-- Theme toggle -->
+        <form method="post" action="/set-theme" class="d-flex me-2 align-items-center">
+          <input type="hidden" name="next" value="{{ request.url.path }}">
+          <select name="theme" class="form-select form-select-sm" style="width:auto"
+                  onchange="this.form.submit()" title="{{ t.theme_toggle_label if t is defined else 'Theme' }}">
+            <option value="light"  {% if ui_theme == 'light'  %}selected{% endif %}>☀️</option>
+            <option value="dark"   {% if ui_theme == 'dark'   %}selected{% endif %}>🌙</option>
+            <option value="system" {% if ui_theme == 'system' %}selected{% endif %}>🖥️</option>
+          </select>
+        </form>
+        <!-- Logout (shown when site lock is enabled) -->
+        {% if site_lock_enabled %}
+        <a class="btn btn-sm btn-outline-light" href="/logout">{{ t.logout_label if t is defined else 'Logout' }}</a>
+        {% endif %}
       </div>
     </nav>
 

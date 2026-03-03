@@ -2896,3 +2896,90 @@ def list_history_by_product(product_id: int, limit: int = 500) -> list[dict[str,
         return events[:limit]
     finally:
         conn.close()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Site settings (key-value) and site-lock sessions
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_setting(key: str, default: str = "") -> str:
+    """Return the value of a site setting, or *default* if not set."""
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT value FROM site_settings WHERE key = ?", (key,)
+        ).fetchone()
+        return row["value"] if row else default
+    finally:
+        conn.close()
+
+
+def set_setting(key: str, value: str) -> None:
+    """Upsert a site setting."""
+    conn = _connect()
+    try:
+        conn.execute(
+            "INSERT INTO site_settings(key, value) VALUES(?, ?)"
+            "  ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def create_session(token: str, expires_at: str) -> None:
+    """Insert a new site-lock session token."""
+    conn = _connect()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO site_sessions(token, expires_at) VALUES(?, ?)",
+            (token, expires_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def is_valid_session(token: str) -> bool:
+    """Return True if *token* exists and has not expired."""
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM site_sessions"
+            " WHERE token = ? AND expires_at > datetime('now')",
+            (token,),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def delete_session(token: str) -> None:
+    """Delete a single session (logout)."""
+    conn = _connect()
+    try:
+        conn.execute("DELETE FROM site_sessions WHERE token = ?", (token,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_all_sessions() -> None:
+    """Invalidate all active sessions (logout everyone)."""
+    conn = _connect()
+    try:
+        conn.execute("DELETE FROM site_sessions")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def purge_expired_sessions() -> None:
+    """Remove expired session rows (housekeeping)."""
+    conn = _connect()
+    try:
+        conn.execute("DELETE FROM site_sessions WHERE expires_at <= datetime('now')")
+        conn.commit()
+    finally:
+        conn.close()

@@ -162,3 +162,16 @@ CREATE TABLE IF NOT EXISTS client_ledger (
 );
 
 CREATE INDEX IF NOT EXISTS idx_client_ledger_client ON client_ledger(client_id);
+
+-- Admin / site settings (generic key-value store)
+CREATE TABLE IF NOT EXISTS site_settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
+);
+
+-- Site-lock sessions
+CREATE TABLE IF NOT EXISTS site_sessions (
+  token      TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT NOT NULL
+);
