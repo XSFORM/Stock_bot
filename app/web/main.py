@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import hashlib
+import os
+import secrets
+import shutil
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from datetime import date
 from typing import Any, Optional
 
-from fastapi import FastAPI, Form, Request, Response
+from fastapi import FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -100,6 +105,16 @@ from app.services.receive_xlsx import generate_receive_xlsx_bytes
 from app.services.return_xlsx import generate_return_xlsx_bytes
 from app.services.stock_xlsx import generate_stock_xlsx_bytes
 from app.services.backup import make_backup
+from app.i18n import get_translations, SUPPORTED_LANGS
+from app.db.sqlite import (
+    get_setting,
+    set_setting,
+    create_session,
+    is_valid_session,
+    delete_session,
+    delete_all_sessions,
+    purge_expired_sessions,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -114,21 +129,115 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Site-lock helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+_HASH_ITERS = 260_000  # PBKDF2 iteration count
+
+
+def _hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), _HASH_ITERS)
+    return f"{salt}${dk.hex()}"
+
+
+def _verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        salt, dk_hex = stored_hash.split("$", 1)
+    except ValueError:
+        return False
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), _HASH_ITERS)
+    return secrets.compare_digest(dk.hex(), dk_hex)
+
+
+def _session_hours() -> int:
+    try:
+        return max(1, int(get_setting("site_lock_session_hours", "24")))
+    except (ValueError, TypeError):
+        return 24
+
+
+def _set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        "site_session",
+        token,
+        max_age=_session_hours() * 3600,
+        httponly=True,
+        samesite="lax",
+    )
+
+
+def _get_ui_lang(request: Request) -> str:
+    lang = request.cookies.get("ui_lang", "")
+    if lang not in SUPPORTED_LANGS:
+        lang = get_setting("default_lang", "en")
+    if lang not in SUPPORTED_LANGS:
+        lang = "en"
+    return lang
+
+
+def _get_ui_theme(request: Request) -> str:
+    theme = request.cookies.get("ui_theme", "")
+    if theme not in ("light", "dark", "system"):
+        theme = get_setting("default_theme", "system")
+    if theme not in ("light", "dark", "system"):
+        theme = "system"
+    return theme
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Site-lock middleware
+# ──────────────────────────────────────────────────────────────────────────────
+
+_LOCK_BYPASS_PREFIXES = ("/static", "/unlock", "/api/")
+
+
+@app.middleware("http")
+async def site_lock_middleware(request: Request, call_next):
+    path = request.url.path
+    if any(path.startswith(p) for p in _LOCK_BYPASS_PREFIXES):
+        return await call_next(request)
+    if get_setting("site_lock_enabled", "0") != "1":
+        return await call_next(request)
+    token = request.cookies.get("site_session", "")
+    if token and is_valid_session(token):
+        return await call_next(request)
+    from urllib.parse import quote
+    next_url = quote(path, safe="")
+    return RedirectResponse(url=f"/unlock?next={next_url}", status_code=303)
+
+
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    # Bootstrap site-lock password from environment if not already set.
+    env_pw = os.environ.get("SITE_LOCK_PASSWORD", "").strip()
+    if env_pw and not get_setting("site_lock_hash"):
+        set_setting("site_lock_hash", _hash_password(env_pw))
+    purge_expired_sessions()
 
 
 def _render(request: Request, name: str, ctx: dict[str, Any]) -> HTMLResponse:
     wh_list = list_warehouses()
     wh_codes = [w["code"] for w in wh_list]
     wh_labels = {w["code"]: w["title"] for w in wh_list}
+    lang = _get_ui_lang(request)
+    theme = _get_ui_theme(request)
     base = {
         "request": request,
         "warehouses": wh_codes,
         "sources": sorted(RECEIVE_SOURCES.keys()),
         "source_labels": RECEIVE_SOURCES,
         "warehouse_labels": wh_labels,
+        "ui_lang": lang,
+        "ui_theme": theme,
+        "supported_langs": SUPPORTED_LANGS,
+        "t": get_translations(lang),
+        "site_lock_enabled": get_setting("site_lock_enabled", "0") == "1",
+        "bg_enabled": get_setting("bg_enabled", "1") == "1",
+        "bg_size": get_setting("bg_size", "cover"),
+        "bg_overlay": get_setting("bg_overlay", "25"),
     }
     base.update(ctx)
     return templates.TemplateResponse(name, base)
@@ -894,3 +1003,173 @@ def return_xlsx_view(request: Request, n: int):
         "return_xlsx_view.html",
         {"invoice": inv, "items": items, "inv_total": inv_total},
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Unlock (site-lock) routes
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.get("/unlock", response_class=HTMLResponse)
+def unlock_get(request: Request, next: str = "/"):
+    lang = _get_ui_lang(request)
+    theme = _get_ui_theme(request)
+    return templates.TemplateResponse(
+        "unlock.html",
+        {
+            "request": request,
+            "next": next,
+            "error": False,
+            "ui_lang": lang,
+            "ui_theme": theme,
+            "t": get_translations(lang),
+        },
+    )
+
+
+@app.post("/unlock")
+def unlock_post(
+    request: Request,
+    response: Response,
+    password: str = Form(...),
+    next: str = Form("/"),
+):
+    stored_hash = get_setting("site_lock_hash", "")
+    if stored_hash and _verify_password(password, stored_hash):
+        token = secrets.token_urlsafe(32)
+        hours = _session_hours()
+        expires_at = (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        create_session(token, expires_at)
+        redir = RedirectResponse(url=next or "/", status_code=303)
+        _set_session_cookie(redir, token)
+        return redir
+    lang = _get_ui_lang(request)
+    theme = _get_ui_theme(request)
+    return templates.TemplateResponse(
+        "unlock.html",
+        {
+            "request": request,
+            "next": next,
+            "error": True,
+            "ui_lang": lang,
+            "ui_theme": theme,
+            "t": get_translations(lang),
+        },
+        status_code=401,
+    )
+
+
+@app.get("/logout")
+def logout(request: Request):
+    token = request.cookies.get("site_session", "")
+    if token:
+        delete_session(token)
+    redir = RedirectResponse(url="/unlock", status_code=303)
+    redir.delete_cookie("site_session")
+    return redir
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# UI preference cookie setters
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.post("/set-lang")
+def set_lang(lang: str = Form(...), next: str = Form("/")):
+    if lang not in SUPPORTED_LANGS:
+        lang = "en"
+    redir = RedirectResponse(url=next or "/", status_code=303)
+    redir.set_cookie("ui_lang", lang, max_age=365 * 86400, samesite="lax")
+    return redir
+
+
+@app.post("/set-theme")
+def set_theme(theme: str = Form(...), next: str = Form("/")):
+    if theme not in ("light", "dark", "system"):
+        theme = "system"
+    redir = RedirectResponse(url=next or "/", status_code=303)
+    redir.set_cookie("ui_theme", theme, max_age=365 * 86400, samesite="lax")
+    return redir
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Admin / Settings
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.get("/admin/settings", response_class=HTMLResponse)
+def admin_settings_get(request: Request, saved: str = ""):
+    return _render(
+        request,
+        "admin_settings.html",
+        {
+            "saved": saved,
+            "lock_enabled": get_setting("site_lock_enabled", "0") == "1",
+            "session_hours": get_setting("site_lock_session_hours", "24"),
+            "default_lang": get_setting("default_lang", "en"),
+            "default_theme": get_setting("default_theme", "system"),
+            "bg_enabled": get_setting("bg_enabled", "1") == "1",
+            "bg_size": get_setting("bg_size", "cover"),
+            "bg_overlay": get_setting("bg_overlay", "25"),
+        },
+    )
+
+
+@app.post("/admin/settings/sitelock")
+def admin_settings_sitelock(
+    site_lock_enabled: str = Form("0"),
+    new_password: str = Form(""),
+    session_hours: str = Form("24"),
+    logout_all: str = Form("0"),
+):
+    set_setting("site_lock_enabled", "1" if site_lock_enabled == "1" else "0")
+    try:
+        hours = max(1, int(session_hours))
+    except (ValueError, TypeError):
+        hours = 24
+    set_setting("site_lock_session_hours", str(hours))
+    if new_password.strip():
+        set_setting("site_lock_hash", _hash_password(new_password.strip()))
+    if logout_all == "1":
+        delete_all_sessions()
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
+@app.post("/admin/settings/lang")
+def admin_settings_lang(default_lang: str = Form("en")):
+    if default_lang not in SUPPORTED_LANGS:
+        default_lang = "en"
+    set_setting("default_lang", default_lang)
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
+@app.post("/admin/settings/theme")
+def admin_settings_theme(default_theme: str = Form("system")):
+    if default_theme not in ("light", "dark", "system"):
+        default_theme = "system"
+    set_setting("default_theme", default_theme)
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
+@app.post("/admin/settings/background")
+async def admin_settings_background(
+    bg_enabled: str = Form("0"),
+    bg_size: str = Form("cover"),
+    bg_overlay: str = Form("25"),
+    bg_file: UploadFile = File(None),
+):
+    set_setting("bg_enabled", "1" if bg_enabled == "1" else "0")
+    if bg_size not in ("cover", "contain"):
+        bg_size = "cover"
+    set_setting("bg_size", bg_size)
+    try:
+        overlay = max(0, min(100, int(bg_overlay)))
+    except (ValueError, TypeError):
+        overlay = 25
+    set_setting("bg_overlay", str(overlay))
+    if bg_file and bg_file.filename:
+        suffix = Path(bg_file.filename).suffix.lower()
+        if suffix in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+            dest = STATIC_DIR / "bg.jpg"
+            with dest.open("wb") as fout:
+                shutil.copyfileobj(bg_file.file, fout)
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)

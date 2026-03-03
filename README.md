@@ -118,3 +118,64 @@ sudo certbot --nginx -d YOUR_DOMAIN
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/XSFORM/Stock_bot/main/install.sh)
+```
+
+---
+
+## Admin / Settings
+
+The web UI includes an **Admin → Settings** section (`/admin/settings`) with the following features.
+
+### 1. Site Lock (shared password)
+
+Protect the entire app behind a single shared password.
+
+**Quick start — bootstrap via environment variable:**
+
+```env
+# .env
+SITE_LOCK_PASSWORD=your-initial-password
+```
+
+On first startup the password is hashed and stored in the database. After that, update it from the **Admin → Settings → Site Lock** UI (the env var is only read once, when no password is stored yet).
+
+**How it works:**
+
+* When **Site Lock** is enabled, every page redirects to `/unlock` unless a valid session cookie is present.
+* Passwords are stored as PBKDF2-SHA256 hashes — never in plaintext.
+* Session duration is configurable (default 24 h).
+* The **"Invalidate all existing sessions"** checkbox logs out all current users immediately.
+* `/unlock` and `/static/*` are always accessible (bypass the lock).
+
+### 2. Language selector (EN / RU / TM)
+
+* A language dropdown is shown in the navbar on every page.
+* The choice is persisted in a browser cookie (`ui_lang`, 1-year TTL).
+* Admin can set the **default language** for new visitors in Settings → Default Language.
+
+**Adding or updating translations:**
+
+Open `app/i18n.py`. Every translatable string is a key in the `TRANSLATIONS` dict:
+
+```python
+TRANSLATIONS = {
+    "en": { "my_new_key": "Hello" },
+    "ru": { "my_new_key": "Привет" },
+    "tm": { "my_new_key": "Salam" },
+}
+```
+
+Keys missing from `ru` or `tm` automatically fall back to the English value. After adding a key, use it in templates via `{{ t.my_new_key }}`.
+
+### 3. Dark mode / theme toggle
+
+* A theme selector (☀️ Light / 🌙 Dark / 🖥️ System) is shown in the navbar.
+* The choice is persisted in a browser cookie (`ui_theme`, 1-year TTL).
+* Bootstrap 5's `data-bs-theme` attribute is used — no extra CSS required for components.
+* Admin can set the **default theme** for new visitors in Settings → Default Theme.
+
+### 4. Background image
+
+* The background image can be replaced by uploading a JPG/PNG from **Settings → Background Image**.
+* The uploaded file overwrites `app/web/static/bg.jpg`.
+* Options: enable/disable background, background-size (cover / contain), overlay opacity.

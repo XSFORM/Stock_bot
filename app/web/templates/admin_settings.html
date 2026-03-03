@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white rounded shadow-sm p-4">
+  <h2 class="mb-4">⚙️ {{ t.settings_heading }}</h2>
+
+  {% if saved %}
+  <div class="alert alert-success py-2 small">{{ t.saved_ok }}</div>
+  {% endif %}
+
+  <!-- ── Site Lock ──────────────────────────────────────────────────── -->
+  <h5 class="mt-2 mb-3 border-bottom pb-2">🔒 {{ t.settings_sitelock_heading }}</h5>
+  <form method="post" action="/admin/settings/sitelock" class="mb-4">
+    <div class="mb-2 form-check">
+      <input class="form-check-input" type="checkbox" name="site_lock_enabled" value="1"
+             id="lock_enabled" {% if lock_enabled %}checked{% endif %}>
+      <label class="form-check-label" for="lock_enabled">{{ t.settings_sitelock_enable }}</label>
+    </div>
+    <div class="mb-2">
+      <label class="form-label small">{{ t.settings_sitelock_new_password }}</label>
+      <input type="password" name="new_password" class="form-control form-control-sm"
+             autocomplete="new-password">
+    </div>
+    <div class="mb-2">
+      <label class="form-label small">{{ t.settings_sitelock_session_hours }}</label>
+      <input type="number" name="session_hours" class="form-control form-control-sm"
+             value="{{ session_hours }}" min="1" max="8760">
+    </div>
+    <div class="mb-3 form-check">
+      <input class="form-check-input" type="checkbox" name="logout_all" value="1" id="logout_all">
+      <label class="form-check-label" for="logout_all">{{ t.settings_sitelock_logout_all }}</label>
+    </div>
+    <button type="submit" class="btn btn-sm btn-primary">{{ t.settings_sitelock_save }}</button>
+  </form>
+
+  <!-- ── Language ───────────────────────────────────────────────────── -->
+  <h5 class="mt-4 mb-3 border-bottom pb-2">🌐 {{ t.settings_lang_heading }}</h5>
+  <form method="post" action="/admin/settings/lang" class="mb-4">
+    <div class="mb-3">
+      <label class="form-label small">{{ t.settings_lang_label }}</label>
+      <select name="default_lang" class="form-select form-select-sm" style="max-width:200px">
+        <option value="en" {% if default_lang == "en" %}selected{% endif %}>English</option>
+        <option value="ru" {% if default_lang == "ru" %}selected{% endif %}>Русский</option>
+        <option value="tm" {% if default_lang == "tm" %}selected{% endif %}>Türkmençe</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-sm btn-primary">{{ t.settings_lang_save }}</button>
+  </form>
+
+  <!-- ── Theme ──────────────────────────────────────────────────────── -->
+  <h5 class="mt-4 mb-3 border-bottom pb-2">🎨 {{ t.settings_theme_heading }}</h5>
+  <form method="post" action="/admin/settings/theme" class="mb-4">
+    <div class="mb-3">
+      <label class="form-label small">{{ t.settings_theme_label }}</label>
+      <select name="default_theme" class="form-select form-select-sm" style="max-width:200px">
+        <option value="light" {% if default_theme == "light" %}selected{% endif %}>{{ t.settings_theme_light }}</option>
+        <option value="dark"  {% if default_theme == "dark"  %}selected{% endif %}>{{ t.settings_theme_dark }}</option>
+        <option value="system"{% if default_theme == "system"%}selected{% endif %}>{{ t.settings_theme_system }}</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-sm btn-primary">{{ t.settings_theme_save }}</button>
+  </form>
+
+  <!-- ── Background ─────────────────────────────────────────────────── -->
+  <h5 class="mt-4 mb-3 border-bottom pb-2">🖼️ {{ t.settings_bg_heading }}</h5>
+  <form method="post" action="/admin/settings/background" enctype="multipart/form-data" class="mb-4">
+    <div class="mb-2 form-check">
+      <input class="form-check-input" type="checkbox" name="bg_enabled" value="1"
+             id="bg_enabled" {% if bg_enabled %}checked{% endif %}>
+      <label class="form-check-label" for="bg_enabled">{{ t.settings_bg_enable }}</label>
+    </div>
+    <div class="mb-2">
+      <label class="form-label small">{{ t.settings_bg_size }}</label>
+      <select name="bg_size" class="form-select form-select-sm" style="max-width:200px">
+        <option value="cover"   {% if bg_size == "cover"   %}selected{% endif %}>{{ t.settings_bg_size_cover }}</option>
+        <option value="contain" {% if bg_size == "contain" %}selected{% endif %}>{{ t.settings_bg_size_contain }}</option>
+      </select>
+    </div>
+    <div class="mb-2">
+      <label class="form-label small">{{ t.settings_bg_overlay }}</label>
+      <input type="number" name="bg_overlay" class="form-control form-control-sm"
+             value="{{ bg_overlay }}" min="0" max="100" style="max-width:120px">
+    </div>
+    <div class="mb-3">
+      <label class="form-label small">{{ t.settings_bg_upload }}</label>
+      <input type="file" name="bg_file" class="form-control form-control-sm"
+             accept=".jpg,.jpeg,.png,.webp,.gif" style="max-width:360px">
+    </div>
+    <button type="submit" class="btn btn-sm btn-primary">{{ t.settings_bg_save }}</button>
+  </form>
+
+</div>
+{% endblock %}
