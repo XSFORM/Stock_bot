@@ -35,9 +35,11 @@ CREATE TABLE IF NOT EXISTS stock (
 CREATE TABLE IF NOT EXISTS carts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   client_id INTEGER NOT NULL,
+  warehouse_code TEXT NOT NULL DEFAULT '1416_SHOP',
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
   status TEXT NOT NULL DEFAULT 'OPEN', -- OPEN / CLOSED
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (warehouse_code) REFERENCES warehouses(code)
 );
 
 CREATE TABLE IF NOT EXISTS cart_items (

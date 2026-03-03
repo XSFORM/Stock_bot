@@ -555,8 +555,8 @@ def sale_get(request: Request, msg: str = ""):
 
 
 @app.post("/sale/start")
-def sale_start(client_id: int = Form(...)):
-    ok, err, cart_id = cart_start_by_id(int(client_id))
+def sale_start(client_id: int = Form(...), warehouse_code: str = Form("1416_SHOP")):
+    ok, err, cart_id = cart_start_by_id(int(client_id), warehouse_code)
     if not ok:
         return RedirectResponse(url=f"/sale?msg={err}", status_code=303)
     return RedirectResponse(url="/sale?msg=cart_started", status_code=303)

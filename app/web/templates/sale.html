@@ -17,19 +17,19 @@
 </style>
 
 <div class="bg-white p-3 rounded shadow-sm">
-  <h4 class="mb-3">Sale <small class="text-muted fs-6">from 1416_SHOP</small></h4>
+  <h4 class="mb-3">Sale <small class="text-muted fs-6" id="sale-warehouse-label">{% if open_cart %}from {{ warehouse_labels.get(open_cart.warehouse_code, open_cart.warehouse_code) }}{% else %}from warehouse{% endif %}</small></h4>
   {% if message %}<div class="alert alert-info" style="white-space: pre-wrap;">{{ message }}</div>{% endif %}
 
   {# ── ERP Header ── #}
   <div class="erp-header mb-3">
     <div class="row g-0">
-      <div class="col-md-3 pe-3">
+      <div class="col-md-2 pe-3">
         <div class="erp-label">Invoice #</div>
         <div class="erp-value">
           {% if open_cart %}{{ open_cart.cart_id }}{% else %}&mdash;{% endif %}
         </div>
       </div>
-      <div class="col-md-3 pe-3 ps-3">
+      <div class="col-md-2 pe-3 ps-3">
         <div class="erp-label">Date / Time</div>
         <div class="erp-value" id="erp-datetime">
           {% if open_cart and open_cart.created_at and open_cart.created_at | length >= 16 %}
@@ -39,7 +39,18 @@
           {% endif %}
         </div>
       </div>
-      <div class="col-md-6 ps-3">
+      <div class="col-md-3 pe-3 ps-3">
+        <div class="erp-label">FROM (warehouse)</div>
+        <div class="erp-value">
+          {% if open_cart %}
+            {{ warehouse_labels.get(open_cart.warehouse_code, open_cart.warehouse_code) }}
+            <span class="text-muted fs-6">({{ open_cart.warehouse_code }})</span>
+          {% else %}
+            &mdash;
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-md-5 ps-3">
         <div class="erp-label">Client</div>
         <div class="erp-value">
           {% if open_cart %}
@@ -68,6 +79,11 @@
                 <option value="" selected disabled>Select client…</option>
                 {% for c in clients %}
                   <option value="{{ c.id }}">{{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}</option>
+                {% endfor %}
+              </select>
+              <select class="form-select form-select-sm" name="warehouse_code" required style="max-width:200px">
+                {% for w in warehouses %}
+                  <option value="{{ w }}"{% if w == '1416_SHOP' %} selected{% endif %}>{{ warehouse_labels.get(w, w) }} ({{ w }})</option>
                 {% endfor %}
               </select>
               <button class="btn btn-sm btn-secondary">Start</button>
@@ -266,7 +282,8 @@
     });
 
     function fetchSuggestions(q) {
-      fetch('/api/stock-search?warehouse=1416_SHOP&q=' + encodeURIComponent(q))
+      const wh = {{ (open_cart.warehouse_code if open_cart else '1416_SHOP') | tojson }};
+      fetch('/api/stock-search?warehouse=' + encodeURIComponent(wh) + '&q=' + encodeURIComponent(q))
         .then(r => r.json())
         .then(data => renderSuggestions(data.results || []))
         .catch(() => hideSuggestions());
