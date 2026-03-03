@@ -66,6 +66,7 @@ from app.db.sqlite import (
     receive_invoice_get,
     receive_invoice_get_items,
     add_product_simple,
+    update_product_wh_price,
     # NEW: suppliers list for UI suggestions
     list_receive_suppliers,
     # NEW: warehouse management
@@ -340,12 +341,17 @@ def receive_item_new_post(
     wh_price: float = Form(...),
     qty: float = Form(...),
     purchase_price: float = Form(...),
+    update_wh_from_purchase: int = Form(0),
 ):
     if wh_price <= 0:
         return RedirectResponse(url="/receive?msg=new_product_error:wh_price_required", status_code=303)
     ok, err, product_id = add_product_simple(brand, model, name, barcode, product_note, wh_price)
     if not ok:
         return RedirectResponse(url=f"/receive?msg=new_product_error:{err}", status_code=303)
+    if update_wh_from_purchase and purchase_price > 0:
+        ok_wh, err_wh = update_product_wh_price(int(product_id), float(purchase_price))
+        if not ok_wh:
+            return RedirectResponse(url=f"/receive?msg=wh_price_update_error:{err_wh}", status_code=303)
     ok2, err2 = receive_item_add(int(invoice_id), int(product_id), float(qty), float(purchase_price))
     msg = "new_product_added" if ok2 else f"add_error:{err2}"
     return RedirectResponse(url=f"/receive?msg={msg}", status_code=303)
