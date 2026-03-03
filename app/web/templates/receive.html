@@ -13,7 +13,7 @@
   .items-table th { white-space: nowrap; }
   .total-row td { font-weight: 700; background: #f8f9fa; }
   .edit-inline input[type=number] { min-width: 56px; }
-  .hidden { display: none; }
+  #product-suggestions .suggestion-create { color: #0d6efd; font-style: italic; border-top: 1px solid #dee2e6; }
   #new-product-panel { background: #fff8e1; border: 1px solid #ffe082; border-radius: 6px; padding: 1rem; }
 </style>
 
@@ -177,6 +177,10 @@
                     <input class="form-control form-control-sm" name="product_note" style="width:140px" placeholder="optional">
                   </div>
                   <div>
+                    <label class="form-label form-label-sm mb-1">Sale price (wh)</label>
+                    <input class="form-control form-control-sm" name="wh_price" type="number" step="0.01" min="0" style="width:110px" placeholder="0.00 (optional)">
+                  </div>
+                  <div>
                     <label class="form-label form-label-sm mb-1">Qty <span class="text-danger">*</span></label>
                     <input class="form-control form-control-sm" name="qty" type="number" step="1" min="1" required style="width:75px">
                   </div>
@@ -269,12 +273,14 @@
     const newToggle    = document.getElementById('new-product-toggle');
     const newRow       = document.getElementById('new-product-row');
     const newCancel    = document.getElementById('new-product-cancel');
+    const DEST_WH      = {{ open_inv.destination_warehouse | tojson }};
 
     let debounceTimer;
 
     searchInput.addEventListener('input', function () {
       clearTimeout(debounceTimer);
       productIdIn.value = '';
+      searchInput.setCustomValidity('');
       const q = this.value.trim();
       if (q.length < 1) { hideSuggestions(); return; }
       debounceTimer = setTimeout(() => fetchSuggestions(q), 220);
@@ -289,27 +295,38 @@
     });
 
     function fetchSuggestions(q) {
-      fetch('/api/products-search?q=' + encodeURIComponent(q) + '&limit=30')
+      let url = '/api/products-search?q=' + encodeURIComponent(q) + '&limit=30';
+      if (DEST_WH) url += '&warehouse=' + encodeURIComponent(DEST_WH);
+      fetch(url)
         .then(r => r.json())
-        .then(data => renderSuggestions(data.results || []))
+        .then(data => renderSuggestions(data.results || [], q))
         .catch(() => hideSuggestions());
     }
 
-    function renderSuggestions(items) {
+    function renderSuggestions(items, q) {
       suggestions.innerHTML = '';
-      if (!items.length) { hideSuggestions(); return; }
       items.forEach(item => {
         const div = document.createElement('div');
         div.className = 'suggestion-item';
-        div.textContent = item.brand + ' ' + item.model + ' - ' + item.name;
+        let label = item.brand + ' ' + item.model + ' — ' + item.name;
+        if (item.qty_in_wh != null) {
+          label += ' [qty: ' + item.qty_in_wh + ']';
+        }
+        div.textContent = label;
         div.addEventListener('click', () => selectProduct(item));
         suggestions.appendChild(div);
       });
+      // Always show "Create new product" option at the bottom
+      const createDiv = document.createElement('div');
+      createDiv.className = 'suggestion-item suggestion-create';
+      createDiv.textContent = '✚ Create new product…';
+      createDiv.addEventListener('click', () => { hideSuggestions(); showNewProductPanel(q); });
+      suggestions.appendChild(createDiv);
       suggestions.style.display = 'block';
     }
 
     function selectProduct(item) {
-      searchInput.value = item.brand + ' ' + item.model + ' - ' + item.name;
+      searchInput.value = item.brand + ' ' + item.model + ' — ' + item.name;
       productIdIn.value = item.product_id;
 
       // prefill last purchase price if available
@@ -329,10 +346,25 @@
       suggestions.style.display = 'none';
     }
 
+    function showNewProductPanel(prefill) {
+      newRow.classList.remove('hidden');
+      newToggle.classList.add('hidden');
+      // Pre-fill brand/model/name from search text if possible
+      if (prefill) {
+        const parts = prefill.split(/\s+/);
+        const brandIn = newRow.querySelector('[name=brand]');
+        const modelIn = newRow.querySelector('[name=model]');
+        const nameIn  = newRow.querySelector('[name=name]');
+        if (brandIn && !brandIn.value && parts[0]) brandIn.value = parts[0];
+        if (modelIn && !modelIn.value && parts[1]) modelIn.value = parts[1];
+        if (nameIn  && !nameIn.value  && parts[2]) nameIn.value  = parts.slice(2).join(' ');
+      }
+    }
+
     form.addEventListener('submit', function (e) {
       if (!productIdIn.value) {
         e.preventDefault();
-        searchInput.setCustomValidity('Please select a product from the list.');
+        searchInput.setCustomValidity('Please select a product from the list or create a new one.');
         searchInput.reportValidity();
         return;
       }
@@ -341,8 +373,7 @@
 
     // New product panel toggle
     newToggle.addEventListener('click', function () {
-      newRow.classList.remove('hidden');
-      newToggle.classList.add('hidden');
+      showNewProductPanel('');
     });
     newCancel.addEventListener('click', function () {
       newRow.classList.add('hidden');

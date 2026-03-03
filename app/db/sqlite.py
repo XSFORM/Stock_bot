@@ -1063,43 +1063,79 @@ def get_stock_text(warehouse: Optional[str] = None) -> str:
     return "\n".join(lines)
 
 
-def search_products(q: str, limit: int = 30, include_archived: bool = False) -> list[dict[str, Any]]:
+def search_products(
+    q: str,
+    limit: int = 30,
+    include_archived: bool = False,
+    warehouse: str = "",
+) -> list[dict[str, Any]]:
     """Search all products (catalog) by brand/model/name, case-insensitive.
 
     Returns list of dicts: product_id, brand, model, name, last_purchase_price.
+    If warehouse is provided, also includes qty_in_wh (stock qty in that warehouse, 0 if none).
     last_purchase_price is taken from products.last_purchase_price, and if NULL,
     falls back to the most recent receive_items.purchase_price for that product.
     """
     term = (q or "").strip().lower()
     like = f"%{term}%"
+    wh = (warehouse or "").strip().upper()
 
     conn = _connect()
     try:
-        rows = conn.execute(
-            """
-            SELECT
-              p.id as product_id,
-              p.brand,
-              p.model,
-              p.name,
-              COALESCE(
-                p.last_purchase_price,
-                (
-                  SELECT ri.purchase_price
-                  FROM receive_items ri
-                  WHERE ri.product_id = p.id
-                  ORDER BY ri.id DESC
-                  LIMIT 1
-                )
-              ) as last_purchase_price
-            FROM products p
-            WHERE (lower(p.brand) LIKE ? OR lower(p.model) LIKE ? OR lower(p.name) LIKE ?)
-              AND (p.archived = 0 OR ? = 1)
-            ORDER BY p.brand, p.model
-            LIMIT ?
-            """,
-            (like, like, like, int(include_archived), int(limit)),
-        ).fetchall()
+        if wh:
+            rows = conn.execute(
+                """
+                SELECT
+                  p.id as product_id,
+                  p.brand,
+                  p.model,
+                  p.name,
+                  COALESCE(
+                    p.last_purchase_price,
+                    (
+                      SELECT ri.purchase_price
+                      FROM receive_items ri
+                      WHERE ri.product_id = p.id
+                      ORDER BY ri.id DESC
+                      LIMIT 1
+                    )
+                  ) as last_purchase_price,
+                  COALESCE(s.qty, 0) as qty_in_wh
+                FROM products p
+                LEFT JOIN stock s ON s.product_id = p.id AND s.warehouse_code = ?
+                WHERE (lower(p.brand) LIKE ? OR lower(p.model) LIKE ? OR lower(p.name) LIKE ?)
+                  AND (p.archived = 0 OR ? = 1)
+                ORDER BY qty_in_wh DESC, p.brand, p.model
+                LIMIT ?
+                """,
+                (wh, like, like, like, int(include_archived), int(limit)),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT
+                  p.id as product_id,
+                  p.brand,
+                  p.model,
+                  p.name,
+                  COALESCE(
+                    p.last_purchase_price,
+                    (
+                      SELECT ri.purchase_price
+                      FROM receive_items ri
+                      WHERE ri.product_id = p.id
+                      ORDER BY ri.id DESC
+                      LIMIT 1
+                    )
+                  ) as last_purchase_price
+                FROM products p
+                WHERE (lower(p.brand) LIKE ? OR lower(p.model) LIKE ? OR lower(p.name) LIKE ?)
+                  AND (p.archived = 0 OR ? = 1)
+                ORDER BY p.brand, p.model
+                LIMIT ?
+                """,
+                (like, like, like, int(include_archived), int(limit)),
+            ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -2169,6 +2205,7 @@ def add_product_simple(
     name: str,
     barcode: str = "",
     note: str = "",
+    wh_price: float = 0.0,
 ) -> tuple[bool, str, Optional[int]]:
     """Add a new product (for receive screen). Returns (ok, err, product_id)."""
     init_db()
@@ -2177,6 +2214,7 @@ def add_product_simple(
     name = (name or "").strip()
     barcode = (barcode or "").strip()
     note = (note or "").strip()
+    wh_price = float(wh_price) if wh_price else 0.0
 
     if not brand:
         return False, "brand is required", None
@@ -2195,10 +2233,9 @@ def add_product_simple(
         cur = conn.execute(
             """
             INSERT INTO products(brand, model, name, wh_price, barcode, note)
-            VALUES (?, ?, ?, 0, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            # wh_price=0: selling price is not set at receive time; update via Products page later
-            (brand, model, name, barcode, note),
+            (brand, model, name, wh_price, barcode, note),
         )
         conn.commit()
         # Also seed the brand
