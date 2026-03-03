@@ -337,10 +337,12 @@ def receive_item_new_post(
     name: str = Form(...),
     barcode: str = Form(""),
     product_note: str = Form(""),
-    wh_price: float = Form(0.0),
+    wh_price: float = Form(...),
     qty: float = Form(...),
     purchase_price: float = Form(...),
 ):
+    if wh_price <= 0:
+        return RedirectResponse(url="/receive?msg=new_product_error:wh_price_required", status_code=303)
     ok, err, product_id = add_product_simple(brand, model, name, barcode, product_note, wh_price)
     if not ok:
         return RedirectResponse(url=f"/receive?msg=new_product_error:{err}", status_code=303)

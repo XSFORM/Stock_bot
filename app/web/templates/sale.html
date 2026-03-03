@@ -251,10 +251,15 @@
 
     function autoFillPrice(mode) {
       if (!selectedProduct) return;
-      if (mode === 'wh10') {
-        customPrice.value = parseFloat(selectedProduct.wh10_price).toFixed(2);
-      } else if (mode === 'wh25') {
-        customPrice.value = parseFloat(selectedProduct.wh25_price).toFixed(2);
+      var price = NaN;
+      if (mode === 'wh10') price = parseFloat(selectedProduct.wh10_price);
+      else if (mode === 'wh25') price = parseFloat(selectedProduct.wh25_price);
+      if (!isNaN(price) && price > 0) {
+        customPrice.value = price.toFixed(2);
+        customPrice.placeholder = '';
+      } else {
+        customPrice.value = '';
+        customPrice.placeholder = 'no WH price – use Manual';
       }
     }
 
