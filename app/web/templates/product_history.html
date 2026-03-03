@@ -1,23 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="bg-white p-3 rounded shadow-sm">
-  <h4>History: {{ product.brand }} {{ product.model }} <small class="text-muted fs-6">{{ product.name }}</small></h4>
+  <h4>{{ t.history_title }}: {{ product.brand }} {{ product.model }} <small class="text-muted fs-6">{{ product.name }}</small></h4>
   <div class="mb-3">
-    <a href="/stock" class="btn btn-sm btn-outline-secondary">← Back to Stock</a>
+    <a href="/stock" class="btn btn-sm btn-outline-secondary">{{ t.history_back_to_stock }}</a>
   </div>
 
   <table class="table table-sm table-striped align-middle">
     <thead class="table-dark">
       <tr>
-        <th>Date / Time</th>
-        <th>Type</th>
-        <th>Ref</th>
-        <th>Counterparty</th>
-        <th>Warehouse</th>
-        <th class="text-end">Qty</th>
-        <th class="text-end">Unit Price</th>
-        <th class="text-end">Total</th>
-        <th>Actions</th>
+        <th>{{ t.lbl_date_time }}</th>
+        <th>{{ t.lbl_type }}</th>
+        <th>{{ t.lbl_ref }}</th>
+        <th>{{ t.lbl_counterparty }}</th>
+        <th>{{ t.lbl_warehouse }}</th>
+        <th class="text-end">{{ t.lbl_qty }}</th>
+        <th class="text-end">{{ t.lbl_unit_price }}</th>
+        <th class="text-end">{{ t.lbl_total }}</th>
+        <th>{{ t.lbl_actions }}</th>
       </tr>
     </thead>
     <tbody>
@@ -26,11 +26,11 @@
         <td>{{ ev.dt }}</td>
         <td>
           {% if ev.type == 'RECEIVE' %}
-          <span class="badge bg-success">RECEIVE</span>
+          <span class="badge bg-success">{{ t.badge_receive }}</span>
           {% elif ev.type == 'RETURN' %}
-          <span class="badge bg-warning text-dark">RETURN</span>
+          <span class="badge bg-warning text-dark">{{ t.badge_return }}</span>
           {% else %}
-          <span class="badge bg-primary">SALE</span>
+          <span class="badge bg-primary">{{ t.badge_sale }}</span>
           {% endif %}
         </td>
         <td>{{ ev.ref }}</td>
@@ -48,13 +48,13 @@
         <td class="text-end">{{ "%.2f"|format(ev.unit_price) }}</td>
         <td class="text-end">{{ "%.2f"|format(ev.total) }}</td>
         <td>
-          <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank" rel="noopener noreferrer">View</a>
-          <a class="btn btn-sm btn-outline-success" href="{{ ev.download_url }}">Download</a>
+          <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank" rel="noopener noreferrer">{{ t.btn_view }}</a>
+          <a class="btn btn-sm btn-outline-success" href="{{ ev.download_url }}">{{ t.btn_download }}</a>
         </td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="9" class="text-muted text-center">No history events found for this product.</td>
+        <td colspan="9" class="text-muted text-center">{{ t.history_no_product_events }}</td>
       </tr>
       {% endfor %}
     </tbody>

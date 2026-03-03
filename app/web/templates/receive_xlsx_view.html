@@ -3,16 +3,16 @@
 <div class="bg-white p-3 rounded shadow-sm">
   <div class="d-flex justify-content-between align-items-start mb-3">
     <div>
-      <h4 class="mb-0">Purchase Invoice #{{ "%06d"|format(invoice.number) }}</h4>
+      <h4 class="mb-0">{{ t.receive_subtitle }} #{{ "%06d"|format(invoice.number) }}</h4>
       <div class="text-muted small">
-        Supplier: {{ invoice.supplier or '—' }} &nbsp;|&nbsp;
-        Date: {{ invoice.created_at[:16] | replace("T", " ") }} &nbsp;|&nbsp;
-        Destination: {{ invoice.destination_warehouse }}
+        {{ t.xlsx_lbl_supplier }} {{ invoice.supplier or '—' }} &nbsp;|&nbsp;
+        {{ t.xlsx_lbl_date }} {{ invoice.created_at[:16] | replace("T", " ") }} &nbsp;|&nbsp;
+        {{ t.lbl_destination }}: {{ invoice.destination_warehouse }}
       </div>
     </div>
     <div class="d-flex gap-2">
-      <a href="/receive/xlsx?n={{ invoice.id }}" class="btn btn-success btn-sm">&#11015; Download XLSX</a>
-      <a href="/receive" class="btn btn-outline-secondary btn-sm">← Back</a>
+      <a href="/receive/xlsx?n={{ invoice.id }}" class="btn btn-success btn-sm">&#11015; {{ t.btn_download_xlsx }}</a>
+      <a href="/receive" class="btn btn-outline-secondary btn-sm">{{ t.btn_back }}</a>
     </div>
   </div>
 
@@ -20,11 +20,11 @@
     <thead class="table-dark">
       <tr>
         <th style="width:40px">#</th>
-        <th>Model</th>
-        <th>Name</th>
-        <th style="width:80px" class="text-center">Qty</th>
-        <th style="width:130px" class="text-end">Purchase Price</th>
-        <th style="width:110px" class="text-end">Total</th>
+        <th>{{ t.lbl_model }}</th>
+        <th>{{ t.lbl_name }}</th>
+        <th style="width:80px" class="text-center">{{ t.lbl_qty }}</th>
+        <th style="width:130px" class="text-end">{{ t.xlsx_col_purchase_price }}</th>
+        <th style="width:110px" class="text-end">{{ t.lbl_total }}</th>
       </tr>
     </thead>
     <tbody>
@@ -39,7 +39,7 @@
       </tr>
       {% endfor %}
       <tr class="table-info fw-bold">
-        <td colspan="3" class="text-end">TOTAL</td>
+        <td colspan="3" class="text-end">{{ t.lbl_total }}</td>
         <td class="text-center">{{ inv_qty | int }}</td>
         <td></td>
         <td class="text-end">{{ "%.2f"|format(inv_total) }}</td>

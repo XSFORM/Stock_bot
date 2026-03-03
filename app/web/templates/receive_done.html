@@ -4,22 +4,22 @@
   <div class="mb-3">
     <span style="font-size:3rem;">✅</span>
   </div>
-  <h4 class="mb-1">Purchase Invoice #{{ invoice.number }} — Done!</h4>
+  <h4 class="mb-1">{{ t.receive_title }} #{{ invoice.number }} — {{ t.receive_done_title }}</h4>
   <p class="text-muted mb-1">
-    Supplier: <strong>{{ invoice.supplier or '—' }}</strong>
+    {{ t.receive_done_supplier }} <strong>{{ invoice.supplier or '—' }}</strong>
   </p>
   <p class="text-muted mb-3">
-    Stock received into: <strong>{{ invoice.destination_warehouse }}</strong>
+    {{ t.receive_done_stock_into }} <strong>{{ invoice.destination_warehouse }}</strong>
   </p>
   <div class="d-flex gap-2 justify-content-center">
     <a href="/receive/xlsx/view?n={{ invoice.id }}" class="btn btn-outline-primary">
-      &#128065; View XLSX
+      &#128065; {{ t.btn_view_xlsx }}
     </a>
     <a href="/receive/xlsx?n={{ invoice.id }}" class="btn btn-success">
-      &#11015; Download XLSX
+      &#11015; {{ t.btn_download_xlsx }}
     </a>
     <a href="/receive" class="btn btn-outline-secondary">
-      New Receive
+      {{ t.btn_new_receive }}
     </a>
   </div>
 </div>

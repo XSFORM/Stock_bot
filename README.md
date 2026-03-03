@@ -167,6 +167,31 @@ TRANSLATIONS = {
 
 Keys missing from `ru` or `tm` automatically fall back to the English value. After adding a key, use it in templates via `{{ t.my_new_key }}`.
 
+**Translation coverage:**
+
+The i18n system covers the entire UI including:
+- Navigation menu items (Products, Stock, Receive, Move, Move all, Sale, Return, Brands, Clients, Invoices, History, Admin)
+- Page titles and section headers
+- Table column headers (Brand, Model, Name, Qty, Unit Price, Total, etc.)
+- Form labels and placeholders
+- Buttons (Save, Cancel, Add, Edit, Delete, Archive, etc.)
+- Empty state messages and confirmation dialogs
+- Badge/status labels (RECEIVE, SALE, RETURN, INVOICE, ADJUSTMENT, ARCHIVED)
+
+Data fetched from the database (client names, product names, warehouse codes, invoice numbers, etc.) is **not** translated — it appears as stored.
+
+**Where translation files live:**
+
+All translations live in a single file: `app/i18n.py`
+
+Keys are organized with comments by section:
+- `nav_*` — navigation links
+- `btn_*` — buttons
+- `lbl_*` — form labels / table headers
+- `badge_*` — status badges
+- `confirm_*` — confirmation dialog messages
+- `products_*`, `stock_*`, `receive_*`, `sale_*`, `return_*`, etc. — page-specific strings
+
 ### 3. Dark mode / theme toggle
 
 * A theme selector (☀️ Light / 🌙 Dark / 🖥️ System) is shown in the navbar.

@@ -3,7 +3,7 @@
 <div class="row g-3">
   <div class="col-lg-8">
     <div class="bg-white p-3 rounded shadow-sm">
-      <h4>Clients</h4>
+      <h4>{{ t.clients_title }}</h4>
 
       {% if request.query_params.get('msg') %}
         <div class="alert alert-info">{{ request.query_params.get('msg') }}</div>
@@ -13,10 +13,10 @@
         <form method="get" action="/clients" class="d-inline">
           {% if show_archived %}
             <input type="hidden" name="show_archived" value="0">
-            <button class="btn btn-sm btn-secondary">Hide archived</button>
+            <button class="btn btn-sm btn-secondary">{{ t.hide_archived }}</button>
           {% else %}
             <input type="hidden" name="show_archived" value="1">
-            <button class="btn btn-sm btn-outline-secondary">Show archived</button>
+            <button class="btn btn-sm btn-outline-secondary">{{ t.show_archived }}</button>
           {% endif %}
         </form>
       </div>
@@ -24,10 +24,10 @@
       <table class="table table-sm align-middle">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Phone</th>
-            <th>Note</th>
-            <th class="text-end">Balance (Debt)</th>
+            <th>{{ t.lbl_name }}</th>
+            <th>{{ t.lbl_phone }}</th>
+            <th>{{ t.lbl_note }}</th>
+            <th class="text-end">{{ t.clients_col_balance }}</th>
             <th></th>
           </tr>
         </thead>
@@ -36,7 +36,7 @@
           <tr{% if c.archived %} class="text-muted"{% endif %}>
             <td>
               {{ c.name }}
-              {% if c.archived %}<span class="badge bg-secondary ms-1">ARCHIVED</span>{% endif %}
+              {% if c.archived %}<span class="badge bg-secondary ms-1">{{ t.badge_archived }}</span>{% endif %}
             </td>
             <td>{{ c.phone }}</td>
             <td>{{ c.note }}</td>
@@ -55,29 +55,29 @@
                         data-bs-toggle="dropdown" aria-expanded="false">⋯</button>
                 <ul class="dropdown-menu dropdown-menu-end">
                   <li>
-                    <a class="dropdown-item" href="/clients/{{ c.id }}/history">History</a>
+                    <a class="dropdown-item" href="/clients/{{ c.id }}/history">{{ t.clients_history }}</a>
                   </li>
                   <li>
                     <a class="dropdown-item" href="#"
                        onclick="openAdjustment({{ c.id }}, '{{ c.name|e }}', {{ show_archived }}); return false;">
-                      Снять с долга
+                      {{ t.clients_debt_adjust }}
                     </a>
                   </li>
                   <li><hr class="dropdown-divider"></li>
                   <li>
-                    <a class="dropdown-item" href="/clients/{{ c.id }}/edit">Edit</a>
+                    <a class="dropdown-item" href="/clients/{{ c.id }}/edit">{{ t.btn_edit }}</a>
                   </li>
                   <li>
                     {% if c.archived %}
                       <form method="post" action="/clients/{{ c.id }}/unarchive" class="d-inline">
                         <input type="hidden" name="show_archived" value="{{ show_archived }}">
-                        <button class="dropdown-item" type="submit">Unarchive</button>
+                        <button class="dropdown-item" type="submit">{{ t.btn_unarchive }}</button>
                       </form>
                     {% else %}
                       <form method="post" action="/clients/{{ c.id }}/archive" class="d-inline"
-                            onsubmit="return confirm('Archive this client?')">
+                            onsubmit="return confirm('{{ t.confirm_archive_client }}')">
                         <input type="hidden" name="show_archived" value="{{ show_archived }}">
-                        <button class="dropdown-item text-warning" type="submit">Archive</button>
+                        <button class="dropdown-item text-warning" type="submit">{{ t.btn_archive }}</button>
                       </form>
                     {% endif %}
                   </li>
@@ -93,21 +93,21 @@
 
   <div class="col-lg-4">
     <div class="bg-white p-3 rounded shadow-sm">
-      <h4>Add client</h4>
+      <h4>{{ t.clients_add_title }}</h4>
       <form method="post" action="/clients/add">
         <div class="mb-2">
-          <label class="form-label">Name</label>
+          <label class="form-label">{{ t.lbl_name }}</label>
           <input class="form-control" name="name" required>
         </div>
         <div class="mb-2">
-          <label class="form-label">Phone</label>
+          <label class="form-label">{{ t.lbl_phone }}</label>
           <input class="form-control" name="phone" placeholder="+998 ...">
         </div>
         <div class="mb-2">
-          <label class="form-label">Note</label>
+          <label class="form-label">{{ t.lbl_note }}</label>
           <textarea class="form-control" name="note" rows="3"></textarea>
         </div>
-        <button class="btn btn-primary">Save</button>
+        <button class="btn btn-primary">{{ t.btn_save }}</button>
       </form>
     </div>
   </div>
@@ -120,23 +120,23 @@
       <form method="post" id="adjustmentForm">
         <input type="hidden" name="show_archived" id="adj_show_archived">
         <div class="modal-header">
-          <h5 class="modal-title">Снять с долга — <span id="adj_client_name"></span></h5>
+          <h5 class="modal-title">{{ t.clients_debt_adjust_title }} <span id="adj_client_name"></span></h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
           <div class="mb-3">
-            <label class="form-label">Сумма (USD) <span class="text-danger">*</span></label>
+            <label class="form-label">{{ t.clients_adj_amount }} <span class="text-danger">*</span></label>
             <input type="number" class="form-control" name="amount" id="adj_amount"
                    min="0.01" step="0.01" required>
           </div>
           <div class="mb-3">
-            <label class="form-label">Примечание (необязательно)</label>
+            <label class="form-label">{{ t.clients_adj_note }}</label>
             <input type="text" class="form-control" name="note" id="adj_note">
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-          <button type="submit" class="btn btn-primary">Сохранить</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ t.btn_cancel }}</button>
+          <button type="submit" class="btn btn-primary">{{ t.btn_save }}</button>
         </div>
       </form>
     </div>

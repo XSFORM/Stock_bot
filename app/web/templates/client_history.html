@@ -2,18 +2,18 @@
 {% block content %}
 <div class="bg-white p-3 rounded shadow-sm">
   <div class="d-flex align-items-center gap-3 mb-3">
-    <h4 class="mb-0">History — {{ client.name }}</h4>
-    <a class="btn btn-sm btn-outline-secondary" href="/clients">← Back</a>
+    <h4 class="mb-0">{{ t.history_title }} — {{ client.name }}</h4>
+    <a class="btn btn-sm btn-outline-secondary" href="/clients">{{ t.btn_back }}</a>
   </div>
 
   <div class="mb-3">
-    <strong>Current balance:</strong>
+    <strong>{{ t.clients_current_balance }}</strong>
     {% if balance > 0 %}
       <span class="text-danger fw-semibold">{{ "%.2f"|format(balance) }} USD</span>
-      <span class="text-muted">(owes money)</span>
+      <span class="text-muted">{{ t.clients_owes }}</span>
     {% elif balance < 0 %}
       <span class="text-success fw-semibold">{{ "%.2f"|format(balance) }} USD</span>
-      <span class="text-muted">(advance)</span>
+      <span class="text-muted">{{ t.clients_advance }}</span>
     {% else %}
       <span class="text-muted">0.00 USD</span>
     {% endif %}
@@ -22,13 +22,13 @@
   <table class="table table-sm table-striped align-middle">
     <thead class="table-dark">
       <tr>
-        <th>Date / Time</th>
-        <th>Type</th>
-        <th>Ref</th>
-        <th class="text-end">Amount (USD)</th>
-        <th>Note</th>
-        <th class="text-end">Balance after</th>
-        <th>Actions</th>
+        <th>{{ t.lbl_date_time }}</th>
+        <th>{{ t.lbl_type }}</th>
+        <th>{{ t.lbl_ref }}</th>
+        <th class="text-end">{{ t.lbl_amount_usd }}</th>
+        <th>{{ t.lbl_note }}</th>
+        <th class="text-end">{{ t.lbl_balance_after }}</th>
+        <th>{{ t.lbl_actions }}</th>
       </tr>
     </thead>
     <tbody>
@@ -37,11 +37,11 @@
         <td>{{ ev.dt }}</td>
         <td>
           {% if ev.kind == 'INVOICE' %}
-            <span class="badge bg-primary">INVOICE</span>
+            <span class="badge bg-primary">{{ t.badge_invoice }}</span>
           {% elif ev.kind == 'RETURN' %}
-            <span class="badge bg-warning text-dark">RETURN</span>
+            <span class="badge bg-warning text-dark">{{ t.badge_return }}</span>
           {% else %}
-            <span class="badge bg-success">ADJUSTMENT</span>
+            <span class="badge bg-success">{{ t.badge_adjustment }}</span>
           {% endif %}
         </td>
         <td>
@@ -70,11 +70,11 @@
         </td>
         <td>
           {% if ev.kind == 'INVOICE' %}
-            <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank">View</a>
-            <a class="btn btn-sm btn-outline-success" href="{{ ev.download_url }}">Download</a>
+            <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank">{{ t.btn_view }}</a>
+            <a class="btn btn-sm btn-outline-success" href="{{ ev.download_url }}">{{ t.btn_download }}</a>
           {% elif ev.kind == 'RETURN' %}
-            <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank">View</a>
-            <a class="btn btn-sm btn-outline-warning" href="{{ ev.download_url }}">Download</a>
+            <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank">{{ t.btn_view }}</a>
+            <a class="btn btn-sm btn-outline-warning" href="{{ ev.download_url }}">{{ t.btn_download }}</a>
           {% else %}
             —
           {% endif %}
@@ -82,7 +82,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="7" class="text-muted text-center">No history yet.</td>
+        <td colspan="7" class="text-muted text-center">{{ t.client_history_no_events }}</td>
       </tr>
       {% endfor %}
     </tbody>

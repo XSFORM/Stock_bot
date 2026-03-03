@@ -7,11 +7,11 @@
   .search-wrap { position: relative; }
 </style>
 <div class="bg-white p-3 rounded shadow-sm">
-  <h4>Move</h4>
+  <h4>{{ t.move_title }}</h4>
   {% if message %}<div class="alert {% if message == 'OK' %}alert-success{% else %}alert-danger{% endif %}">{{ message }}</div>{% endif %}
   <form class="row g-2" method="post" action="/move" id="move-form">
     <div class="col-md-3">
-      <label class="form-label">From</label>
+      <label class="form-label">{{ t.lbl_from }}</label>
       <select class="form-select" name="src" id="move-src">
         {% for w in warehouses %}
           <option value="{{ w }}">{{ warehouse_labels[w] }} ({{ w }})</option>
@@ -19,7 +19,7 @@
       </select>
     </div>
     <div class="col-md-3">
-      <label class="form-label">To</label>
+      <label class="form-label">{{ t.lbl_to }}</label>
       <select class="form-select" name="dst" id="move-dst">
         {% for w in warehouses %}
           <option value="{{ w }}" {% if loop.index == 2 %}selected{% endif %}>{{ warehouse_labels[w] }} ({{ w }})</option>
@@ -27,21 +27,21 @@
       </select>
     </div>
     <div class="col-md-4">
-      <label class="form-label">Product</label>
+      <label class="form-label">{{ t.lbl_product }}</label>
       <div class="search-wrap">
         <input type="text" class="form-control" id="move-product-search" autocomplete="off"
-          placeholder="Search by brand / model / name…" required>
+          placeholder="{{ t.move_product_placeholder }}" required>
         <div id="move-product-suggestions"></div>
       </div>
       <input type="hidden" name="product_id" id="move-product-id">
     </div>
     <div class="col-md-2">
-      <label class="form-label">Qty</label>
+      <label class="form-label">{{ t.lbl_qty }}</label>
       <input class="form-control" name="qty" id="move-qty" type="number" step="0.01" min="0.01" required>
     </div>
     <div class="col-12">
       <div id="move-available-info" class="text-muted small mb-1" style="display:none"></div>
-      <button class="btn btn-primary mt-1">Move</button>
+      <button class="btn btn-primary mt-1">{{ t.btn_move }}</button>
     </div>
   </form>
 </div>

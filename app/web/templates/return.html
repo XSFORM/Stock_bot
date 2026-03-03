@@ -17,20 +17,20 @@
 </style>
 
 <div class="bg-white p-3 rounded shadow-sm">
-  <h4 class="mb-3">Return <small class="text-muted fs-6">from client to warehouse</small></h4>
+  <h4 class="mb-3">{{ t.return_title }} <small class="text-muted fs-6">{{ t.return_subtitle }}</small></h4>
   {% if message %}<div class="alert alert-info" style="white-space: pre-wrap;">{{ message }}</div>{% endif %}
 
   {# ── ERP Header ── #}
   <div class="erp-header mb-3">
     <div class="row g-0">
       <div class="col-md-2 pe-3">
-        <div class="erp-label">Return #</div>
+        <div class="erp-label">{{ t.lbl_return_no }}</div>
         <div class="erp-value">
           {% if open_inv %}{{ open_inv.id }}{% else %}&mdash;{% endif %}
         </div>
       </div>
       <div class="col-md-3 pe-3 ps-3">
-        <div class="erp-label">Date / Time</div>
+        <div class="erp-label">{{ t.lbl_date_time }}</div>
         <div class="erp-value">
           {% if open_inv and open_inv.created_at and open_inv.created_at | length >= 16 %}
             {{ open_inv.created_at[:16] | replace("T", " ") }}
@@ -40,13 +40,13 @@
         </div>
       </div>
       <div class="col-md-3 pe-3 ps-3">
-        <div class="erp-label">Client</div>
+        <div class="erp-label">{{ t.lbl_client }}</div>
         <div class="erp-value">
           {% if open_inv %}{{ open_inv.client_name }}{% else %}&mdash;{% endif %}
         </div>
       </div>
       <div class="col-md-4 ps-3">
-        <div class="erp-label">Warehouse</div>
+        <div class="erp-label">{{ t.lbl_warehouse }}</div>
         <div class="erp-value">
           {% if open_inv %}{{ warehouse_labels.get(open_inv.warehouse_code, open_inv.warehouse_code) }}{% else %}&mdash;{% endif %}
         </div>
@@ -57,20 +57,20 @@
   {% if not open_inv %}
   {# ── Start return form ── #}
   <div class="card mb-3">
-    <div class="card-header py-2 fw-semibold">Start New Return</div>
+    <div class="card-header py-2 fw-semibold">{{ t.return_start_card }}</div>
     <div class="card-body">
       <form method="post" action="/return/start" class="row g-3">
         <div class="col-md-4">
-          <label class="form-label">Client</label>
+          <label class="form-label">{{ t.lbl_client }}</label>
           <select class="form-select" name="client_id" required>
-            <option value="" selected disabled>Select client…</option>
+            <option value="" selected disabled>{{ t.sale_select_client }}</option>
             {% for c in clients %}
               <option value="{{ c.id }}">{{ c.name }}{% if c.phone %} ({{ c.phone }}){% endif %}</option>
             {% endfor %}
           </select>
         </div>
         <div class="col-md-4">
-          <label class="form-label">Return to warehouse</label>
+          <label class="form-label">{{ t.return_lbl_return_to }}</label>
           <select class="form-select" name="warehouse_code" required>
             {% for code in warehouses %}
               <option value="{{ code }}">{{ warehouse_labels.get(code, code) }}</option>
@@ -78,11 +78,11 @@
           </select>
         </div>
         <div class="col-md-4">
-          <label class="form-label">Note (optional)</label>
-          <input type="text" class="form-control" name="note" placeholder="Reason for return…">
+          <label class="form-label">{{ t.lbl_note }}</label>
+          <input type="text" class="form-control" name="note" placeholder="{{ t.return_note_placeholder }}">
         </div>
         <div class="col-12">
-          <button class="btn btn-warning">Start Return</button>
+          <button class="btn btn-warning">{{ t.btn_start_return }}</button>
         </div>
       </form>
     </div>
@@ -90,17 +90,17 @@
   {% else %}
   {# ── Add item + Items table ── #}
   <div class="card mb-3">
-    <div class="card-header py-2 fw-semibold">Return Items</div>
+    <div class="card-header py-2 fw-semibold">{{ t.return_items_card }}</div>
     <div class="card-body p-0">
       <table class="table table-sm table-bordered mb-0 items-table">
         <thead class="table-light">
           <tr>
             <th style="width:40px">#</th>
-            <th>Model</th>
-            <th>Name</th>
-            <th style="width:90px">Qty</th>
-            <th style="width:130px">Unit Price</th>
-            <th style="width:100px">Total</th>
+            <th>{{ t.lbl_model }}</th>
+            <th>{{ t.lbl_name }}</th>
+            <th style="width:90px">{{ t.lbl_qty }}</th>
+            <th style="width:130px">{{ t.lbl_unit_price }}</th>
+            <th style="width:100px">{{ t.lbl_total }}</th>
             <th style="width:90px"></th>
           </tr>
         </thead>
@@ -112,21 +112,21 @@
                 <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
                 <input type="hidden" name="product_id" id="add-product-id">
                 <div class="search-wrap" style="flex:1;min-width:220px">
-                  <label class="form-label form-label-sm mb-1">Search product (brand/model/name)</label>
+                  <label class="form-label form-label-sm mb-1">{{ t.receive_search_placeholder }}</label>
                   <input type="text" class="form-control form-control-sm" id="product-search" autocomplete="off"
                     placeholder="e.g. Samsung A15…" required>
                   <div id="product-suggestions"></div>
                 </div>
                 <div>
-                  <label class="form-label form-label-sm mb-1">Qty</label>
+                  <label class="form-label form-label-sm mb-1">{{ t.lbl_qty }}</label>
                   <input class="form-control form-control-sm" name="qty" id="add-qty" type="number" step="1" min="1" style="width:80px" required>
                 </div>
                 <div>
-                  <label class="form-label form-label-sm mb-1">Unit price</label>
+                  <label class="form-label form-label-sm mb-1">{{ t.lbl_unit_price }}</label>
                   <input class="form-control form-control-sm" name="unit_price" id="add-unit-price" type="number" step="0.01" min="0" style="width:100px" placeholder="0.00" required>
                 </div>
                 <div class="d-flex align-items-end">
-                  <button class="btn btn-warning btn-sm">Add</button>
+                  <button class="btn btn-warning btn-sm">{{ t.btn_add }}</button>
                 </div>
               </form>
             </td>
@@ -145,7 +145,7 @@
                   <input type="number" name="qty" value="{{ item.qty | int }}" min="1" step="1"
                     class="form-control form-control-sm text-end" style="width:60px" required>
                   <input type="hidden" name="unit_price" value="{{ item.unit_price }}">
-                  <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Save qty">✓</button>
+                  <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="{{ t.btn_save }}">✓</button>
                 </form>
               </td>
               <td class="edit-inline">
@@ -154,28 +154,28 @@
                   <input type="hidden" name="qty" value="{{ item.qty | int }}">
                   <input type="number" name="unit_price" value="{{ item.unit_price }}" min="0" step="0.01"
                     class="form-control form-control-sm text-end" style="width:88px" required>
-                  <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Save price">✓</button>
+                  <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="{{ t.btn_save }}">✓</button>
                 </form>
               </td>
               <td class="text-end align-middle">{{ "%.2f"|format(item.total) }}</td>
               <td class="text-center align-middle">
                 <form method="post" action="/return/item/delete"
-                  onsubmit="return confirm('Remove this item?')">
+                  onsubmit="return confirm('{{ t.confirm_remove_item }}')">
                   <input type="hidden" name="item_id" value="{{ item.id }}">
-                  <button class="btn btn-outline-danger btn-sm py-0">Remove</button>
+                  <button class="btn btn-outline-danger btn-sm py-0">{{ t.btn_remove }}</button>
                 </form>
               </td>
             </tr>
             {% endfor %}
             <tr class="total-row">
-              <td colspan="3" class="text-end">Items qty: {{ inv_qty | int }}</td>
-              <td colspan="2" class="text-end">Total:</td>
+              <td colspan="3" class="text-end">{{ t.return_items_qty }} {{ inv_qty | int }}</td>
+              <td colspan="2" class="text-end">{{ t.lbl_total }}:</td>
               <td class="text-end">{{ "%.2f"|format(inv_total) }}</td>
               <td></td>
             </tr>
           {% else %}
             <tr>
-              <td colspan="7" class="text-center text-muted py-3">No items yet. Add a product above.</td>
+              <td colspan="7" class="text-center text-muted py-3">{{ t.return_no_items }}</td>
             </tr>
           {% endif %}
         </tbody>
@@ -186,14 +186,14 @@
   {# ── Actions ── #}
   <div class="d-flex gap-2">
     <form method="post" action="/return/cancel"
-      onsubmit="return confirm('Cancel this return? All items will be removed.')">
+      onsubmit="return confirm('{{ t.confirm_cancel_return }}')">
       <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
-      <button class="btn btn-outline-danger btn-sm">&#10005; Cancel return</button>
+      <button class="btn btn-outline-danger btn-sm">{{ t.btn_cancel_return }}</button>
     </form>
     <form method="post" action="/return/finish">
       <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
       <button class="btn btn-warning btn-sm" {% if not inv_items %}disabled title="Add items first"{% endif %}>
-        &#10003; Finish Return
+        {{ t.btn_finish_return }}
       </button>
     </form>
   </div>
