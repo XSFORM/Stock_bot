@@ -74,12 +74,20 @@
               </div>
               <div>
                 <label class="form-label form-label-sm mb-1">Destination</label>
-                <select class="form-select form-select-sm" name="destination_warehouse" required style="width:160px">
+                <select class="form-select form-select-sm" id="destination-select" name="destination_warehouse" required style="width:160px">
                   <option value="" selected disabled>Choose…</option>
                   {% for w in warehouses %}
-                    <option value="{{ w }}">{{ warehouse_labels[w] }} ({{ w }})</option>
+                    <option value="{{ w }}">{{ warehouse_labels.get(w, w) }} ({{ w }})</option>
                   {% endfor %}
+                  <option value="__new__">✚ New destination…</option>
                 </select>
+                <div id="destination-new-panel" style="display:none;margin-top:4px">
+                  <input class="form-control form-control-sm mb-1" id="destination-new-name"
+                         name="destination_new_name" placeholder="Name (e.g. Main Shop)" style="width:160px">
+                  <input class="form-control form-control-sm" id="destination-new-code"
+                         name="destination_new_code" placeholder="Code (e.g. MAIN_SHOP)" style="width:160px"
+                         pattern="[A-Za-z0-9_]+" title="Letters, digits, underscores only">
+                </div>
               </div>
               <div>
                 <label class="form-label form-label-sm mb-1">Note</label>
@@ -373,6 +381,43 @@
     }
   });
   onSelectChange();
+})();
+</script>
+{% endif %}
+{% if not open_inv %}
+<script>
+(function () {
+  var dstSel = document.getElementById('destination-select');
+  var dstPanel = document.getElementById('destination-new-panel');
+  var dstName = document.getElementById('destination-new-name');
+  var dstCode = document.getElementById('destination-new-code');
+  if (!dstSel) return;
+  function onDstChange() {
+    var isNew = dstSel.value === '__new__';
+    dstPanel.style.display = isNew ? '' : 'none';
+    dstName.required = isNew;
+    dstCode.required = isNew;
+  }
+  dstSel.addEventListener('change', onDstChange);
+  dstSel.closest('form').addEventListener('submit', function (e) {
+    if (dstSel.value === '__new__') {
+      if (!dstName.value.trim()) {
+        dstName.setCustomValidity('Please enter a destination name.');
+        dstName.reportValidity();
+        e.preventDefault();
+        return;
+      }
+      if (!dstCode.value.trim()) {
+        dstCode.setCustomValidity('Please enter a destination code.');
+        dstCode.reportValidity();
+        e.preventDefault();
+        return;
+      }
+      dstName.setCustomValidity('');
+      dstCode.setCustomValidity('');
+    }
+  });
+  onDstChange();
 })();
 </script>
 {% endif %}

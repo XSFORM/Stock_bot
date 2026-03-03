@@ -68,6 +68,9 @@ from app.db.sqlite import (
     add_product_simple,
     # NEW: suppliers list for UI suggestions
     list_receive_suppliers,
+    # NEW: warehouse management
+    list_warehouses,
+    add_warehouse,
     # invoices listing
     list_sale_invoices_done,
     list_receive_invoices_done,
@@ -115,12 +118,15 @@ def _startup() -> None:
 
 
 def _render(request: Request, name: str, ctx: dict[str, Any]) -> HTMLResponse:
+    wh_list = list_warehouses()
+    wh_codes = [w["code"] for w in wh_list]
+    wh_labels = {w["code"]: w["title"] for w in wh_list}
     base = {
         "request": request,
-        "warehouses": sorted(WAREHOUSES.keys()),
+        "warehouses": wh_codes,
         "sources": sorted(RECEIVE_SOURCES.keys()),
         "source_labels": RECEIVE_SOURCES,
-        "warehouse_labels": WAREHOUSES,
+        "warehouse_labels": wh_labels,
     }
     base.update(ctx)
     return templates.TemplateResponse(name, base)
@@ -222,7 +228,6 @@ def stock_get(request: Request, warehouse: str = "", q: str = ""):
         "stock.html",
         {
             "rows": rows,
-            "warehouses": list(WAREHOUSES.keys()),
             "selected_warehouse": (warehouse or "").strip().upper(),
             "search_q": q or "",
         },
@@ -285,8 +290,16 @@ def receive_get(request: Request, msg: str = ""):
 def receive_start(
     supplier: str = Form(""),
     destination_warehouse: str = Form(...),
+    destination_new_code: str = Form(""),
+    destination_new_name: str = Form(""),
     note: str = Form(""),
 ):
+    if destination_warehouse == "__new__":
+        # Normalize code before creating so we have the canonical form for invoice_start
+        destination_warehouse = (destination_new_code or "").strip().upper()
+        ok, err = add_warehouse(destination_new_code, destination_new_name)
+        if not ok:
+            return RedirectResponse(url=f"/receive?msg=destination_error:{err}", status_code=303)
     ok, err, inv_id = receive_invoice_start(supplier, destination_warehouse, note)
     if not ok:
         return RedirectResponse(url=f"/receive?msg={err}", status_code=303)
