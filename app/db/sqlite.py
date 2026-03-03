@@ -2268,6 +2268,23 @@ def add_product_simple(
         conn.close()
 
 
+def update_product_wh_price(product_id: int, wh_price: float) -> tuple[bool, str]:
+    """Update a product's base WH price by product_id."""
+    init_db()
+    conn = _connect()
+    try:
+        conn.execute(
+            "UPDATE products SET wh_price=? WHERE id=?",
+            (float(wh_price), int(product_id)),
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
 def list_sale_invoices_done(limit: int = 200) -> list[dict[str, Any]]:
     """Return list of completed sale invoices (most recent first)."""
     init_db()
