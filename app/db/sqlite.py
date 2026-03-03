@@ -1017,7 +1017,7 @@ def move_all_auto_shop(src: str) -> tuple[bool, str, int, str]:
     return ok, err, moved, dst
 
 
-def get_stock(warehouse: Optional[str] = None, q: Optional[str] = None) -> list[dict[str, Any]]:
+def get_stock(warehouse: Optional[str] = None, q: Optional[str] = None, include_archived: bool = False) -> list[dict[str, Any]]:
     wh = warehouse.strip().upper() if warehouse else ""
     term = (q or "").strip().lower()
 
@@ -1037,7 +1037,8 @@ def get_stock(warehouse: Optional[str] = None, q: Optional[str] = None) -> list[
             )
             params.extend([like, like, like])
 
-        where_parts.append("p.archived=0")
+        if not include_archived:
+            where_parts.append("p.archived=0")
         where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
 
         rows = conn.execute(
