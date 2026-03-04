@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from datetime import date
 from typing import Any, Optional
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse
@@ -680,8 +681,8 @@ def client_debt_add_post(
     show_archived: int = Form(0),
 ):
     ok, err = add_client_debt(int(client_id), amount, note)
-    msg = "debt_added" if ok else f"debt_add_error:{err}"
-    return RedirectResponse(url=f"/clients?msg={msg}&show_archived={show_archived}", status_code=303)
+    msg = f"debt_added:{amount:.2f}" if ok else f"debt_add_error:{err}"
+    return RedirectResponse(url=f"/clients?msg={quote(msg)}&show_archived={show_archived}", status_code=303)
 
 
 @app.get("/clients/{client_id}/history", response_class=HTMLResponse)
