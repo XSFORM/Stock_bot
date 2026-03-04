@@ -100,6 +100,8 @@ from app.db.sqlite import (
     return_invoice_get_items,
     list_return_invoices_done,
     get_last_sale_price,
+    get_total_clients_debt,
+    get_total_stock_value,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xlsx_bytes
@@ -240,6 +242,8 @@ def _render(request: Request, name: str, ctx: dict[str, Any]) -> HTMLResponse:
         "bg_enabled": get_setting("bg_enabled", "1") == "1",
         "bg_size": get_setting("bg_size", "cover"),
         "bg_overlay": get_setting("bg_overlay", "25"),
+        "nav_total_debt_usd": get_total_clients_debt(),
+        "nav_stock_value_usd": get_total_stock_value(),
     }
     base.update(ctx)
     return templates.TemplateResponse(name, base)

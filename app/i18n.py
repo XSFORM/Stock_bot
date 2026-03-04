@@ -266,6 +266,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "theme_toggle_label": "Theme",
         "lang_toggle_label": "Language",
         "logout_label": "Logout",
+        "nav_total_debt": "Total debt",
+        "nav_stock_value": "Stock value",
         "saved_ok": "Settings saved.",
     },
     "ru": {
@@ -525,6 +527,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "theme_toggle_label": "Тема",
         "lang_toggle_label": "Язык",
         "logout_label": "Выйти",
+        "nav_total_debt": "Общий долг",
+        "nav_stock_value": "Товар (закуп)",
         "saved_ok": "Настройки сохранены.",
     },
     "tm": {
@@ -783,6 +787,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "theme_toggle_label": "Tema",
         "lang_toggle_label": "Dil",
         "logout_label": "Çykmak",
+        "nav_total_debt": "Umumy bergisi",
+        "nav_stock_value": "Haryt (satyn alyş)",
         "saved_ok": "Sazlamalar saklandy.",
     },
 }
