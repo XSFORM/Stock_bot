@@ -48,15 +48,19 @@
 		  <a class="nav-link" href="/history">{{ t.nav_history if t is defined else 'History' }}</a>
           <a class="nav-link" href="/admin/settings">{{ t.nav_admin if t is defined else 'Admin' }}</a>
         </div>
+
         <!-- Nav summary metrics -->
-        <div class="d-none d-lg-flex flex-column align-items-end me-2 lh-1">
-          <small class="text-muted" style="font-size:.7rem">{{ t.nav_total_debt if t is defined else 'Total debt' }}</small>
-          <span class="text-warning fw-semibold" style="font-size:.82rem">{{ "%.2f"|format(nav_total_debt_usd) }} $</span>
+        <div class="d-none d-lg-flex align-items-center me-3 gap-3 lh-1">
+          <div class="small">
+            <span class="fw-semibold text-warning" style="font-size:.82rem">DEB</span>
+            <span class="text-warning fw-semibold" style="font-size:.82rem">{{ "%.2f"|format(nav_total_debt_usd) }} $</span>
+          </div>
+          <div class="small">
+            <span class="fw-semibold text-info" style="font-size:.82rem">STK</span>
+            <span class="text-info fw-semibold" style="font-size:.82rem">{{ "%.2f"|format(nav_stock_value_usd) }} $</span>
+          </div>
         </div>
-        <div class="d-none d-lg-flex flex-column align-items-end me-2 lh-1">
-          <small class="text-muted" style="font-size:.7rem">{{ t.nav_stock_value if t is defined else 'Stock value' }}</small>
-          <span class="text-info fw-semibold" style="font-size:.82rem">{{ "%.2f"|format(nav_stock_value_usd) }} $</span>
-        </div>
+
         <!-- Language selector -->
         <form method="post" action="/set-lang" class="d-flex me-2 align-items-center">
           <input type="hidden" name="next" value="{{ request.url.path }}">
