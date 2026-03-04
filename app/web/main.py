@@ -669,8 +669,8 @@ def client_adjustment_post(
     show_archived: int = Form(0),
 ):
     ok, err = add_client_adjustment(int(client_id), amount, note)
-    msg = "adjustment_ok" if ok else f"adjustment_error:{err}"
-    return RedirectResponse(url=f"/clients?msg={msg}&show_archived={show_archived}", status_code=303)
+    msg = f"adjustment_ok:{amount:.2f}" if ok else f"adjustment_error:{err}"
+    return RedirectResponse(url=f"/clients?msg={quote(msg)}&show_archived={show_archived}", status_code=303)
 
 
 @app.post("/clients/{client_id}/debt/add")

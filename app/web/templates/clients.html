@@ -19,6 +19,10 @@
           <div class="alert alert-success">{{ t.msg_debt_added }} {{ _msg_payload }} USD</div>
         {% elif _msg_key == 'debt_add_error' %}
           <div class="alert alert-danger">{{ t.msg_debt_add_error }} {{ _msg_payload }}</div>
+        {% elif _msg_key == 'adjustment_ok' %}
+          <div class="alert alert-success">{{ t.msg_adjustment_ok }} {{ _msg_payload }} USD</div>
+        {% elif _msg_key == 'adjustment_error' %}
+          <div class="alert alert-danger">{{ t.msg_adjustment_error }} {{ _msg_payload }}</div>
         {% else %}
           <div class="alert alert-info">{{ _msg }}</div>
         {% endif %}
