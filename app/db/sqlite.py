@@ -303,6 +303,34 @@ def add_client_adjustment(client_id: int, amount: float, note: str = "") -> tupl
         conn.close()
 
 
+def add_client_debt(client_id: int, amount: float, note: str = "") -> tuple[bool, str]:
+    """Add a ledger entry that increases client debt by `amount`.
+    Stored as a negative value so that balance = debt - paid - returned increases.
+    Note is required (must be non-empty after trim).
+    """
+    amount = float(amount)
+    if amount <= 0:
+        return False, "amount must be > 0"
+    note = (note or "").strip()
+    if not note:
+        return False, "note is required"
+    conn = _connect()
+    try:
+        r = conn.execute("SELECT id FROM clients WHERE id=?", (int(client_id),)).fetchone()
+        if not r:
+            return False, "Client not found"
+        conn.execute(
+            "INSERT INTO client_ledger(client_id, amount, note) VALUES(?, ?, ?)",
+            (int(client_id), -amount, note),
+        )
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+
 def get_client_balance(client_id: int) -> float:
     """Return client balance (positive = owes money, negative = advance).
     balance = sum of SALE invoice totals - sum of RETURN invoice totals - sum of ledger adjustments.

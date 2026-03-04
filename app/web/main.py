@@ -38,6 +38,7 @@ from app.db.sqlite import (
     update_client,
     set_client_archived,
     add_client_adjustment,
+    add_client_debt,
     get_client_balance,
     list_clients_with_balance,
     get_client_history,
@@ -668,6 +669,18 @@ def client_adjustment_post(
 ):
     ok, err = add_client_adjustment(int(client_id), amount, note)
     msg = "adjustment_ok" if ok else f"adjustment_error:{err}"
+    return RedirectResponse(url=f"/clients?msg={msg}&show_archived={show_archived}", status_code=303)
+
+
+@app.post("/clients/{client_id}/debt/add")
+def client_debt_add_post(
+    client_id: int,
+    amount: float = Form(...),
+    note: str = Form(...),
+    show_archived: int = Form(0),
+):
+    ok, err = add_client_debt(int(client_id), amount, note)
+    msg = "debt_added" if ok else f"debt_add_error:{err}"
     return RedirectResponse(url=f"/clients?msg={msg}&show_archived={show_archived}", status_code=303)
 
 
