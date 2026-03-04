@@ -197,6 +197,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "clients_owes": "(owes money)",
         "clients_advance": "(advance)",
         "clients_current_balance": "Current balance:",
+        "msg_debt_added": "Debt added:",
+        "msg_debt_add_error": "Failed to add debt:",
         # Invoices page
         "invoices_title": "Invoices",
         "invoices_tab_sale": "Sale invoices (DONE)",
@@ -449,6 +451,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "clients_owes": "(должен)",
         "clients_advance": "(аванс)",
         "clients_current_balance": "Текущий баланс:",
+        "msg_debt_added": "Долг добавлен:",
+        "msg_debt_add_error": "Ошибка добавления долга:",
         # Invoices page
         "invoices_title": "Накладные",
         "invoices_tab_sale": "Продажи (ВЫПОЛНЕНО)",
@@ -701,6 +705,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "clients_owes": "(bergisi bar)",
         "clients_advance": "(öňünden töleg)",
         "clients_current_balance": "Häzirki balans:",
+        "msg_debt_added": "Bergi goşuldy:",
+        "msg_debt_add_error": "Bergini goşmak başartmady:",
         # Invoices page
         "invoices_title": "Hasap-fakturalar",
         "invoices_tab_sale": "Satyş hasap-fakturalary (TAMAMLANDY)",
