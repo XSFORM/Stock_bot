@@ -387,6 +387,37 @@ def list_clients_with_balance(include_archived: bool = False) -> list[dict[str, 
     return clients
 
 
+def get_total_clients_debt(include_archived_clients: bool = False) -> float:
+    """Return sum of positive client balances (clients who owe money)."""
+    conn = _connect()
+    try:
+        if include_archived_clients:
+            rows = conn.execute("SELECT id FROM clients").fetchall()
+        else:
+            rows = conn.execute("SELECT id FROM clients WHERE archived=0").fetchall()
+    finally:
+        conn.close()
+    total = sum(max(get_client_balance(r["id"]), 0) for r in rows)
+    return round(total, 2)
+
+
+def get_total_stock_value(include_archived_products: bool = False) -> float:
+    """Return total stock value computed as SUM(qty * wh_price) across all warehouses."""
+    conn = _connect()
+    try:
+        if include_archived_products:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(s.qty * p.wh_price), 0) FROM stock s JOIN products p ON p.id = s.product_id WHERE s.qty > 0"
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(s.qty * p.wh_price), 0) FROM stock s JOIN products p ON p.id = s.product_id WHERE s.qty > 0 AND p.archived = 0"
+            ).fetchone()
+        return round(float(row[0]) if row else 0.0, 2)
+    finally:
+        conn.close()
+
+
 def get_client_history(client_id: int) -> list[dict[str, Any]]:
     """Return combined history of SALE invoices, RETURN invoices, and ledger adjustments for a client,
     sorted by date ascending. Each entry has keys:
