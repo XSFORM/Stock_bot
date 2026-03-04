@@ -343,6 +343,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "show_archived": "Показать архив",
         "hide_archived": "Скрыть архив",
         "badge_archived": "АРХИВ",
+        "badge_receive": "ПРИХОД",
+        "badge_sale": "ПРОДАЖА",
+        "badge_return": "ВОЗВРАТ",
         # Confirmation dialogs
         "confirm_archive_product": "Архивировать этот товар?",
         "confirm_archive_client": "Архивировать этого клиента?",
@@ -599,6 +602,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "show_archived": "Arhiwi görkez",
         "hide_archived": "Arhiwi gizle",
         "badge_archived": "ARHIW",
+        "badge_receive": "KABUL",
+        "badge_sale": "SATYŞ",
+        "badge_return": "GAÝTARYŞ",
         # Confirmation dialogs
         "confirm_archive_product": "Bu harydyň arhiwlemeli?",
         "confirm_archive_client": "Bu müşderini arhiwlemeli?",
