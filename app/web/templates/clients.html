@@ -63,6 +63,12 @@
                       {{ t.clients_debt_adjust }}
                     </a>
                   </li>
+                  <li>
+                    <a class="dropdown-item" href="#"
+                       onclick="openAddDebt({{ c.id }}, '{{ c.name|e }}', {{ show_archived }}); return false;">
+                      {{ t.clients_add_debt }}
+                    </a>
+                  </li>
                   <li><hr class="dropdown-divider"></li>
                   <li>
                     <a class="dropdown-item" href="/clients/{{ c.id }}/edit">{{ t.btn_edit }}</a>
@@ -143,6 +149,36 @@
   </div>
 </div>
 
+<!-- Add debt modal -->
+<div class="modal fade" id="addDebtModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" id="addDebtForm">
+        <input type="hidden" name="show_archived" id="debt_show_archived">
+        <div class="modal-header">
+          <h5 class="modal-title">{{ t.clients_add_debt_title }} <span id="debt_client_name"></span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">{{ t.clients_adj_amount }} <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" name="amount" id="debt_amount"
+                   min="0.01" step="0.01" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">{{ t.clients_add_debt_note }} <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" name="note" id="debt_note" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ t.btn_cancel }}</button>
+          <button type="submit" class="btn btn-danger">{{ t.btn_save }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script>
 function openAdjustment(clientId, clientName, showArchived) {
   document.getElementById('adj_client_name').textContent = clientName;
@@ -151,6 +187,14 @@ function openAdjustment(clientId, clientName, showArchived) {
   document.getElementById('adj_amount').value = '';
   document.getElementById('adj_note').value = '';
   new bootstrap.Modal(document.getElementById('adjustmentModal')).show();
+}
+function openAddDebt(clientId, clientName, showArchived) {
+  document.getElementById('debt_client_name').textContent = clientName;
+  document.getElementById('addDebtForm').action = '/clients/' + clientId + '/debt/add';
+  document.getElementById('debt_show_archived').value = showArchived;
+  document.getElementById('debt_amount').value = '';
+  document.getElementById('debt_note').value = '';
+  new bootstrap.Modal(document.getElementById('addDebtModal')).show();
 }
 </script>
 {% endblock %}
