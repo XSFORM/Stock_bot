@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm" style="max-width:900px">
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <a href="/invoices?tab=return" class="btn btn-outline-secondary btn-sm">{{ t.btn_back }}</a>
+    <h4 class="mb-0">{{ t.invoice_edit_return_title }} #{{ "%06d"|format(invoice.number) }}</h4>
+  </div>
+
+  {% if message %}
+  <div class="alert alert-danger">{{ message }}</div>
+  {% endif %}
+
+  <form method="post" action="/invoices/return/{{ invoice.id }}/edit" id="editForm">
+
+    {# ---- Header ---- #}
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">{{ t.invoice_edit_header }}</div>
+      <div class="card-body row g-3">
+        <div class="col-md-6">
+          <label class="form-label">{{ t.lbl_client }}</label>
+          <select class="form-select" name="client_id" required>
+            {% for cl in clients %}
+            <option value="{{ cl.id }}" {% if cl.id == invoice.client_id %}selected{% endif %}>{{ cl.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">{{ t.lbl_warehouse }}</label>
+          <select class="form-select" name="warehouse_code" required>
+            {% for wh in warehouses %}
+            <option value="{{ wh }}" {% if wh == invoice.warehouse_code %}selected{% endif %}>{{ warehouse_labels.get(wh, wh) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    {# ---- Line items ---- #}
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">{{ t.invoice_edit_items }}</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0" id="itemsTable">
+          <thead class="table-light">
+            <tr>
+              <th style="width:40%">{{ t.lbl_product }}</th>
+              <th style="width:15%">{{ t.lbl_qty }}</th>
+              <th style="width:20%">{{ t.lbl_unit_price }}</th>
+              <th style="width:15%" class="text-end">{{ t.lbl_total }}</th>
+              <th style="width:10%"></th>
+            </tr>
+          </thead>
+          <tbody id="itemsBody">
+            {% for item in items %}
+            <tr class="item-row">
+              <td style="position:relative">
+                <div class="input-group input-group-sm">
+                  <input type="text" class="form-control product-search" placeholder="{{ t.lbl_product }}"
+                         value="{{ item.brand }} {{ item.model }} — {{ item.name }}"
+                         data-product-id="{{ item.product_id }}">
+                  <input type="hidden" class="product-id-field" name="product_id" value="{{ item.product_id }}">
+                </div>
+                <div class="search-results list-group mt-1" style="display:none;position:absolute;z-index:100;min-width:300px"></div>
+              </td>
+              <td>
+                <input type="number" class="form-control form-control-sm qty-field" name="qty"
+                       value="{{ item.qty }}" min="0.001" step="any" required>
+              </td>
+              <td>
+                <input type="number" class="form-control form-control-sm price-field" name="unit_price"
+                       value="{{ item.unit_price }}" min="0" step="any" required>
+              </td>
+              <td class="text-end align-middle item-total">{{ "%.2f"|format(item.total) }}</td>
+              <td class="text-center align-middle">
+                <button type="button" class="btn btn-sm btn-outline-danger"
+                        onclick="removeRow(this)" title="{{ t.btn_remove }}">✕</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="card-footer d-flex justify-content-between align-items-center">
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="addRowBtn">+ {{ t.invoice_edit_add_item }}</button>
+        <strong>{{ t.lbl_total }}: <span id="grandTotal">{{ "%.2f"|format(items | sum(attribute='total')) }}</span> {{ invoice.currency }}</strong>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">{{ t.invoice_edit_save }}</button>
+  </form>
+</div>
+
+<script>
+function addRow() {
+  const tbody = document.getElementById('itemsBody');
+  const tr = document.createElement('tr');
+  tr.className = 'item-row';
+  tr.innerHTML = `
+    <td style="position:relative">
+      <div class="input-group input-group-sm">
+        <input type="text" class="form-control product-search" placeholder="{{ t.lbl_product }}">
+        <input type="hidden" class="product-id-field" name="product_id" value="">
+      </div>
+      <div class="search-results list-group mt-1" style="display:none;position:absolute;z-index:100;min-width:300px"></div>
+    </td>
+    <td><input type="number" class="form-control form-control-sm qty-field" name="qty" value="1" min="0.001" step="any" required></td>
+    <td><input type="number" class="form-control form-control-sm price-field" name="unit_price" value="0" min="0" step="any" required></td>
+    <td class="text-end align-middle item-total">0.00</td>
+    <td class="text-center align-middle">
+      <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)" title="{{ t.btn_remove }}">✕</button>
+    </td>`;
+  tbody.appendChild(tr);
+  attachRowListeners(tr);
+}
+
+function removeRow(btn) {
+  const rows = document.querySelectorAll('#itemsBody .item-row');
+  if (rows.length <= 1) { alert('{{ t.invoice_edit_min_items | e }}'); return; }
+  btn.closest('tr').remove();
+  updateTotal();
+}
+
+function updateTotal() {
+  let grand = 0;
+  document.querySelectorAll('#itemsBody .item-row').forEach(row => {
+    const qty = parseFloat(row.querySelector('.qty-field').value) || 0;
+    const price = parseFloat(row.querySelector('.price-field').value) || 0;
+    const rowTotal = Math.round(qty * price * 100) / 100;
+    row.querySelector('.item-total').textContent = rowTotal.toFixed(2);
+    grand += rowTotal;
+  });
+  document.getElementById('grandTotal').textContent = (Math.round(grand * 100) / 100).toFixed(2);
+}
+
+function attachRowListeners(row) {
+  row.querySelector('.qty-field').addEventListener('input', updateTotal);
+  row.querySelector('.price-field').addEventListener('input', updateTotal);
+
+  const searchInput = row.querySelector('.product-search');
+  const resultsDiv = row.querySelector('.search-results');
+  const pidField = row.querySelector('.product-id-field');
+
+  let searchTimer;
+  searchInput.addEventListener('input', function() {
+    clearTimeout(searchTimer);
+    const q = this.value.trim();
+    if (q.length < 2) { resultsDiv.style.display = 'none'; return; }
+    searchTimer = setTimeout(() => {
+      fetch(`/api/products-search?q=${encodeURIComponent(q)}&limit=10`)
+        .then(r => r.json())
+        .then(data => {
+          resultsDiv.innerHTML = '';
+          if (!data.results || data.results.length === 0) { resultsDiv.style.display = 'none'; return; }
+          data.results.forEach(p => {
+            const a = document.createElement('a');
+            a.className = 'list-group-item list-group-item-action py-1 px-2 small';
+            a.textContent = `${p.brand} ${p.model} — ${p.name}`;
+            a.href = '#';
+            a.addEventListener('click', function(e) {
+              e.preventDefault();
+              searchInput.value = `${p.brand} ${p.model} — ${p.name}`;
+              pidField.value = p.product_id;
+              resultsDiv.style.display = 'none';
+            });
+            resultsDiv.appendChild(a);
+          });
+          resultsDiv.style.display = 'block';
+        }).catch(() => {});
+    }, 250);
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!row.contains(e.target)) resultsDiv.style.display = 'none';
+  });
+}
+
+document.getElementById('addRowBtn').addEventListener('click', addRow);
+document.querySelectorAll('#itemsBody .item-row').forEach(attachRowListeners);
+
+document.getElementById('editForm').addEventListener('submit', function(e) {
+  let valid = true;
+  document.querySelectorAll('#itemsBody .item-row').forEach(row => {
+    if (!row.querySelector('.product-id-field').value) valid = false;
+  });
+  if (!valid) {
+    e.preventDefault();
+    alert('{{ t.invoice_edit_select_product | e }}');
+  }
+});
+</script>
+{% endblock %}

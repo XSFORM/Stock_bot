@@ -2599,7 +2599,7 @@ def return_invoice_get(invoice_id: int) -> Optional[dict[str, Any]]:
         r = conn.execute(
             """
             SELECT ri.id, ri.number, ri.created_at, ri.currency, ri.total,
-                   ri.warehouse_code, ri.note,
+                   ri.warehouse_code, ri.note, ri.client_id,
                    cl.name as client
             FROM return_invoices ri
             JOIN clients cl ON cl.id = ri.client_id
@@ -3040,5 +3040,457 @@ def purge_expired_sessions() -> None:
     try:
         conn.execute("DELETE FROM site_sessions WHERE expires_at <= datetime('now')")
         conn.commit()
+    finally:
+        conn.close()
+
+
+# ============================================================
+# Invoice editing (DONE invoices)
+# ============================================================
+
+def get_sale_invoice_full(number: int) -> Optional[dict[str, Any]]:
+    """Return a completed sale invoice with header + cart/warehouse info."""
+    init_db()
+    conn = _connect()
+    try:
+        r = conn.execute(
+            """
+            SELECT inv.id, inv.number, inv.cart_id, inv.created_at, inv.currency, inv.total,
+                   c.client_id, c.warehouse_code,
+                   cl.name as client
+            FROM invoices inv
+            JOIN carts c ON c.id = inv.cart_id
+            JOIN clients cl ON cl.id = c.client_id
+            WHERE inv.number = ?
+            """,
+            (int(number),),
+        ).fetchone()
+        return dict(r) if r else None
+    finally:
+        conn.close()
+
+
+def get_sale_invoice_items_full(number: int) -> list[dict[str, Any]]:
+    """Return cart items for a sale invoice including product_id."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT ci.id, ci.product_id, p.brand, p.model, p.name,
+                   ci.qty, ci.price_mode, ci.unit_price, ci.total
+            FROM invoices inv
+            JOIN carts c ON c.id = inv.cart_id
+            JOIN cart_items ci ON ci.cart_id = c.id
+            JOIN products p ON p.id = ci.product_id
+            WHERE inv.number = ?
+            ORDER BY ci.id
+            """,
+            (int(number),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def update_sale_invoice(
+    number: int,
+    new_client_id: int,
+    new_warehouse_code: str,
+    new_items: list[dict[str, Any]],
+) -> tuple[bool, str]:
+    """Edit a DONE sale invoice in a single transaction.
+
+    new_items is a list of dicts with keys: product_id, qty, unit_price.
+    Stock reconciliation:
+      - Restore old qty to old warehouse
+      - Validate new qty against new warehouse
+      - Deduct new qty from new warehouse
+    Returns (ok, err).
+    """
+    init_db()
+    new_warehouse_code = (new_warehouse_code or "").strip().upper()
+    if not new_items:
+        return False, "Invoice must have at least one item"
+
+    conn = _connect()
+    try:
+        # Load current invoice
+        inv = conn.execute(
+            """
+            SELECT inv.id, inv.cart_id, c.warehouse_code, c.client_id
+            FROM invoices inv
+            JOIN carts c ON c.id = inv.cart_id
+            WHERE inv.number = ?
+            """,
+            (int(number),),
+        ).fetchone()
+        if not inv:
+            return False, "Invoice not found"
+
+        cart_id = int(inv["cart_id"])
+        old_warehouse = inv["warehouse_code"]
+
+        # Validate new warehouse
+        if not _is_valid_warehouse_code(conn, new_warehouse_code):
+            return False, f"Warehouse not found: {new_warehouse_code}"
+
+        # Validate new client
+        c = conn.execute("SELECT id FROM clients WHERE id=?", (int(new_client_id),)).fetchone()
+        if not c:
+            return False, "Client not found"
+
+        # Load old items to restore stock
+        old_items = conn.execute(
+            """
+            SELECT ci.product_id, ci.qty
+            FROM cart_items ci
+            WHERE ci.cart_id = ?
+            """,
+            (cart_id,),
+        ).fetchall()
+
+        # Validate new items
+        for it in new_items:
+            try:
+                qty = float(it["qty"])
+                unit_price = float(it["unit_price"])
+                pid = int(it["product_id"])
+            except (KeyError, ValueError, TypeError):
+                return False, "Invalid item data"
+            if qty <= 0:
+                return False, "qty must be > 0"
+            if unit_price < 0:
+                return False, "unit_price must be >= 0"
+            p = conn.execute("SELECT id FROM products WHERE id=?", (pid,)).fetchone()
+            if not p:
+                return False, f"Product not found: id={pid}"
+
+        # Restore old stock to old warehouse
+        for old in old_items:
+            pid = int(old["product_id"])
+            old_qty = float(old["qty"])
+            current = _get_stock_qty(conn, old_warehouse, pid)
+            _set_stock_qty(conn, old_warehouse, pid, current + old_qty)
+
+        # Validate new stock availability in new warehouse
+        # Group by product_id to handle duplicates
+        product_need: dict[int, float] = {}
+        for it in new_items:
+            pid = int(it["product_id"])
+            qty = float(it["qty"])
+            product_need[pid] = product_need.get(pid, 0.0) + qty
+
+        for pid, need in product_need.items():
+            have = _get_stock_qty(conn, new_warehouse_code, pid)
+            if have < need:
+                prod = conn.execute(
+                    "SELECT brand, model FROM products WHERE id=?", (pid,)
+                ).fetchone()
+                label = f"{prod['brand']} {prod['model']}" if prod else f"id={pid}"
+                return False, f"Insufficient stock in {new_warehouse_code} for {label}: have {have:.0f}, need {need:.0f}"
+
+        # Deduct new stock from new warehouse
+        for pid, need in product_need.items():
+            current = _get_stock_qty(conn, new_warehouse_code, pid)
+            _set_stock_qty(conn, new_warehouse_code, pid, current - need)
+
+        # Replace cart items
+        conn.execute("DELETE FROM cart_items WHERE cart_id=?", (cart_id,))
+        total_sum = 0.0
+        for it in new_items:
+            pid = int(it["product_id"])
+            qty = float(it["qty"])
+            unit_price = float(it["unit_price"])
+            item_total = round(qty * unit_price, 2)
+            total_sum += item_total
+            conn.execute(
+                """
+                INSERT INTO cart_items(cart_id, product_id, qty, price_mode, unit_price, total)
+                VALUES(?, ?, ?, 'custom', ?, ?)
+                """,
+                (cart_id, pid, qty, unit_price, item_total),
+            )
+        total_sum = round(total_sum, 2)
+
+        # Update cart header (client + warehouse)
+        conn.execute(
+            "UPDATE carts SET client_id=?, warehouse_code=? WHERE id=?",
+            (int(new_client_id), new_warehouse_code, cart_id),
+        )
+
+        # Update invoice total
+        conn.execute(
+            "UPDATE invoices SET total=? WHERE number=?",
+            (total_sum, int(number)),
+        )
+
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def update_receive_invoice(
+    invoice_id: int,
+    new_supplier: str,
+    new_warehouse_code: str,
+    new_items: list[dict[str, Any]],
+) -> tuple[bool, str]:
+    """Edit a DONE receive invoice in a single transaction.
+
+    new_items is a list of dicts with keys: product_id, qty, purchase_price.
+    Stock reconciliation:
+      - Remove old qty from old warehouse
+      - Add new qty to new warehouse
+    Returns (ok, err).
+    """
+    init_db()
+    new_warehouse_code = (new_warehouse_code or "").strip().upper()
+    new_supplier = (new_supplier or "").strip()
+    if not new_items:
+        return False, "Invoice must have at least one item"
+
+    conn = _connect()
+    try:
+        inv = conn.execute(
+            "SELECT id, status, destination_warehouse FROM receive_invoices WHERE id=?",
+            (int(invoice_id),),
+        ).fetchone()
+        if not inv:
+            return False, "Invoice not found"
+        if inv["status"] != "DONE":
+            return False, "Only DONE invoices can be edited"
+
+        old_warehouse = inv["destination_warehouse"]
+
+        # Validate new warehouse
+        if not _is_valid_warehouse_code(conn, new_warehouse_code):
+            return False, f"Warehouse not found: {new_warehouse_code}"
+
+        # Validate new items
+        for it in new_items:
+            try:
+                qty = float(it["qty"])
+                purchase_price = float(it["purchase_price"])
+                pid = int(it["product_id"])
+            except (KeyError, ValueError, TypeError):
+                return False, "Invalid item data"
+            if qty <= 0:
+                return False, "qty must be > 0"
+            if purchase_price < 0:
+                return False, "purchase_price must be >= 0"
+            p = conn.execute("SELECT id FROM products WHERE id=?", (pid,)).fetchone()
+            if not p:
+                return False, f"Product not found: id={pid}"
+
+        # Load old items to restore stock
+        old_items = conn.execute(
+            "SELECT product_id, qty FROM receive_items WHERE invoice_id=?",
+            (int(invoice_id),),
+        ).fetchall()
+
+        # Restore old stock (subtract what was added)
+        for old in old_items:
+            pid = int(old["product_id"])
+            old_qty = float(old["qty"])
+            current = _get_stock_qty(conn, old_warehouse, pid)
+            new_qty = current - old_qty
+            if new_qty < 0:
+                new_qty = 0.0
+            _set_stock_qty(conn, old_warehouse, pid, new_qty)
+
+        # Add new stock to new warehouse
+        for it in new_items:
+            pid = int(it["product_id"])
+            qty = float(it["qty"])
+            current = _get_stock_qty(conn, new_warehouse_code, pid)
+            _set_stock_qty(conn, new_warehouse_code, pid, current + qty)
+
+        # Replace items
+        conn.execute("DELETE FROM receive_items WHERE invoice_id=?", (int(invoice_id),))
+        for it in new_items:
+            pid = int(it["product_id"])
+            qty = float(it["qty"])
+            purchase_price = float(it["purchase_price"])
+            item_total = round(qty * purchase_price, 2)
+            conn.execute(
+                """
+                INSERT INTO receive_items(invoice_id, product_id, qty, purchase_price, total)
+                VALUES(?, ?, ?, ?, ?)
+                """,
+                (int(invoice_id), pid, qty, purchase_price, item_total),
+            )
+
+        # Update invoice header
+        conn.execute(
+            "UPDATE receive_invoices SET supplier=?, destination_warehouse=? WHERE id=?",
+            (new_supplier, new_warehouse_code, int(invoice_id)),
+        )
+
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def update_return_invoice(
+    invoice_id: int,
+    new_client_id: int,
+    new_warehouse_code: str,
+    new_items: list[dict[str, Any]],
+) -> tuple[bool, str]:
+    """Edit a DONE return invoice in a single transaction.
+
+    new_items is a list of dicts with keys: product_id, qty, unit_price.
+    Stock reconciliation:
+      - Remove qty added to old warehouse
+      - Validate new warehouse has nothing blocked (return always adds stock)
+      - Add qty to new warehouse
+    Returns (ok, err).
+    """
+    init_db()
+    new_warehouse_code = (new_warehouse_code or "").strip().upper()
+    if not new_items:
+        return False, "Invoice must have at least one item"
+
+    conn = _connect()
+    try:
+        inv = conn.execute(
+            "SELECT id, status, warehouse_code, client_id FROM return_invoices WHERE id=?",
+            (int(invoice_id),),
+        ).fetchone()
+        if not inv:
+            return False, "Invoice not found"
+        if inv["status"] != "DONE":
+            return False, "Only DONE invoices can be edited"
+
+        old_warehouse = inv["warehouse_code"]
+
+        # Validate new warehouse
+        if not _is_valid_warehouse_code(conn, new_warehouse_code):
+            return False, f"Warehouse not found: {new_warehouse_code}"
+
+        # Validate new client
+        c = conn.execute("SELECT id FROM clients WHERE id=?", (int(new_client_id),)).fetchone()
+        if not c:
+            return False, "Client not found"
+
+        # Validate new items
+        for it in new_items:
+            try:
+                qty = float(it["qty"])
+                unit_price = float(it["unit_price"])
+                pid = int(it["product_id"])
+            except (KeyError, ValueError, TypeError):
+                return False, "Invalid item data"
+            if qty <= 0:
+                return False, "qty must be > 0"
+            if unit_price < 0:
+                return False, "unit_price must be >= 0"
+            p = conn.execute("SELECT id FROM products WHERE id=?", (pid,)).fetchone()
+            if not p:
+                return False, f"Product not found: id={pid}"
+
+        # Load old items to reverse stock
+        old_items = conn.execute(
+            "SELECT product_id, qty FROM return_items WHERE invoice_id=?",
+            (int(invoice_id),),
+        ).fetchall()
+
+        # Reverse old stock (subtract what was added back to warehouse)
+        for old in old_items:
+            pid = int(old["product_id"])
+            old_qty = float(old["qty"])
+            current = _get_stock_qty(conn, old_warehouse, pid)
+            new_qty = current - old_qty
+            if new_qty < 0:
+                new_qty = 0.0
+            _set_stock_qty(conn, old_warehouse, pid, new_qty)
+
+        # Add new stock to new warehouse
+        for it in new_items:
+            pid = int(it["product_id"])
+            qty = float(it["qty"])
+            current = _get_stock_qty(conn, new_warehouse_code, pid)
+            _set_stock_qty(conn, new_warehouse_code, pid, current + qty)
+
+        # Replace items
+        conn.execute("DELETE FROM return_items WHERE invoice_id=?", (int(invoice_id),))
+        total_sum = 0.0
+        for it in new_items:
+            pid = int(it["product_id"])
+            qty = float(it["qty"])
+            unit_price = float(it["unit_price"])
+            item_total = round(qty * unit_price, 2)
+            total_sum += item_total
+            conn.execute(
+                """
+                INSERT INTO return_items(invoice_id, product_id, qty, unit_price, total)
+                VALUES(?, ?, ?, ?, ?)
+                """,
+                (int(invoice_id), pid, qty, unit_price, item_total),
+            )
+        total_sum = round(total_sum, 2)
+
+        # Update invoice header
+        conn.execute(
+            "UPDATE return_invoices SET client_id=?, warehouse_code=?, total=? WHERE id=?",
+            (int(new_client_id), new_warehouse_code, total_sum, int(invoice_id)),
+        )
+
+        conn.commit()
+        return True, ""
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def get_receive_invoice_items_for_edit(invoice_id: int) -> list[dict[str, Any]]:
+    """Return receive items including product_id for edit page."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT ri.id, ri.product_id, p.brand, p.model, p.name,
+                   ri.qty, ri.purchase_price, ri.total
+            FROM receive_items ri
+            JOIN products p ON p.id = ri.product_id
+            WHERE ri.invoice_id=?
+            ORDER BY ri.id
+            """,
+            (int(invoice_id),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_return_invoice_items_for_edit(invoice_id: int) -> list[dict[str, Any]]:
+    """Return return items including product_id for edit page."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT ri.id, ri.product_id, p.brand, p.model, p.name,
+                   ri.qty, ri.unit_price, ri.total
+            FROM return_items ri
+            JOIN products p ON p.id = ri.product_id
+            WHERE ri.invoice_id=?
+            ORDER BY ri.id
+            """,
+            (int(invoice_id),),
+        ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()

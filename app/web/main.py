@@ -9,7 +9,7 @@ import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from datetime import date
-from typing import Any, Optional
+from typing import Any, List, Optional
 from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, Request, Response, UploadFile
@@ -104,6 +104,14 @@ from app.db.sqlite import (
     get_last_sale_price,
     get_total_clients_debt,
     get_total_stock_value,
+    # invoice editing
+    get_sale_invoice_full,
+    get_sale_invoice_items_full,
+    update_sale_invoice,
+    get_receive_invoice_items_for_edit,
+    update_receive_invoice,
+    get_return_invoice_items_for_edit,
+    update_return_invoice,
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xlsx_bytes
@@ -903,7 +911,143 @@ def invoices_get(request: Request, tab: str = "sale"):
         },
     )
 
-# ---------------- history ----------------
+
+# ---------------- invoice editing ----------------
+
+@app.get("/invoices/sale/{number}/edit", response_class=HTMLResponse)
+def invoice_sale_edit_get(request: Request, number: int, msg: str = ""):
+    invoice = get_sale_invoice_full(int(number))
+    if not invoice:
+        return RedirectResponse(url="/invoices?tab=sale", status_code=303)
+    items = get_sale_invoice_items_full(int(number))
+    clients = list_clients()
+    return _render(
+        request,
+        "invoice_sale_edit.html",
+        {
+            "invoice": invoice,
+            "items": items,
+            "clients": clients,
+            "message": msg,
+        },
+    )
+
+
+@app.post("/invoices/sale/{number}/edit")
+def invoice_sale_edit_post(
+    number: int,
+    client_id: int = Form(...),
+    warehouse_code: str = Form(...),
+    product_id: List[int] = Form(...),
+    qty: List[float] = Form(...),
+    unit_price: List[float] = Form(...),
+):
+    new_items = [
+        {"product_id": pid, "qty": q, "unit_price": up}
+        for pid, q, up in zip(product_id, qty, unit_price)
+    ]
+    ok, err = update_sale_invoice(int(number), int(client_id), warehouse_code, new_items)
+    if not ok:
+        return RedirectResponse(
+            url=f"/invoices/sale/{number}/edit?msg={err}", status_code=303
+        )
+    # Regenerate PDF
+    invoice = get_sale_invoice_full(int(number))
+    items = get_sale_invoice_items_full(int(number))
+    if invoice and items:
+        pdf_invoice = {
+            "number": invoice["number"],
+            "client": invoice["client"],
+            "date": invoice["created_at"],
+            "total": invoice["total"],
+            "currency": invoice["currency"],
+        }
+        try:
+            generate_invoice_pdf(pdf_invoice, items)
+        except Exception:
+            pass
+    return RedirectResponse(url="/invoices?tab=sale&msg=invoice_updated", status_code=303)
+
+
+@app.get("/invoices/receive/{invoice_id}/edit", response_class=HTMLResponse)
+def invoice_receive_edit_get(request: Request, invoice_id: int, msg: str = ""):
+    invoice = receive_invoice_get(int(invoice_id))
+    if not invoice:
+        return RedirectResponse(url="/invoices?tab=receive", status_code=303)
+    items = get_receive_invoice_items_for_edit(int(invoice_id))
+    suppliers = list_receive_suppliers()
+    return _render(
+        request,
+        "invoice_receive_edit.html",
+        {
+            "invoice": invoice,
+            "items": items,
+            "suppliers": suppliers,
+            "message": msg,
+        },
+    )
+
+
+@app.post("/invoices/receive/{invoice_id}/edit")
+def invoice_receive_edit_post(
+    invoice_id: int,
+    supplier: str = Form(""),
+    destination_warehouse: str = Form(...),
+    product_id: List[int] = Form(...),
+    qty: List[float] = Form(...),
+    purchase_price: List[float] = Form(...),
+):
+    new_items = [
+        {"product_id": pid, "qty": q, "purchase_price": pp}
+        for pid, q, pp in zip(product_id, qty, purchase_price)
+    ]
+    ok, err = update_receive_invoice(int(invoice_id), supplier, destination_warehouse, new_items)
+    if not ok:
+        return RedirectResponse(
+            url=f"/invoices/receive/{invoice_id}/edit?msg={err}", status_code=303
+        )
+    return RedirectResponse(url="/invoices?tab=receive&msg=invoice_updated", status_code=303)
+
+
+@app.get("/invoices/return/{invoice_id}/edit", response_class=HTMLResponse)
+def invoice_return_edit_get(request: Request, invoice_id: int, msg: str = ""):
+    invoice = return_invoice_get(int(invoice_id))
+    if not invoice:
+        return RedirectResponse(url="/invoices?tab=return", status_code=303)
+    items = get_return_invoice_items_for_edit(int(invoice_id))
+    clients = list_clients()
+    return _render(
+        request,
+        "invoice_return_edit.html",
+        {
+            "invoice": invoice,
+            "items": items,
+            "clients": clients,
+            "message": msg,
+        },
+    )
+
+
+@app.post("/invoices/return/{invoice_id}/edit")
+def invoice_return_edit_post(
+    invoice_id: int,
+    client_id: int = Form(...),
+    warehouse_code: str = Form(...),
+    product_id: List[int] = Form(...),
+    qty: List[float] = Form(...),
+    unit_price: List[float] = Form(...),
+):
+    new_items = [
+        {"product_id": pid, "qty": q, "unit_price": up}
+        for pid, q, up in zip(product_id, qty, unit_price)
+    ]
+    ok, err = update_return_invoice(int(invoice_id), int(client_id), warehouse_code, new_items)
+    if not ok:
+        return RedirectResponse(
+            url=f"/invoices/return/{invoice_id}/edit?msg={err}", status_code=303
+        )
+    return RedirectResponse(url="/invoices?tab=return&msg=invoice_updated", status_code=303)
+
 
 @app.get("/history", response_class=HTMLResponse)
 def history_get(request: Request, q: str = ""):
