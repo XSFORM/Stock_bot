@@ -7,6 +7,12 @@
   <div class="alert alert-success py-2 small">{{ t.saved_ok }}</div>
   {% endif %}
 
+  {% if msg == "restored_ok" %}
+  <div class="alert alert-success py-2 small">{{ t.settings_backup_restored_ok }}</div>
+  {% elif msg.startswith("restore_error:") %}
+  <div class="alert alert-danger py-2 small">{{ t.settings_backup_restore_error }}{{ msg[14:] }}</div>
+  {% endif %}
+
   <!-- ── Site Lock ──────────────────────────────────────────────────── -->
   <h5 class="mt-2 mb-3 border-bottom pb-2">🔒 {{ t.settings_sitelock_heading }}</h5>
   <form method="post" action="/admin/settings/sitelock" class="mb-4">
@@ -86,6 +92,28 @@
              accept=".jpg,.jpeg,.png,.webp,.gif" style="max-width:360px">
     </div>
     <button type="submit" class="btn btn-sm btn-primary">{{ t.settings_bg_save }}</button>
+  </form>
+
+  <!-- ── Backup / Restore ───────────────────────────────────────────── -->
+  <h5 class="mt-4 mb-3 border-bottom pb-2">💾 {{ t.settings_backup_heading }}</h5>
+
+  <form method="post" action="/admin/backup/create" class="mb-3">
+    <button type="submit" class="btn btn-sm btn-secondary">{{ t.settings_backup_create_btn }}</button>
+  </form>
+
+  <h6 class="mb-2">{{ t.settings_backup_restore_heading }}</h6>
+  <p class="small text-muted mb-2">{{ t.settings_backup_restore_hint }}</p>
+  <form method="post" action="/admin/backup/restore" enctype="multipart/form-data" class="mb-4">
+    <div class="mb-2">
+      <input type="file" name="backup_file" class="form-control form-control-sm"
+             accept=".zip" required style="max-width:360px">
+    </div>
+    <div class="mb-3 form-check">
+      <input class="form-check-input" type="checkbox" name="confirm" value="1"
+             id="restore_confirm" required>
+      <label class="form-check-label" for="restore_confirm">{{ t.settings_backup_restore_confirm }}</label>
+    </div>
+    <button type="submit" class="btn btn-sm btn-danger">{{ t.settings_backup_restore_btn }}</button>
   </form>
 
 </div>

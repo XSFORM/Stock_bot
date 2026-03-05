@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import shutil
+import os
 from datetime import datetime
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
@@ -8,8 +8,16 @@ from zipfile import ZipFile, ZIP_DEFLATED
 from app.db.sqlite import DB_PATH
 
 
-BACKUP_DIR = Path("/opt/stock_bot/backups")
-INVOICES_DIR = Path("/opt/stock_bot/invoices")
+def _default_backup_dir() -> Path:
+    return Path(os.getenv("BACKUP_DIR", str(Path(__file__).resolve().parents[2] / "backups")))
+
+
+def _default_invoices_dir() -> Path:
+    return Path(os.getenv("INVOICES_DIR", str(Path(__file__).resolve().parents[2] / "invoices")))
+
+
+BACKUP_DIR = _default_backup_dir()
+INVOICES_DIR = _default_invoices_dir()
 
 
 def make_backup() -> str:
