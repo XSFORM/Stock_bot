@@ -4,6 +4,8 @@ import hashlib
 import os
 import secrets
 import shutil
+import tempfile
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from datetime import date
@@ -108,9 +110,10 @@ from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xl
 from app.services.receive_xlsx import generate_receive_xlsx_bytes
 from app.services.return_xlsx import generate_return_xlsx_bytes
 from app.services.stock_xlsx import generate_stock_xlsx_bytes
-from app.services.backup import make_backup
+from app.services.backup import make_backup, INVOICES_DIR
 from app.i18n import get_translations, SUPPORTED_LANGS
 from app.db.sqlite import (
+    DB_PATH,
     get_setting,
     set_setting,
     create_session,
@@ -1115,12 +1118,13 @@ def set_theme(theme: str = Form(...), next: str = Form("/")):
 # ──────────────────────────────────────────────────────────────────────────────
 
 @app.get("/admin/settings", response_class=HTMLResponse)
-def admin_settings_get(request: Request, saved: str = ""):
+def admin_settings_get(request: Request, saved: str = "", msg: str = ""):
     return _render(
         request,
         "admin_settings.html",
         {
             "saved": saved,
+            "msg": msg,
             "lock_enabled": get_setting("site_lock_enabled", "0") == "1",
             "session_hours": get_setting("site_lock_session_hours", "24"),
             "default_lang": get_setting("default_lang", "en"),
@@ -1191,3 +1195,86 @@ async def admin_settings_background(
             with dest.open("wb") as fout:
                 shutil.copyfileobj(bg_file.file, fout)
     return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Backup / Restore endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.post("/admin/backup/create")
+def admin_backup_create():
+    zip_path = make_backup()
+    p = Path(zip_path)
+    return FileResponse(str(p), filename=p.name, media_type="application/zip")
+
+
+@app.post("/admin/backup/restore")
+async def admin_backup_restore(
+    backup_file: UploadFile = File(...),
+    confirm: str = Form(""),
+):
+    if confirm != "1":
+        return RedirectResponse(
+            url="/admin/settings?msg=restore_error:confirmation+required",
+            status_code=303,
+        )
+
+    # Save uploaded file to a temp location
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir) / "uploaded.zip"
+            with tmp_path.open("wb") as fout:
+                shutil.copyfileobj(backup_file.file, fout)
+
+            # Validate it is a valid zip with stock.db
+            if not zipfile.is_zipfile(str(tmp_path)):
+                return RedirectResponse(
+                    url="/admin/settings?msg=restore_error:not+a+valid+zip",
+                    status_code=303,
+                )
+
+            with zipfile.ZipFile(str(tmp_path), "r") as zf:
+                names = zf.namelist()
+                if "stock.db" not in names:
+                    return RedirectResponse(
+                        url="/admin/settings?msg=restore_error:zip+missing+stock.db",
+                        status_code=303,
+                    )
+
+                # Zip Slip protection: ensure no member escapes the extract dir
+                extract_dir = Path(tmp_dir) / "extracted"
+                extract_dir.mkdir()
+                for member in zf.infolist():
+                    member_path = (extract_dir / member.filename).resolve()
+                    if not str(member_path).startswith(str(extract_dir.resolve())):
+                        return RedirectResponse(
+                            url="/admin/settings?msg=restore_error:unsafe+zip+path",
+                            status_code=303,
+                        )
+
+                # Create a safety backup before overwriting anything
+                make_backup()
+
+                # Extract to temp dir
+                zf.extractall(str(extract_dir))
+
+            # Restore DB
+            src_db = extract_dir / "stock.db"
+            DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(src_db), str(DB_PATH))
+
+            # Restore invoices (if present in zip)
+            src_invoices = extract_dir / "invoices"
+            if src_invoices.exists():
+                INVOICES_DIR.mkdir(parents=True, exist_ok=True)
+                for pdf in src_invoices.glob("*.pdf"):
+                    shutil.copy2(str(pdf), str(INVOICES_DIR / pdf.name))
+
+    except (zipfile.BadZipFile, OSError, ValueError) as exc:
+        err = quote(str(exc)[:200], safe="")
+        return RedirectResponse(
+            url=f"/admin/settings?msg=restore_error:{err}",
+            status_code=303,
+        )
+
+    return RedirectResponse(url="/admin/settings?msg=restored_ok", status_code=303)

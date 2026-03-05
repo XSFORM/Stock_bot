@@ -262,6 +262,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_bg_overlay": "Overlay opacity (0 – 100, 0 = no overlay)",
         "settings_bg_upload": "Upload new background image (JPG/PNG)",
         "settings_bg_save": "Save background settings",
+        # Backup / Restore section
+        "settings_backup_heading": "Backup / Restore",
+        "settings_backup_create_btn": "Create backup",
+        "settings_backup_restore_heading": "Restore from backup",
+        "settings_backup_restore_hint": "Upload a .zip backup file to restore the database and invoices.",
+        "settings_backup_restore_confirm": "I understand this will overwrite current data",
+        "settings_backup_restore_btn": "Restore",
+        "settings_backup_restored_ok": "Backup restored successfully.",
+        "settings_backup_restore_error": "Restore failed: ",
         # UI controls
         "theme_toggle_label": "Theme",
         "lang_toggle_label": "Language",
@@ -523,6 +532,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_bg_overlay": "Прозрачность наложения (0 – 100, 0 = без наложения)",
         "settings_bg_upload": "Загрузить фон (JPG/PNG)",
         "settings_bg_save": "Сохранить настройки фона",
+        # Backup / Restore section
+        "settings_backup_heading": "Резервная копия / Восстановление",
+        "settings_backup_create_btn": "Создать резервную копию",
+        "settings_backup_restore_heading": "Восстановить из резервной копии",
+        "settings_backup_restore_hint": "Загрузите .zip файл резервной копии для восстановления базы данных и счетов.",
+        "settings_backup_restore_confirm": "Я понимаю, что текущие данные будут перезаписаны",
+        "settings_backup_restore_btn": "Восстановить",
+        "settings_backup_restored_ok": "Резервная копия успешно восстановлена.",
+        "settings_backup_restore_error": "Ошибка восстановления: ",
         # UI controls
         "theme_toggle_label": "Тема",
         "lang_toggle_label": "Язык",
@@ -783,6 +801,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_bg_overlay": "Üstüni örtme aýdyňlygy (0 – 100, 0 = örtmesiz)",
         "settings_bg_upload": "Täze fon ýükläň (JPG/PNG)",
         "settings_bg_save": "Fon sazlamalaryny saklamak",
+        # Backup / Restore section
+        "settings_backup_heading": "Ätiýaç nusgasy / Dikeltmek",
+        "settings_backup_create_btn": "Ätiýaç nusgasyny döret",
+        "settings_backup_restore_heading": "Ätiýaç nusgasyndan dikelt",
+        "settings_backup_restore_hint": "Maglumatlary we töleg resminamalaryny dikeltmek üçin .zip faýlyny ýükläň.",
+        "settings_backup_restore_confirm": "Häzirki maglumatlar üstüne ýazyljakdygyny düşünýärin",
+        "settings_backup_restore_btn": "Dikelt",
+        "settings_backup_restored_ok": "Ätiýaç nusgasy üstünlikli dikeldildi.",
+        "settings_backup_restore_error": "Dikeltmek şowsuz boldy: ",
         # UI controls
         "theme_toggle_label": "Tema",
         "lang_toggle_label": "Dil",
