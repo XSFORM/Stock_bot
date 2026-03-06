@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import re
+import secrets
 import sqlite3
 from pathlib import Path
 from typing import Any, Optional, Tuple
@@ -34,6 +36,7 @@ def init_db() -> None:
         _migrate_localtime_defaults(conn)
         _ensure_carts_warehouse_column(conn)
         _ensure_return_tables(conn)
+        _ensure_price_tokens_table(conn)
         for code, title in WAREHOUSES.items():
             conn.execute(
                 "INSERT OR IGNORE INTO warehouses(code, title) VALUES(?, ?)",
@@ -647,6 +650,23 @@ def _ensure_return_tables(conn: sqlite3.Connection) -> None:
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_return_items_invoice ON return_items(invoice_id)"
+    )
+    conn.commit()
+
+
+def _ensure_price_tokens_table(conn: sqlite3.Connection) -> None:
+    """Create price_tokens table for Pocket Price per-device token auth (migration)."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS price_tokens (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          token_hash TEXT NOT NULL UNIQUE,
+          label TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          last_seen TEXT,
+          revoked INTEGER NOT NULL DEFAULT 0
+        )
+        """
     )
     conn.commit()
 
@@ -3492,5 +3512,154 @@ def get_return_invoice_items_for_edit(invoice_id: int) -> list[dict[str, Any]]:
             (int(invoice_id),),
         ).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Pocket Price – per-device token management
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _hash_token(token: str) -> str:
+    """Return SHA-256 hex digest of *token*."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def create_price_token(label: str = "") -> tuple[str, dict[str, Any]]:
+    """Generate a new random price token, store its hash, return (plain_token, row)."""
+    plain = secrets.token_urlsafe(32)
+    token_hash = _hash_token(plain)
+    label = (label or "").strip()
+    conn = _connect()
+    try:
+        conn.execute(
+            "INSERT INTO price_tokens(token_hash, label) VALUES(?, ?)",
+            (token_hash, label),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT id, label, created_at, last_seen, revoked FROM price_tokens WHERE token_hash=?",
+            (token_hash,),
+        ).fetchone()
+        return plain, dict(row)
+    finally:
+        conn.close()
+
+
+def list_price_tokens() -> list[dict[str, Any]]:
+    """Return all price tokens (no plain token – only metadata)."""
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT id, label, created_at, last_seen, revoked FROM price_tokens ORDER BY id DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def revoke_price_token(token_id: int) -> tuple[bool, str]:
+    """Mark a price token as revoked."""
+    conn = _connect()
+    try:
+        conn.execute(
+            "UPDATE price_tokens SET revoked=1 WHERE id=?",
+            (int(token_id),),
+        )
+        conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+    finally:
+        conn.close()
+
+
+def delete_price_token(token_id: int) -> tuple[bool, str]:
+    """Permanently delete a price token."""
+    conn = _connect()
+    try:
+        conn.execute("DELETE FROM price_tokens WHERE id=?", (int(token_id),))
+        conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+    finally:
+        conn.close()
+
+
+def validate_price_token(token: str) -> Optional[dict[str, Any]]:
+    """Return token row if *token* is valid and not revoked, else None."""
+    if not token:
+        return None
+    token_hash = _hash_token(token)
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT id, label, created_at, last_seen, revoked FROM price_tokens WHERE token_hash=? AND revoked=0",
+            (token_hash,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def touch_price_token(token_id: int) -> None:
+    """Update last_seen timestamp for a price token."""
+    conn = _connect()
+    try:
+        conn.execute(
+            "UPDATE price_tokens SET last_seen=datetime('now') WHERE id=?",
+            (int(token_id),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def search_products_for_price(q: str, limit: int = 20) -> list[dict[str, Any]]:
+    """Search non-archived products by brand/model/name for the Pocket Price API."""
+    term = (q or "").strip().lower()
+    like = f"%{term}%"
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id as product_id, brand, model, name, wh_price,
+                   ROUND(wh_price * 1.10, 2) as price_wh10,
+                   ROUND(wh_price * 1.25, 2) as price_wh25,
+                   barcode
+            FROM products
+            WHERE archived=0
+              AND (lower(brand) LIKE ? OR lower(model) LIKE ? OR lower(name) LIKE ?)
+            ORDER BY brand, model
+            LIMIT ?
+            """,
+            (like, like, like, int(limit)),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_product_by_barcode(code: str) -> Optional[dict[str, Any]]:
+    """Return product info by barcode for the Pocket Price API."""
+    code = (code or "").strip()
+    if not code:
+        return None
+    conn = _connect()
+    try:
+        row = conn.execute(
+            """
+            SELECT id as product_id, brand, model, name, wh_price,
+                   ROUND(wh_price * 1.10, 2) as price_wh10,
+                   ROUND(wh_price * 1.25, 2) as price_wh25,
+                   barcode
+            FROM products
+            WHERE barcode=? AND archived=0
+            LIMIT 1
+            """,
+            (code,),
+        ).fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()

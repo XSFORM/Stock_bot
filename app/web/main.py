@@ -129,6 +129,15 @@ from app.db.sqlite import (
     delete_session,
     delete_all_sessions,
     purge_expired_sessions,
+    # Pocket Price tokens
+    create_price_token,
+    list_price_tokens,
+    revoke_price_token,
+    delete_price_token,
+    validate_price_token,
+    touch_price_token,
+    search_products_for_price,
+    get_product_by_barcode,
 )
 
 
@@ -205,7 +214,7 @@ def _get_ui_theme(request: Request) -> str:
 # Site-lock middleware
 # ──────────────────────────────────────────────────────────────────────────────
 
-_LOCK_BYPASS_PREFIXES = ("/static", "/unlock", "/api/")
+_LOCK_BYPASS_PREFIXES = ("/static", "/unlock", "/api/", "/price")
 
 
 @app.middleware("http")
@@ -1422,3 +1431,160 @@ async def admin_backup_restore(
         )
 
     return RedirectResponse(url="/admin/settings?msg=restored_ok", status_code=303)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Pocket Price – token auth helper
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _get_price_token(request: Request) -> Optional[str]:
+    """Extract price token from X-Price-Token header or Authorization: Bearer ..."""
+    token = request.headers.get("x-price-token", "").strip()
+    if not token:
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            token = auth[7:].strip()
+    return token or None
+
+
+def _require_price_token(request: Request):
+    """Validate price token; return token row or raise 401 JSONResponse."""
+    token = _get_price_token(request)
+    if not token:
+        return None
+    row = validate_price_token(token)
+    if row:
+        touch_price_token(row["id"])
+    return row
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Pocket Price – public API endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/price/search")
+def api_price_search(request: Request, q: str = ""):
+    row = _require_price_token(request)
+    if not row:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    results = search_products_for_price(q, limit=30)
+    return JSONResponse({"results": results})
+
+
+@app.get("/api/price/barcode")
+def api_price_barcode(request: Request, code: str = ""):
+    row = _require_price_token(request)
+    if not row:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    product = get_product_by_barcode(code)
+    if not product:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse({"product": product})
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Pocket Price – admin token management
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.get("/admin/price-tokens", response_class=HTMLResponse)
+def admin_price_tokens_get(request: Request, msg: str = "", new_token: str = ""):
+    tokens = list_price_tokens()
+    return _render(
+        request,
+        "admin_price_tokens.html",
+        {"tokens": tokens, "msg": msg, "new_token": new_token},
+    )
+
+
+@app.post("/admin/price-tokens/create")
+def admin_price_tokens_create(label: str = Form("")):
+    plain, _row = create_price_token(label)
+    return RedirectResponse(
+        url=f"/admin/price-tokens?new_token={quote(plain, safe='')}",
+        status_code=303,
+    )
+
+
+@app.post("/admin/price-tokens/revoke")
+def admin_price_tokens_revoke(token_id: int = Form(...)):
+    ok, err = revoke_price_token(int(token_id))
+    msg = "revoked" if ok else f"error:{quote(err, safe='')}"
+    return RedirectResponse(url=f"/admin/price-tokens?msg={msg}", status_code=303)
+
+
+@app.post("/admin/price-tokens/delete")
+def admin_price_tokens_delete(token_id: int = Form(...)):
+    ok, err = delete_price_token(int(token_id))
+    msg = "deleted" if ok else f"error:{quote(err, safe='')}"
+    return RedirectResponse(url=f"/admin/price-tokens?msg={msg}", status_code=303)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Pocket Price – PWA page
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.get("/price", response_class=HTMLResponse)
+def price_page(request: Request):
+    lang = _get_ui_lang(request)
+    theme = _get_ui_theme(request)
+    return templates.TemplateResponse(
+        "price.html",
+        {
+            "request": request,
+            "ui_lang": lang,
+            "ui_theme": theme,
+            "t": get_translations(lang),
+        },
+    )
+
+
+@app.get("/price/manifest.webmanifest")
+def price_manifest():
+    manifest = {
+        "name": "Pocket Price",
+        "short_name": "Price",
+        "start_url": "/price",
+        "display": "standalone",
+        "background_color": "#212529",
+        "theme_color": "#212529",
+        "icons": [
+            {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
+        ],
+    }
+    return JSONResponse(manifest, media_type="application/manifest+json")
+
+
+@app.get("/price/sw.js")
+def price_sw():
+    sw_code = r"""
+const CACHE = 'pocket-price-v1';
+const SHELL = ['/price'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+  // Network-first for API calls; cache-first for shell
+  if (url.pathname.startsWith('/api/price')) {
+    e.respondWith(fetch(e.request).catch(() => new Response('{"error":"offline"}', {headers:{'Content-Type':'application/json'}})));
+  } else if (SHELL.includes(url.pathname)) {
+    e.respondWith(
+      caches.match(e.request).then(r => r || fetch(e.request))
+    );
+  }
+});
+"""
+    return Response(content=sw_code, media_type="application/javascript")
