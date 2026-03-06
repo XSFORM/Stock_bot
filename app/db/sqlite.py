@@ -37,6 +37,7 @@ def init_db() -> None:
         _ensure_carts_warehouse_column(conn)
         _ensure_return_tables(conn)
         _ensure_price_tokens_table(conn)
+        _ensure_price_tokens_mode_column(conn)
         for code, title in WAREHOUSES.items():
             conn.execute(
                 "INSERT OR IGNORE INTO warehouses(code, title) VALUES(?, ?)",
@@ -664,11 +665,22 @@ def _ensure_price_tokens_table(conn: sqlite3.Connection) -> None:
           label TEXT NOT NULL DEFAULT '',
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           last_seen TEXT,
-          revoked INTEGER NOT NULL DEFAULT 0
+          revoked INTEGER NOT NULL DEFAULT 0,
+          mode TEXT NOT NULL DEFAULT 'SIMPLE'
         )
         """
     )
     conn.commit()
+
+
+def _ensure_price_tokens_mode_column(conn: sqlite3.Connection) -> None:
+    """Add mode column to price_tokens if it does not exist (migration)."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(price_tokens)")}
+    if "mode" not in cols:
+        conn.execute(
+            "ALTER TABLE price_tokens ADD COLUMN mode TEXT NOT NULL DEFAULT 'SIMPLE'"
+        )
+        conn.commit()
 
 
 # -------- products --------
@@ -3525,20 +3537,21 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def create_price_token(label: str = "") -> tuple[str, dict[str, Any]]:
+def create_price_token(label: str = "", mode: str = "SIMPLE") -> tuple[str, dict[str, Any]]:
     """Generate a new random price token, store its hash, return (plain_token, row)."""
     plain = secrets.token_urlsafe(32)
     token_hash = _hash_token(plain)
     label = (label or "").strip()
+    mode = mode.upper() if mode.upper() in ("SIMPLE", "FULL") else "SIMPLE"
     conn = _connect()
     try:
         conn.execute(
-            "INSERT INTO price_tokens(token_hash, label) VALUES(?, ?)",
-            (token_hash, label),
+            "INSERT INTO price_tokens(token_hash, label, mode) VALUES(?, ?, ?)",
+            (token_hash, label, mode),
         )
         conn.commit()
         row = conn.execute(
-            "SELECT id, label, created_at, last_seen, revoked FROM price_tokens WHERE token_hash=?",
+            "SELECT id, label, created_at, last_seen, revoked, mode FROM price_tokens WHERE token_hash=?",
             (token_hash,),
         ).fetchone()
         return plain, dict(row)
@@ -3551,7 +3564,7 @@ def list_price_tokens() -> list[dict[str, Any]]:
     conn = _connect()
     try:
         rows = conn.execute(
-            "SELECT id, label, created_at, last_seen, revoked FROM price_tokens ORDER BY id DESC"
+            "SELECT id, label, created_at, last_seen, revoked, mode FROM price_tokens ORDER BY id DESC"
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
@@ -3595,7 +3608,7 @@ def validate_price_token(token: str) -> Optional[dict[str, Any]]:
     conn = _connect()
     try:
         row = conn.execute(
-            "SELECT id, label, created_at, last_seen, revoked FROM price_tokens WHERE token_hash=? AND revoked=0",
+            "SELECT id, label, created_at, last_seen, revoked, mode FROM price_tokens WHERE token_hash=? AND revoked=0",
             (token_hash,),
         ).fetchone()
         return dict(row) if row else None
@@ -3612,6 +3625,25 @@ def touch_price_token(token_id: int) -> None:
             (int(token_id),),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def set_price_token_mode(token_id: int, mode: str) -> tuple[bool, str]:
+    """Set the mode (SIMPLE or FULL) of a price token."""
+    mode = mode.upper() if mode.upper() in ("SIMPLE", "FULL") else "SIMPLE"
+    conn = _connect()
+    try:
+        conn.execute(
+            "UPDATE price_tokens SET mode=? WHERE id=?",
+            (mode, int(token_id)),
+        )
+        conn.commit()
+        if conn.total_changes == 0:
+            return False, "Token not found"
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
     finally:
         conn.close()
 
