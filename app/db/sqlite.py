@@ -3541,7 +3541,9 @@ def create_price_token(label: str = "", mode: str = "SIMPLE") -> tuple[str, dict
     plain = secrets.token_urlsafe(32)
     token_hash = _hash_token(plain)
     label = (label or "").strip()
-    mode = mode.upper() if mode.upper() in ("FULL", "SIMPLE") else "SIMPLE"
+    mode = (mode or "SIMPLE").upper()
+    if mode not in ("FULL", "SIMPLE"):
+        mode = "SIMPLE"
     conn = _connect()
     try:
         conn.execute(
@@ -3628,6 +3630,13 @@ def touch_price_token(token_id: int) -> None:
         conn.close()
 
 
+def _apply_price_mode(result: dict[str, Any], mode: str) -> None:
+    """Strip wholesale-only price fields from *result* in-place when mode is not FULL."""
+    if mode != "FULL":
+        result.pop("wh_price", None)
+        result.pop("price_wh10", None)
+
+
 def search_products_for_price(q: str, limit: int = 20, mode: str = "SIMPLE") -> list[dict[str, Any]]:
     """Search non-archived products by brand/model/name for the Pocket Price API."""
     term = (q or "").strip().lower()
@@ -3649,10 +3658,8 @@ def search_products_for_price(q: str, limit: int = 20, mode: str = "SIMPLE") -> 
             (like, like, like, int(limit)),
         ).fetchall()
         results = [dict(r) for r in rows]
-        if mode != "FULL":
-            for r in results:
-                r.pop("wh_price", None)
-                r.pop("price_wh10", None)
+        for r in results:
+            _apply_price_mode(r, mode)
         return results
     finally:
         conn.close()
@@ -3680,9 +3687,7 @@ def get_product_by_barcode(code: str, mode: str = "SIMPLE") -> Optional[dict[str
         if not row:
             return None
         result = dict(row)
-        if mode != "FULL":
-            result.pop("wh_price", None)
-            result.pop("price_wh10", None)
+        _apply_price_mode(result, mode)
         return result
     finally:
         conn.close()
