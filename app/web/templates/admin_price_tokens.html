@@ -28,6 +28,10 @@
   <form method="post" action="/admin/price-tokens/create" class="mb-4 d-flex gap-2 align-items-center flex-wrap">
     <input type="text" name="label" class="form-control form-control-sm" style="max-width:280px"
            placeholder="{{ t.price_tokens_label_placeholder }}">
+    <select name="mode" class="form-select form-select-sm" style="max-width:200px">
+      <option value="SIMPLE">{{ t.price_tokens_mode_simple }}</option>
+      <option value="FULL">{{ t.price_tokens_mode_full }}</option>
+    </select>
     <button type="submit" class="btn btn-sm btn-primary">{{ t.price_tokens_create_btn }}</button>
   </form>
 
@@ -40,6 +44,7 @@
         <tr>
           <th>{{ t.price_tokens_col_id }}</th>
           <th>{{ t.price_tokens_col_label }}</th>
+          <th>{{ t.price_tokens_col_mode }}</th>
           <th>{{ t.price_tokens_col_created }}</th>
           <th>{{ t.price_tokens_col_last_seen }}</th>
           <th>{{ t.price_tokens_col_status }}</th>
@@ -51,6 +56,13 @@
         <tr class="{{ 'table-secondary text-muted' if tok.revoked else '' }}">
           <td>{{ tok.id }}</td>
           <td>{{ tok.label or "—" }}</td>
+          <td>
+            {% if tok.mode == "FULL" %}
+            <span class="badge bg-primary">{{ t.price_tokens_mode_full }}</span>
+            {% else %}
+            <span class="badge bg-secondary">{{ t.price_tokens_mode_simple }}</span>
+            {% endif %}
+          </td>
           <td class="small text-muted">{{ tok.created_at }}</td>
           <td class="small text-muted">{{ tok.last_seen or t.price_tokens_never }}</td>
           <td>
@@ -82,7 +94,6 @@
   <p class="text-muted small">No tokens yet.</p>
   {% endif %}
 </div>
-{% endblock %}
 <script>
 function copyText(elemId, btn) {
   var text = document.getElementById(elemId).innerText;
@@ -115,3 +126,4 @@ function fallbackCopy(text, btn) {
   }
 }
 </script>
+{% endblock %}
