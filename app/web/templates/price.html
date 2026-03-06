@@ -175,7 +175,10 @@ function renderResults(items) {
 }
 
 function fmt(v) { return v != null ? Number(v).toFixed(2) : '—'; }
-function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 
 function showUnpaired() {
   _token = '';

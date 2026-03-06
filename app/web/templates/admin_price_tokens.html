@@ -11,11 +11,11 @@
     <div class="mt-2">
       <code id="plain-token" class="d-block p-2 bg-light rounded text-break">{{ new_token }}</code>
     </div>
-    <button class="btn btn-sm btn-outline-secondary mt-2" onclick="navigator.clipboard.writeText(document.getElementById('plain-token').innerText)">📋 Copy</button>
+    <button class="btn btn-sm btn-outline-secondary mt-2" onclick="copyText('plain-token', this)">📋 Copy</button>
     {% set pair_url = request.url.scheme + "://" + request.url.netloc + "/price?token=" + new_token %}
     <p class="mt-3 mb-1 small">{{ t.price_tokens_share_hint }}</p>
     <code class="d-block p-2 bg-light rounded text-break small" id="pair-url">{{ pair_url }}</code>
-    <button class="btn btn-sm btn-outline-secondary mt-1" onclick="navigator.clipboard.writeText(document.getElementById('pair-url').innerText)">📋 Copy link</button>
+    <button class="btn btn-sm btn-outline-secondary mt-1" onclick="copyText('pair-url', this)">📋 Copy link</button>
   </div>
   {% elif msg == "revoked" %}
   <div class="alert alert-info py-2 small">{{ t.price_tokens_msg_revoked }}</div>
@@ -83,3 +83,35 @@
   {% endif %}
 </div>
 {% endblock %}
+<script>
+function copyText(elemId, btn) {
+  var text = document.getElementById(elemId).innerText;
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(function() {
+      var orig = btn.textContent;
+      btn.textContent = '✓ Copied';
+      setTimeout(function(){ btn.textContent = orig; }, 2000);
+    }).catch(function() { fallbackCopy(text, btn); });
+  } else {
+    fallbackCopy(text, btn);
+  }
+}
+function fallbackCopy(text, btn) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    var orig = btn.textContent;
+    btn.textContent = '✓ Copied';
+    setTimeout(function(){ btn.textContent = orig; }, 2000);
+  } catch(e) {
+    alert('Copy failed. Please copy manually:\n' + text);
+  } finally {
+    document.body.removeChild(ta);
+  }
+}
+</script>

@@ -1499,23 +1499,24 @@ def admin_price_tokens_get(request: Request, msg: str = "", new_token: str = "")
 @app.post("/admin/price-tokens/create")
 def admin_price_tokens_create(label: str = Form("")):
     plain, _row = create_price_token(label)
-    from urllib.parse import quote as _quote
     return RedirectResponse(
-        url=f"/admin/price-tokens?new_token={_quote(plain, safe='')}",
+        url=f"/admin/price-tokens?new_token={quote(plain, safe='')}",
         status_code=303,
     )
 
 
 @app.post("/admin/price-tokens/revoke")
 def admin_price_tokens_revoke(token_id: int = Form(...)):
-    revoke_price_token(int(token_id))
-    return RedirectResponse(url="/admin/price-tokens?msg=revoked", status_code=303)
+    ok, err = revoke_price_token(int(token_id))
+    msg = "revoked" if ok else f"error:{quote(err, safe='')}"
+    return RedirectResponse(url=f"/admin/price-tokens?msg={msg}", status_code=303)
 
 
 @app.post("/admin/price-tokens/delete")
 def admin_price_tokens_delete(token_id: int = Form(...)):
-    delete_price_token(int(token_id))
-    return RedirectResponse(url="/admin/price-tokens?msg=deleted", status_code=303)
+    ok, err = delete_price_token(int(token_id))
+    msg = "deleted" if ok else f"error:{quote(err, safe='')}"
+    return RedirectResponse(url=f"/admin/price-tokens?msg={msg}", status_code=303)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
