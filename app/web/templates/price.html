@@ -32,7 +32,6 @@
     .price-card .prod-sub { font-size: 0.8rem; color: #aaa; }
     .price-big { font-size: 1.4rem; font-weight: 700; color: #4aff91; }
     .price-small { font-size: 0.9rem; color: #aaa; }
-    #app-shell { display: none; }
     #scan-status { font-size: 0.85rem; color: #ffc107; min-height: 1.4em; }
   </style>
 </head>
@@ -42,13 +41,12 @@
     <h5 class="mb-0 fw-bold">📱 Pocket Price</h5>
   </div>
 
-  <!-- Not paired (visible by default; hidden when token is valid) -->
   <div id="not-paired" class="alert alert-warning">
     🔒 Not paired. Ask admin for an access link.
   </div>
 
-  <!-- App shell (shown when paired) -->
-  <div id="app-shell">
+  <!-- App shell (hidden by default; JS shows when token is present) -->
+  <div id="app-shell" style="display:none">
     <!-- Search row -->
     <div class="input-group mb-2">
       <input id="search-input" type="search" class="form-control" placeholder="Search by model / brand / name…" autocomplete="off">
@@ -70,39 +68,20 @@
   </div>
 </div>
 
+<noscript>
+  <div style="padding:20px;color:#e0e0e0;background:#1a1a2e;min-height:100vh">
+    <h5>📱 Pocket Price</h5>
+    <p>JavaScript is required for this app. Please enable JavaScript in your browser.</p>
+  </div>
+</noscript>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 // ── Token management ──────────────────────────────────────────────────────────
 var _token = '';
-try { _token = localStorage.getItem('pocket_price_token') || ''; } catch(e) {}
 var _mode = 'SIMPLE';
 var _stream = null;
 var _scanInterval = null;
-
-function _safeStorageSet(key, value) {
-  try { localStorage.setItem(key, value); } catch(e) {}
-}
-function _safeStorageRemove(key) {
-  try { localStorage.removeItem(key); } catch(e) {}
-}
-
-// On load: check token in URL first (pairing flow)
-(function() {
-  var params = new URLSearchParams(location.search);
-  var urlToken = params.get('token');
-  if (urlToken) {
-    _token = urlToken;
-    _safeStorageSet('pocket_price_token', _token);
-    // Strip token from URL
-    params.delete('token');
-    var newUrl = location.pathname + (params.toString() ? '?' + params.toString() : '');
-    history.replaceState({}, '', newUrl);
-  }
-  if (_token) {
-    // Fetch mode from server, then show app shell
-    fetchTokenInfo();
-  } else {
-    showUnpaired();
   }
   // Register service worker
   if ('serviceWorker' in navigator) {
@@ -134,7 +113,6 @@ var _lastResults = [];
 document.getElementById('search-input').addEventListener('input', function() {
   clearTimeout(_debounce);
   var val = this.value;
-  _debounce = setTimeout(function(){ doSearch(val); }, 300);
 });
 
 async function doSearch(q) {
@@ -192,7 +170,6 @@ function escHtml(s) {
 
 function showUnpaired() {
   _token = '';
-  _safeStorageRemove('pocket_price_token');
   document.getElementById('app-shell').style.display = 'none';
   document.getElementById('not-paired').style.display = '';
 }
@@ -220,7 +197,6 @@ async function startScan() {
 }
 
 function stopScan() {
-  if (_stream) { _stream.getTracks().forEach(function(t){ t.stop(); }); _stream = null; }
   if (_scanInterval) { clearInterval(_scanInterval); _scanInterval = null; }
   document.getElementById('scanner-area').style.display = 'none';
   setScanStatus('');

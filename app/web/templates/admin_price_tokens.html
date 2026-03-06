@@ -26,11 +26,8 @@
   <!-- Create token -->
   <h5 class="border-bottom pb-2 mb-3">{{ t.price_tokens_create_heading }}</h5>
   <form method="post" action="/admin/price-tokens/create" class="mb-4 d-flex gap-2 align-items-center flex-wrap">
-    <input type="text" name="label" class="form-control form-control-sm" style="max-width:280px"
+    <input type="text" name="label" class="form-control form-control-sm" style="max-width:240px"
            placeholder="{{ t.price_tokens_label_placeholder }}">
-    <select name="mode" class="form-select form-select-sm" style="max-width:200px">
-      <option value="SIMPLE">{{ t.price_tokens_mode_simple }}</option>
-      <option value="FULL">{{ t.price_tokens_mode_full }}</option>
     </select>
     <button type="submit" class="btn btn-sm btn-primary">{{ t.price_tokens_create_btn }}</button>
   </form>
@@ -44,7 +41,6 @@
         <tr>
           <th>{{ t.price_tokens_col_id }}</th>
           <th>{{ t.price_tokens_col_label }}</th>
-          <th>{{ t.price_tokens_col_mode }}</th>
           <th>{{ t.price_tokens_col_created }}</th>
           <th>{{ t.price_tokens_col_last_seen }}</th>
           <th>{{ t.price_tokens_col_status }}</th>
@@ -57,10 +53,6 @@
           <td>{{ tok.id }}</td>
           <td>{{ tok.label or "—" }}</td>
           <td>
-            {% if tok.mode == "FULL" %}
-            <span class="badge bg-primary">{{ t.price_tokens_mode_full }}</span>
-            {% else %}
-            <span class="badge bg-secondary">{{ t.price_tokens_mode_simple }}</span>
             {% endif %}
           </td>
           <td class="small text-muted">{{ tok.created_at }}</td>
@@ -96,7 +88,9 @@
 </div>
 <script>
 function copyText(elemId, btn) {
-  var text = document.getElementById(elemId).innerText;
+  var elem = document.getElementById(elemId);
+  if (!elem) return;
+  var text = (elem.innerText || '').trim();
   if (navigator.clipboard && window.isSecureContext) {
     navigator.clipboard.writeText(text).then(function() {
       var orig = btn.textContent;
@@ -111,18 +105,25 @@ function fallbackCopy(text, btn) {
   var ta = document.createElement('textarea');
   ta.value = text;
   ta.style.position = 'fixed';
-  ta.style.opacity = '0';
+  ta.style.top = '0';
+  ta.style.left = '0';
+  ta.style.opacity = '0.01';
+  ta.style.width = '1px';
+  ta.style.height = '1px';
   document.body.appendChild(ta);
+  ta.focus();
   ta.select();
+  var ok = false;
   try {
-    document.execCommand('copy');
+    ok = document.execCommand('copy');
+  } catch(e) {}
+  document.body.removeChild(ta);
+  if (ok) {
     var orig = btn.textContent;
     btn.textContent = '✓ Copied';
     setTimeout(function(){ btn.textContent = orig; }, 2000);
-  } catch(e) {
-    alert('Copy failed. Please copy manually:\n' + text);
-  } finally {
-    document.body.removeChild(ta);
+  } else {
+    prompt('Copy this text manually (Ctrl+C / Cmd+C):', text);
   }
 }
 </script>

@@ -136,6 +136,7 @@ from app.db.sqlite import (
     delete_price_token,
     validate_price_token,
     touch_price_token,
+    set_price_token_mode,
     search_products_for_price,
     get_product_by_barcode,
 )
@@ -1467,9 +1468,6 @@ def api_price_search(request: Request, q: str = ""):
     row = _require_price_token(request)
     if not row:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-    mode = row.get("mode", "SIMPLE")
-    results = search_products_for_price(q, limit=30, mode=mode)
-    return JSONResponse({"results": results})
 
 
 @app.get("/api/price/barcode")
@@ -1481,7 +1479,11 @@ def api_price_barcode(request: Request, code: str = ""):
     product = get_product_by_barcode(code, mode=mode)
     if not product:
         return JSONResponse({"error": "not_found"}, status_code=404)
-    return JSONResponse({"product": product})
+    mode = (row.get("mode") or "SIMPLE").upper()
+    if mode != "FULL":
+        product.pop("wh_price", None)
+        product.pop("price_wh10", None)
+    return JSONResponse({"product": product, "mode": mode})
 
 
 @app.get("/api/price/token-info")
@@ -1508,11 +1510,16 @@ def admin_price_tokens_get(request: Request, msg: str = "", new_token: str = "")
 
 @app.post("/admin/price-tokens/create")
 def admin_price_tokens_create(label: str = Form(""), mode: str = Form("SIMPLE")):
-    plain, _row = create_price_token(label, mode=mode)
     return RedirectResponse(
         url=f"/admin/price-tokens?new_token={quote(plain, safe='')}",
         status_code=303,
     )
+
+
+@app.post("/admin/price-tokens/set-mode")
+def admin_price_tokens_set_mode(token_id: int = Form(...), mode: str = Form("SIMPLE")):
+    set_price_token_mode(int(token_id), mode)
+    return RedirectResponse(url="/admin/price-tokens", status_code=303)
 
 
 @app.post("/admin/price-tokens/revoke")
