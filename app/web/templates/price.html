@@ -41,7 +41,6 @@
     <h5 class="mb-0 fw-bold">📱 Pocket Price</h5>
   </div>
 
-  <!-- Not paired (shown by default; JS hides when token is present) -->
   <div id="not-paired" class="alert alert-warning">
     🔒 Not paired. Ask admin for an access link.
   </div>
@@ -83,33 +82,29 @@ var _token = '';
 var _mode = 'SIMPLE';
 var _stream = null;
 var _scanInterval = null;
-
-try { _token = localStorage.getItem('pocket_price_token') || ''; } catch(e) {}
-
-// On load: check token in URL first (pairing flow)
-(function() {
-  try {
-    var params = new URLSearchParams(location.search);
-    var urlToken = params.get('token');
-    if (urlToken) {
-      _token = urlToken;
-      try { localStorage.setItem('pocket_price_token', _token); } catch(e) {}
-      // Strip token from URL
-      params.delete('token');
-      var newUrl = location.pathname + (params.toString() ? '?' + params.toString() : '');
-      history.replaceState({}, '', newUrl);
-    }
-  } catch(e) {}
-
-  if (_token) {
-    document.getElementById('app-shell').style.display = '';
-    document.getElementById('not-paired').style.display = 'none';
   }
   // Register service worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/price/sw.js', {scope: '/price'}).catch(function(){});
   }
 })();
+
+async function fetchTokenInfo() {
+  try {
+    var res = await fetch('/api/price/token-info', {
+      headers: {'X-Price-Token': _token}
+    });
+    if (res.status === 401) { showUnpaired(); return; }
+    var data = await res.json();
+    _mode = (data.mode === 'FULL') ? 'FULL' : 'SIMPLE';
+  } catch(e) {
+    // Offline: use cached mode or default SIMPLE
+    try { _mode = localStorage.getItem('pocket_price_mode') || 'SIMPLE'; } catch(e2) {}
+  }
+  try { localStorage.setItem('pocket_price_mode', _mode); } catch(e) {}
+  document.getElementById('not-paired').style.display = 'none';
+  document.getElementById('app-shell').style.display = '';
+}
 
 // ── Search ────────────────────────────────────────────────────────────────────
 var _debounce = null;
@@ -118,7 +113,6 @@ var _lastResults = [];
 document.getElementById('search-input').addEventListener('input', function() {
   clearTimeout(_debounce);
   var val = this.value;
-  _debounce = setTimeout(function() { doSearch(val); }, 300);
 });
 
 async function doSearch(q) {
@@ -129,7 +123,6 @@ async function doSearch(q) {
     });
     if (res.status === 401) { showUnpaired(); return; }
     var data = await res.json();
-    if (data.mode) { _mode = data.mode; }
     _lastResults = data.results || [];
     renderResults(_lastResults);
   } catch(e) {
@@ -177,7 +170,6 @@ function escHtml(s) {
 
 function showUnpaired() {
   _token = '';
-  try { localStorage.removeItem('pocket_price_token'); } catch(e) {}
   document.getElementById('app-shell').style.display = 'none';
   document.getElementById('not-paired').style.display = '';
 }
@@ -205,7 +197,6 @@ async function startScan() {
 }
 
 function stopScan() {
-  if (_stream) { _stream.getTracks().forEach(function(t) { t.stop(); }); _stream = null; }
   if (_scanInterval) { clearInterval(_scanInterval); _scanInterval = null; }
   document.getElementById('scanner-area').style.display = 'none';
   setScanStatus('');
@@ -248,7 +239,6 @@ async function lookupBarcode(code) {
       return;
     }
     var data = await res.json();
-    if (data.mode) { _mode = data.mode; }
     _lastResults = [data.product];
     renderResults(_lastResults);
     setScanStatus('');

@@ -674,8 +674,6 @@ def _ensure_price_tokens_table(conn: sqlite3.Connection) -> None:
 
 
 def _ensure_price_tokens_mode_column(conn: sqlite3.Connection) -> None:
-    """Add mode column to price_tokens if it does not exist (migration)."""
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(price_tokens)")}
     if "mode" not in cols:
         conn.execute(
             "ALTER TABLE price_tokens ADD COLUMN mode TEXT NOT NULL DEFAULT 'SIMPLE'"
@@ -3542,7 +3540,6 @@ def create_price_token(label: str = "", mode: str = "SIMPLE") -> tuple[str, dict
     plain = secrets.token_urlsafe(32)
     token_hash = _hash_token(plain)
     label = (label or "").strip()
-    mode = mode.upper() if mode.upper() in ("SIMPLE", "FULL") else "SIMPLE"
     conn = _connect()
     try:
         conn.execute(
@@ -3629,26 +3626,6 @@ def touch_price_token(token_id: int) -> None:
         conn.close()
 
 
-def set_price_token_mode(token_id: int, mode: str) -> tuple[bool, str]:
-    """Set the mode (SIMPLE or FULL) of a price token."""
-    mode = mode.upper() if mode.upper() in ("SIMPLE", "FULL") else "SIMPLE"
-    conn = _connect()
-    try:
-        conn.execute(
-            "UPDATE price_tokens SET mode=? WHERE id=?",
-            (mode, int(token_id)),
-        )
-        conn.commit()
-        if conn.total_changes == 0:
-            return False, "Token not found"
-        return True, ""
-    except Exception as exc:
-        return False, str(exc)
-    finally:
-        conn.close()
-
-
-def search_products_for_price(q: str, limit: int = 20) -> list[dict[str, Any]]:
     """Search non-archived products by brand/model/name for the Pocket Price API."""
     term = (q or "").strip().lower()
     like = f"%{term}%"
@@ -3668,12 +3645,15 @@ def search_products_for_price(q: str, limit: int = 20) -> list[dict[str, Any]]:
             """,
             (like, like, like, int(limit)),
         ).fetchall()
-        return [dict(r) for r in rows]
+        results = [dict(r) for r in rows]
+        for r in results:
+            _apply_price_mode(r, mode)
+        return results
     finally:
         conn.close()
 
 
-def get_product_by_barcode(code: str) -> Optional[dict[str, Any]]:
+def get_product_by_barcode(code: str, mode: str = "SIMPLE") -> Optional[dict[str, Any]]:
     """Return product info by barcode for the Pocket Price API."""
     code = (code or "").strip()
     if not code:
@@ -3692,6 +3672,10 @@ def get_product_by_barcode(code: str) -> Optional[dict[str, Any]]:
             """,
             (code,),
         ).fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        result = dict(row)
+        _apply_price_mode(result, mode)
+        return result
     finally:
         conn.close()

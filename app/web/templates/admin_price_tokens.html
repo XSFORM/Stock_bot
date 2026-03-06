@@ -28,9 +28,6 @@
   <form method="post" action="/admin/price-tokens/create" class="mb-4 d-flex gap-2 align-items-center flex-wrap">
     <input type="text" name="label" class="form-control form-control-sm" style="max-width:240px"
            placeholder="{{ t.price_tokens_label_placeholder }}">
-    <select name="mode" class="form-select form-select-sm" style="max-width:160px">
-      <option value="SIMPLE">Simple (retail +25%)</option>
-      <option value="FULL">Full (WH + retail)</option>
     </select>
     <button type="submit" class="btn btn-sm btn-primary">{{ t.price_tokens_create_btn }}</button>
   </form>
@@ -44,7 +41,6 @@
         <tr>
           <th>{{ t.price_tokens_col_id }}</th>
           <th>{{ t.price_tokens_col_label }}</th>
-          <th>Mode</th>
           <th>{{ t.price_tokens_col_created }}</th>
           <th>{{ t.price_tokens_col_last_seen }}</th>
           <th>{{ t.price_tokens_col_status }}</th>
@@ -57,17 +53,6 @@
           <td>{{ tok.id }}</td>
           <td>{{ tok.label or "—" }}</td>
           <td>
-            {% if not tok.revoked %}
-            <form method="post" action="/admin/price-tokens/set-mode" class="d-inline">
-              <input type="hidden" name="token_id" value="{{ tok.id }}">
-              <select name="mode" class="form-select form-select-sm d-inline-block w-auto py-0"
-                      onchange="this.form.submit()">
-                <option value="SIMPLE" {{ 'selected' if (tok.mode or 'SIMPLE') == 'SIMPLE' else '' }}>Simple</option>
-                <option value="FULL" {{ 'selected' if tok.mode == 'FULL' else '' }}>Full</option>
-              </select>
-            </form>
-            {% else %}
-            <span class="text-muted small">{{ tok.mode or 'SIMPLE' }}</span>
             {% endif %}
           </td>
           <td class="small text-muted">{{ tok.created_at }}</td>
@@ -101,7 +86,6 @@
   <p class="text-muted small">No tokens yet.</p>
   {% endif %}
 </div>
-{% endblock %}
 <script>
 function copyText(elemId, btn) {
   var elem = document.getElementById(elemId);
@@ -143,3 +127,4 @@ function fallbackCopy(text, btn) {
   }
 }
 </script>
+{% endblock %}
