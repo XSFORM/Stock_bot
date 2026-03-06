@@ -1467,7 +1467,8 @@ def api_price_search(request: Request, q: str = ""):
     row = _require_price_token(request)
     if not row:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-    results = search_products_for_price(q, limit=30)
+    mode = row.get("mode", "SIMPLE")
+    results = search_products_for_price(q, limit=30, mode=mode)
     return JSONResponse({"results": results})
 
 
@@ -1476,10 +1477,19 @@ def api_price_barcode(request: Request, code: str = ""):
     row = _require_price_token(request)
     if not row:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-    product = get_product_by_barcode(code)
+    mode = row.get("mode", "SIMPLE")
+    product = get_product_by_barcode(code, mode=mode)
     if not product:
         return JSONResponse({"error": "not_found"}, status_code=404)
     return JSONResponse({"product": product})
+
+
+@app.get("/api/price/token-info")
+def api_price_token_info(request: Request):
+    row = _require_price_token(request)
+    if not row:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return JSONResponse({"mode": row.get("mode", "SIMPLE")})
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1497,8 +1507,8 @@ def admin_price_tokens_get(request: Request, msg: str = "", new_token: str = "")
 
 
 @app.post("/admin/price-tokens/create")
-def admin_price_tokens_create(label: str = Form("")):
-    plain, _row = create_price_token(label)
+def admin_price_tokens_create(label: str = Form(""), mode: str = Form("SIMPLE")):
+    plain, _row = create_price_token(label, mode=mode)
     return RedirectResponse(
         url=f"/admin/price-tokens?new_token={quote(plain, safe='')}",
         status_code=303,
