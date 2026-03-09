@@ -3679,3 +3679,23 @@ def get_product_by_barcode(code: str, mode: str = "SIMPLE") -> Optional[dict[str
         return result
     finally:
         conn.close()
+        
+def set_price_token_mode(token_id: int, mode: str) -> tuple[bool, str]:
+    """Set the mode (SIMPLE or FULL) of a price token."""
+    mode = (mode or "SIMPLE").upper()
+    if mode not in ("SIMPLE", "FULL"):
+        mode = "SIMPLE"
+    conn = _connect()
+    try:
+        conn.execute(
+            "UPDATE price_tokens SET mode=? WHERE id=?",
+            (mode, int(token_id)),
+        )
+        conn.commit()
+        if conn.total_changes == 0:
+            return False, "Token not found"
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+    finally:
+        conn.close()        
