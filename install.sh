@@ -3,7 +3,6 @@ set -euo pipefail
 
 REPO_URL="https://github.com/XSFORM/Stock_bot.git"
 APP_DIR="/opt/stock_bot"
-SERVICE_NAME="stockbot"
 PYTHON_BIN="python3"
 
 echo "[1/8] Updating system packages..."
@@ -57,12 +56,14 @@ fi
 "$APP_DIR/venv/bin/pip" install --upgrade pip
 "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt"
 
-echo "[7/8] Installing systemd service..."
-sudo cp "$APP_DIR/app/systemd/stockbot.service" "/etc/systemd/system/$SERVICE_NAME.service"
+echo "[7/8] Installing systemd services..."
+sudo cp "$APP_DIR/app/systemd/stockbot.service" "/etc/systemd/system/stockbot.service"
+sudo cp "$APP_DIR/app/systemd/stockweb.service" "/etc/systemd/system/stockweb.service"
 sudo systemctl daemon-reload
-sudo systemctl enable "$SERVICE_NAME"
-sudo systemctl restart "$SERVICE_NAME"
+sudo systemctl enable stockbot stockweb
+sudo systemctl restart stockbot stockweb
 
 echo "[8/8] Done!"
-echo "Check status:  sudo systemctl status $SERVICE_NAME --no-pager"
-echo "Logs:          sudo journalctl -u $SERVICE_NAME -n 200 --no-pager"
+echo "Check status:  sudo systemctl status stockbot stockweb --no-pager"
+echo "Bot logs:      sudo journalctl -u stockbot -n 200 --no-pager"
+echo "Web logs:      sudo journalctl -u stockweb -n 200 --no-pager"
