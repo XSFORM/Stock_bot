@@ -29,6 +29,7 @@ git show --stat <commit-sha>
 
 ## 2026-03-09
 
+- Fix Pocket Price token creation: `POST /admin/price-tokens/create` no longer throws 500; token is now created and the plain token is shown on `/admin/price-tokens` via `new_token` query param (#PR)
 - Fix Pocket Price feature: reconstruct complete `app/db/sqlite.py` with all required DB functions; fix broken `search_products_for_price` (was connecting to placeholder `your_database.db`) and `set_price_token_mode` (was a no-op stub) ([#15](https://github.com/XSFORM/Stock_bot/pull/15))
 
 ## 2026-03-02

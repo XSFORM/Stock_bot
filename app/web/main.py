@@ -1510,10 +1510,17 @@ def admin_price_tokens_get(request: Request, msg: str = "", new_token: str = "")
 
 @app.post("/admin/price-tokens/create")
 def admin_price_tokens_create(label: str = Form(""), mode: str = Form("SIMPLE")):
-    return RedirectResponse(
-        url=f"/admin/price-tokens?new_token={quote(plain, safe='')}",
-        status_code=303,
-    )
+    try:
+        plain, _row = create_price_token(label, mode)
+        return RedirectResponse(
+            url=f"/admin/price-tokens?new_token={quote(plain, safe='')}",
+            status_code=303,
+        )
+    except Exception as exc:
+        return RedirectResponse(
+            url=f"/admin/price-tokens?msg=error:{quote(str(exc), safe='')}",
+            status_code=303,
+        )
 
 
 @app.post("/admin/price-tokens/set-mode")
