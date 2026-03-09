@@ -27,6 +27,10 @@ git show --stat <commit-sha>
 
 ---
 
+## 2026-03-09
+
+- Fix Pocket Price feature: reconstruct complete `app/db/sqlite.py` with all required DB functions; fix broken `search_products_for_price` (was connecting to placeholder `your_database.db`) and `set_price_token_mode` (was a no-op stub) ([#15](https://github.com/XSFORM/Stock_bot/pull/15))
+
 ## 2026-03-02
 
 - Document nginx Basic Auth setup for securing the web UI (README + docs/nginx-basic-auth.conf)
