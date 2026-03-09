@@ -78,7 +78,7 @@ server {
     auth_basic_user_file /etc/nginx/.htpasswd;
 
     location / {
-        proxy_pass http://127.0.0.1:5000;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host              $host;
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
@@ -88,7 +88,7 @@ server {
 ```
 
 > Замените `YOUR_DOMAIN_OR_IP` на ваш домен или публичный IP-адрес.
-> Порт `5000` — стандартный для Flask; измените при необходимости.
+> Порт `8000` — используется FastAPI (uvicorn).
 
 Готовый пример файла с комментариями: [`docs/nginx-basic-auth.conf`](docs/nginx-basic-auth.conf).
 
@@ -118,6 +118,17 @@ sudo certbot --nginx -d YOUR_DOMAIN
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/XSFORM/Stock_bot/main/install.sh)
+```
+
+После установки запускаются два systemd-сервиса:
+
+| Сервис | Назначение |
+|--------|-----------|
+| `stockbot` | Telegram-бот (модуль `app.main`) |
+| `stockweb` | Веб-интерфейс FastAPI / uvicorn на `127.0.0.1:8000` |
+
+```bash
+sudo systemctl status stockbot stockweb --no-pager
 ```
 
 ---
