@@ -27,6 +27,11 @@ git show --stat <commit-sha>
 
 ---
 
+## 2026-03-10
+
+- Fix 500 error on `/stock`: `get_stock()` now includes `sale_price` (wh_price × 1.25) in every row so `stock.html` renders without `UndefinedError`
+- Fix 500 error on `/history`: `list_history()` and `list_history_by_product()` rebuilt to pull from invoice tables (cart_items/receive_items/return_items) and return all fields expected by templates (`dt`, `type`, `ref`, `counterparty`, `warehouse`, `unit_price`, `total`, `view_url`, `download_url`), resolving `UndefinedError` for `unit_price` and `total`
+
 ## 2026-03-09
 
 - Fix Pocket Price token parsing in `price.html`: JavaScript now reads `token` from URL query param on first load, stores it in `localStorage` (`pocket_price_token`), and falls back to `localStorage` on subsequent visits; `history.replaceState` strips the token from the URL after storing; fixes "Not paired" always showing even when a valid token is provided (#PR)

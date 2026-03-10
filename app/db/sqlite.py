@@ -296,6 +296,7 @@ def get_stock(
             wh = float(d.get("wh_price", 0) or 0)
             d["wh10_price"] = round(wh * 1.10, 4)
             d["wh25_price"] = round(wh * 1.25, 4)
+            d["sale_price"] = d["wh25_price"]  # retail price = wholesale + 25%
             result.append(d)
         return result
 
@@ -2026,47 +2027,207 @@ def update_return_invoice(
 # ── History ───────────────────────────────────────────────────────────────────
 
 
+def _build_history_event(
+    d: dict[str, Any],
+    ev_type: str,
+    counterparty_key: str,
+    warehouse_key: str,
+    view_url: str,
+    download_url: str,
+) -> dict[str, Any]:
+    return {
+        "dt": d.get("created_at", ""),
+        "type": ev_type,
+        "ref": str(d.get("number", "")),
+        "counterparty": d.get(counterparty_key) or "",
+        "warehouse": d.get(warehouse_key) or "",
+        "brand": d.get("brand", ""),
+        "model": d.get("model", ""),
+        "name": d.get("name", ""),
+        "product_id": d.get("product_id"),
+        "qty": float(d.get("qty") or 0),
+        "unit_price": float(d.get("unit_price") or 0),
+        "total": float(d.get("total") or 0),
+        "view_url": view_url,
+        "download_url": download_url,
+    }
+
+
+def _build_history_event_sale(d: dict[str, Any]) -> dict[str, Any]:
+    number = d["number"]
+    return _build_history_event(
+        d, "SALE", "client_name", "warehouse_code",
+        f"/invoices/sale/{number}/edit", f"/sale/xlsx?n={number}",
+    )
+
+
+def _build_history_event_receive(d: dict[str, Any]) -> dict[str, Any]:
+    invoice_id, number = d["invoice_id"], d["number"]
+    return _build_history_event(
+        d, "RECEIVE", "supplier", "destination_warehouse",
+        f"/invoices/receive/{invoice_id}/edit", f"/receive/xlsx?n={number}",
+    )
+
+
+def _build_history_event_return(d: dict[str, Any]) -> dict[str, Any]:
+    invoice_id, number = d["invoice_id"], d["number"]
+    return _build_history_event(
+        d, "RETURN", "client_name", "warehouse_code",
+        f"/invoices/return/{invoice_id}/edit", f"/return/xlsx?n={invoice_id}",
+    )
+
+
 def list_history(q: str = "", limit: int = 500) -> list[dict[str, Any]]:
+    like = f"%{q}%" if q else None
     with _connect() as conn:
-        params: list[Any] = []
-        if q:
-            like = f"%{q}%"
-            where = (
-                "WHERE (p.brand LIKE ? OR p.model LIKE ? OR p.name LIKE ?"
-                "  OR s.op_type LIKE ? OR s.source LIKE ? OR s.warehouse_code LIKE ?)"
+        events: list[dict[str, Any]] = []
+
+        # ── SALE events ──────────────────────────────────────────────────────
+        sale_clauses: list[str] = []
+        sale_params: list[Any] = []
+        if like:
+            sale_clauses.append(
+                "(p.brand LIKE ? OR p.model LIKE ? OR p.name LIKE ?"
+                " OR cl.name LIKE ? OR c.warehouse_code LIKE ?)"
             )
-            params = [like, like, like, like, like, like]
-        else:
-            where = ""
-        rows = conn.execute(
+            sale_params = [like, like, like, like, like]
+        sale_where = ("WHERE " + " AND ".join(sale_clauses)) if sale_clauses else ""
+        for r in conn.execute(
             f"""
-            SELECT s.id, s.created_at, s.op_type, s.source, s.warehouse_code, s.qty,
-                   p.brand, p.model, p.name, p.id AS product_id
-            FROM stock_ops s
-            JOIN products p ON p.id = s.product_id
-            {where}
-            ORDER BY s.id DESC
+            SELECT i.number, i.created_at, ci.qty, ci.unit_price, ci.total,
+                   p.brand, p.model, p.name, p.id AS product_id,
+                   cl.name AS client_name, c.warehouse_code
+            FROM cart_items ci
+            JOIN carts c ON c.id = ci.cart_id
+            JOIN invoices i ON i.cart_id = c.id
+            JOIN products p ON p.id = ci.product_id
+            LEFT JOIN clients cl ON cl.id = c.client_id
+            {sale_where}
+            ORDER BY i.created_at DESC
             LIMIT ?
             """,
-            params + [limit],
-        ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+            sale_params + [limit],
+        ).fetchall():
+            events.append(_build_history_event_sale(_row_to_dict(r)))
+
+        # ── RECEIVE events ───────────────────────────────────────────────────
+        recv_clauses: list[str] = ["ri_inv.status = 'DONE'"]
+        recv_params: list[Any] = []
+        if like:
+            recv_clauses.append(
+                "(p.brand LIKE ? OR p.model LIKE ? OR p.name LIKE ?"
+                " OR ri_inv.supplier LIKE ? OR ri_inv.destination_warehouse LIKE ?)"
+            )
+            recv_params = [like, like, like, like, like]
+        recv_where = "WHERE " + " AND ".join(recv_clauses)
+        for r in conn.execute(
+            f"""
+            SELECT ri_inv.id AS invoice_id, ri_inv.number, ri_inv.created_at,
+                   ri_inv.supplier, ri_inv.destination_warehouse,
+                   ri.qty, ri.purchase_price AS unit_price, ri.total,
+                   p.brand, p.model, p.name, p.id AS product_id
+            FROM receive_items ri
+            JOIN receive_invoices ri_inv ON ri_inv.id = ri.invoice_id
+            JOIN products p ON p.id = ri.product_id
+            {recv_where}
+            ORDER BY ri_inv.created_at DESC
+            LIMIT ?
+            """,
+            recv_params + [limit],
+        ).fetchall():
+            events.append(_build_history_event_receive(_row_to_dict(r)))
+
+        # ── RETURN events ────────────────────────────────────────────────────
+        ret_clauses: list[str] = ["ret_inv.status = 'DONE'"]
+        ret_params: list[Any] = []
+        if like:
+            ret_clauses.append(
+                "(p.brand LIKE ? OR p.model LIKE ? OR p.name LIKE ?"
+                " OR cl.name LIKE ? OR ret_inv.warehouse_code LIKE ?)"
+            )
+            ret_params = [like, like, like, like, like]
+        ret_where = "WHERE " + " AND ".join(ret_clauses)
+        for r in conn.execute(
+            f"""
+            SELECT ret_inv.id AS invoice_id, ret_inv.number, ret_inv.created_at,
+                   ret_inv.warehouse_code, cl.name AS client_name,
+                   ret_it.qty, ret_it.unit_price, ret_it.total,
+                   p.brand, p.model, p.name, p.id AS product_id
+            FROM return_items ret_it
+            JOIN return_invoices ret_inv ON ret_inv.id = ret_it.invoice_id
+            JOIN products p ON p.id = ret_it.product_id
+            LEFT JOIN clients cl ON cl.id = ret_inv.client_id
+            {ret_where}
+            ORDER BY ret_inv.created_at DESC
+            LIMIT ?
+            """,
+            ret_params + [limit],
+        ).fetchall():
+            events.append(_build_history_event_return(_row_to_dict(r)))
+
+    events.sort(key=lambda x: x.get("dt", ""), reverse=True)
+    return events[:limit]
 
 
 def list_history_by_product(product_id: int) -> list[dict[str, Any]]:
     with _connect() as conn:
-        rows = conn.execute(
+        events: list[dict[str, Any]] = []
+
+        # SALE
+        for r in conn.execute(
             """
-            SELECT s.id, s.created_at, s.op_type, s.source, s.warehouse_code, s.qty,
-                   p.brand, p.model, p.name
-            FROM stock_ops s
-            JOIN products p ON p.id = s.product_id
-            WHERE s.product_id = ?
-            ORDER BY s.id DESC
+            SELECT i.number, i.created_at, ci.qty, ci.unit_price, ci.total,
+                   p.brand, p.model, p.name, p.id AS product_id,
+                   cl.name AS client_name, c.warehouse_code
+            FROM cart_items ci
+            JOIN carts c ON c.id = ci.cart_id
+            JOIN invoices i ON i.cart_id = c.id
+            JOIN products p ON p.id = ci.product_id
+            LEFT JOIN clients cl ON cl.id = c.client_id
+            WHERE ci.product_id = ?
+            ORDER BY i.created_at DESC
             """,
             (product_id,),
-        ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        ).fetchall():
+            events.append(_build_history_event_sale(_row_to_dict(r)))
+
+        # RECEIVE
+        for r in conn.execute(
+            """
+            SELECT ri_inv.id AS invoice_id, ri_inv.number, ri_inv.created_at,
+                   ri_inv.supplier, ri_inv.destination_warehouse,
+                   ri.qty, ri.purchase_price AS unit_price, ri.total,
+                   p.brand, p.model, p.name, p.id AS product_id
+            FROM receive_items ri
+            JOIN receive_invoices ri_inv ON ri_inv.id = ri.invoice_id
+            JOIN products p ON p.id = ri.product_id
+            WHERE ri.product_id = ? AND ri_inv.status = 'DONE'
+            ORDER BY ri_inv.created_at DESC
+            """,
+            (product_id,),
+        ).fetchall():
+            events.append(_build_history_event_receive(_row_to_dict(r)))
+
+        # RETURN
+        for r in conn.execute(
+            """
+            SELECT ret_inv.id AS invoice_id, ret_inv.number, ret_inv.created_at,
+                   ret_inv.warehouse_code, cl.name AS client_name,
+                   ret_it.qty, ret_it.unit_price, ret_it.total,
+                   p.brand, p.model, p.name, p.id AS product_id
+            FROM return_items ret_it
+            JOIN return_invoices ret_inv ON ret_inv.id = ret_it.invoice_id
+            JOIN products p ON p.id = ret_it.product_id
+            LEFT JOIN clients cl ON cl.id = ret_inv.client_id
+            WHERE ret_it.product_id = ? AND ret_inv.status = 'DONE'
+            ORDER BY ret_inv.created_at DESC
+            """,
+            (product_id,),
+        ).fetchall():
+            events.append(_build_history_event_return(_row_to_dict(r)))
+
+    events.sort(key=lambda x: x.get("dt", ""), reverse=True)
+    return events
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────
