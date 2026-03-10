@@ -1572,8 +1572,8 @@ def price_manifest():
         "short_name": "Price",
         "start_url": "/price",
         "display": "standalone",
-        "background_color": "#212529",
-        "theme_color": "#212529",
+        "background_color": "#0a0f28",
+        "theme_color": "#0d47a1",
         "icons": [
             {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
             {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
