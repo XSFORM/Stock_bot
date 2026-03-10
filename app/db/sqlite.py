@@ -54,6 +54,11 @@ def _ensure_price_tokens_table(conn: sqlite3.Connection) -> None:
             mode TEXT NOT NULL DEFAULT 'SIMPLE'
         )
     """)
+    
+def _ensure_price_tokens_last_used_column(conn: sqlite3.Connection) -> None:
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(price_tokens)")}
+    if "last_used_at" not in cols:
+        conn.execute("ALTER TABLE price_tokens ADD COLUMN last_used_at TEXT")
 
 
 def _ensure_price_tokens_mode_column(conn: sqlite3.Connection) -> None:
@@ -70,6 +75,7 @@ def init_db() -> None:
         _ensure_products_extra_cols(conn)
         _ensure_clients_archived(conn)
         _ensure_price_tokens_table(conn)
+        _ensure_price_tokens_last_used_column(conn)
         _ensure_price_tokens_mode_column(conn)
         conn.commit()
 
