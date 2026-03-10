@@ -69,6 +69,12 @@ def _ensure_price_tokens_mode_column(conn: sqlite3.Connection) -> None:
         )
 
 
+def _ensure_price_tokens_plain_token_column(conn: sqlite3.Connection) -> None:
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(price_tokens)")}
+    if "plain_token" not in cols:
+        conn.execute("ALTER TABLE price_tokens ADD COLUMN plain_token TEXT")
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript(_SCHEMA_SQL.read_text())
@@ -77,6 +83,7 @@ def init_db() -> None:
         _ensure_price_tokens_table(conn)
         _ensure_price_tokens_last_used_column(conn)
         _ensure_price_tokens_mode_column(conn)
+        _ensure_price_tokens_plain_token_column(conn)
         conn.commit()
 
 
@@ -2309,9 +2316,10 @@ def create_price_token(
     with _connect() as conn:
         _ensure_price_tokens_table(conn)
         _ensure_price_tokens_mode_column(conn)
+        _ensure_price_tokens_plain_token_column(conn)
         conn.execute(
-            "INSERT INTO price_tokens (label, token_hash, mode) VALUES (?, ?, ?)",
-            (label.strip(), token_hash, (mode or "SIMPLE").upper()),
+            "INSERT INTO price_tokens (label, token_hash, mode, plain_token) VALUES (?, ?, ?, ?)",
+            (label.strip(), token_hash, (mode or "SIMPLE").upper(), plain),
         )
         conn.commit()
         row = conn.execute(
