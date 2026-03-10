@@ -136,6 +136,7 @@ from app.db.sqlite import (
     delete_price_token,
     validate_price_token,
     touch_price_token,
+    bind_price_token_device,
     set_price_token_mode,
     search_products_for_price,
     get_product_by_barcode,
@@ -1448,14 +1449,33 @@ def _get_price_token(request: Request) -> Optional[str]:
     return token or None
 
 
+def _get_price_device_id(request: Request) -> Optional[str]:
+    """Extract device UUID from X-Price-Device header."""
+    device_id = request.headers.get("x-price-device", "").strip()
+    return device_id or None
+
+
 def _require_price_token(request: Request):
-    """Validate price token; return token row or raise 401 JSONResponse."""
+    """Validate price token and enforce device binding; return token row or None."""
     token = _get_price_token(request)
     if not token:
         return None
     row = validate_price_token(token)
-    if row:
-        touch_price_token(row["id"])
+    if not row:
+        return None
+    device_id = _get_price_device_id(request)
+    bound_device = row.get("device_id")
+    if bound_device:
+        # Token is already bound – reject if device doesn't match
+        if not device_id or device_id != bound_device:
+            return "not_paired"
+    else:
+        # First use – bind token to this device (if device_id provided)
+        if device_id:
+            bind_price_token_device(row["id"], device_id)
+            row = dict(row)
+            row["device_id"] = device_id
+    touch_price_token(row["id"])
     return row
 
 
@@ -1466,8 +1486,10 @@ def _require_price_token(request: Request):
 @app.get("/api/price/search")
 def api_price_search(request: Request, q: str = ""):
     row = _require_price_token(request)
-    if not row:
+    if row is None:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if row == "not_paired":
+        return JSONResponse({"error": "not_paired"}, status_code=401)
     mode = (row.get("mode") or "SIMPLE").upper()
     results = search_products_for_price(q.strip(), limit=30, mode=mode)
     return JSONResponse({"results": results, "mode": mode})
@@ -1476,8 +1498,10 @@ def api_price_search(request: Request, q: str = ""):
 @app.get("/api/price/barcode")
 def api_price_barcode(request: Request, code: str = ""):
     row = _require_price_token(request)
-    if not row:
+    if row is None:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if row == "not_paired":
+        return JSONResponse({"error": "not_paired"}, status_code=401)
     mode = row.get("mode", "SIMPLE")
     product = get_product_by_barcode(code, mode=mode)
     if not product:
@@ -1492,8 +1516,10 @@ def api_price_barcode(request: Request, code: str = ""):
 @app.get("/api/price/token-info")
 def api_price_token_info(request: Request):
     row = _require_price_token(request)
-    if not row:
+    if row is None:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if row == "not_paired":
+        return JSONResponse({"error": "not_paired"}, status_code=401)
     return JSONResponse({"mode": row.get("mode", "SIMPLE")})
 
 

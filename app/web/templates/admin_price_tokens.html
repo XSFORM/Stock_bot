@@ -60,6 +60,7 @@
           <th>{{ t.price_tokens_col_created }}</th>
           <th>{{ t.price_tokens_col_last_seen }}</th>
           <th>{{ t.price_tokens_col_status }}</th>
+          <th>Device</th>
           <th>QR</th>
           <th>{{ t.price_tokens_col_actions }}</th>
         </tr>
@@ -90,6 +91,13 @@
             <span class="badge bg-secondary">{{ t.price_tokens_status_revoked }}</span>
             {% else %}
             <span class="badge bg-success">{{ t.price_tokens_status_active }}</span>
+            {% endif %}
+          </td>
+          <td class="small text-muted font-monospace">
+            {% if tok.device_id %}
+            <span title="{{ tok.device_id }}">{{ tok.device_id[:8] }}…</span>
+            {% else %}
+            <span class="text-muted">—</span>
             {% endif %}
           </td>
           <td>

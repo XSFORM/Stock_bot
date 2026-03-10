@@ -29,6 +29,7 @@ git show --stat <commit-sha>
 
 ## 2026-03-10
 
+- Implement one-device binding for Pocket Price tokens: device UUID generated in `localStorage` (`pocket_price_device_id`) is sent as `X-Price-Device` header; first use binds the token to that device; subsequent requests from other devices receive 401/`not_paired`; revoking a token clears its device binding so it can be re-paired on next use; admin page now shows bound device (first 8 chars of UUID)
 - Fix 500 error on `/stock`: `get_stock()` now includes `sale_price` (wh_price × 1.25) in every row so `stock.html` renders without `UndefinedError`
 - Fix 500 error on `/history`: `list_history()` and `list_history_by_product()` rebuilt to pull from invoice tables (cart_items/receive_items/return_items) and return all fields expected by templates (`dt`, `type`, `ref`, `counterparty`, `warehouse`, `unit_price`, `total`, `view_url`, `download_url`), resolving `UndefinedError` for `unit_price` and `total`
 - Add Sonifer branding: replace PWA app icons (192×192, 512×512) and Apple touch icon (180×180) with Sonifer "S" logo on blue gradient; add `price-bg.jpg` background image to Pocket Price page with dark overlay for readability; update `theme_color`/`background_color` in manifest to Sonifer blue palette (#0d47a1 / #0a0f28)
