@@ -75,6 +75,12 @@ def _ensure_price_tokens_plain_token_column(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE price_tokens ADD COLUMN plain_token TEXT")
 
 
+def _ensure_price_tokens_device_id_column(conn: sqlite3.Connection) -> None:
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(price_tokens)")}
+    if "device_id" not in cols:
+        conn.execute("ALTER TABLE price_tokens ADD COLUMN device_id TEXT")
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript(_SCHEMA_SQL.read_text())
@@ -84,6 +90,7 @@ def init_db() -> None:
         _ensure_price_tokens_last_used_column(conn)
         _ensure_price_tokens_mode_column(conn)
         _ensure_price_tokens_plain_token_column(conn)
+        _ensure_price_tokens_device_id_column(conn)
         conn.commit()
 
 
@@ -2359,6 +2366,16 @@ def touch_price_token(token_id: int) -> None:
         conn.commit()
 
 
+def bind_price_token_device(token_id: int, device_id: str) -> None:
+    """Bind a price token to a device UUID (only if not already bound)."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE price_tokens SET device_id = ? WHERE id = ? AND device_id IS NULL",
+            (device_id, token_id),
+        )
+        conn.commit()
+
+
 def set_price_token_mode(token_id: int, mode: str) -> tuple[bool, str]:
     """Set the display mode (SIMPLE or FULL) for a price token."""
     try:
@@ -2378,7 +2395,8 @@ def revoke_price_token(token_id: int) -> tuple[bool, str]:
     try:
         with _connect() as conn:
             conn.execute(
-                "UPDATE price_tokens SET revoked = 1 WHERE id = ?", (token_id,)
+                "UPDATE price_tokens SET revoked = 1, device_id = NULL WHERE id = ?",
+                (token_id,),
             )
             conn.commit()
         return True, ""

@@ -104,12 +104,39 @@
 <script>
 // ── Token management ──────────────────────────────────────────────────────────
 var _token = '';
+var _deviceId = '';
 var _mode = 'SIMPLE';
 var _stream = null;
 var _scanInterval = null;
 var _lastResults = [];
 
 (function() {
+  // Generate or restore persistent device UUID
+  try {
+    _deviceId = localStorage.getItem('pocket_price_device_id') || '';
+    if (!_deviceId) {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        _deviceId = crypto.randomUUID();
+      } else if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        // Cryptographically secure UUID v4 fallback
+        var buf = new Uint8Array(16);
+        crypto.getRandomValues(buf);
+        buf[6] = (buf[6] & 0x0f) | 0x40;
+        buf[8] = (buf[8] & 0x3f) | 0x80;
+        var hex = Array.from(buf).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+        _deviceId = hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20);
+      } else {
+        // Last-resort fallback (non-cryptographic, very old browsers)
+        _deviceId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          var r = Math.random() * 16 | 0;
+          var v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+      }
+      localStorage.setItem('pocket_price_device_id', _deviceId);
+    }
+  } catch(e) {}
+
   // Read token from URL query param first
   var params = new URLSearchParams(window.location.search);
   var urlToken = params.get('token');
@@ -132,10 +159,16 @@ var _lastResults = [];
   }
 })();
 
+function _priceHeaders() {
+  var h = {'X-Price-Token': _token};
+  if (_deviceId) h['X-Price-Device'] = _deviceId;
+  return h;
+}
+
 async function fetchTokenInfo() {
   try {
     var res = await fetch('/api/price/token-info', {
-      headers: {'X-Price-Token': _token}
+      headers: _priceHeaders()
     });
     if (res.status === 401) { showUnpaired(); return; }
     var data = await res.json();
@@ -167,7 +200,7 @@ async function doSearch(q) {
   if (!_token) return;
   try {
     var res = await fetch('/api/price/search?q=' + encodeURIComponent(q), {
-      headers: {'X-Price-Token': _token}
+      headers: _priceHeaders()
     });
     if (res.status === 401) { showUnpaired(); return; }
     var data = await res.json();
@@ -302,7 +335,7 @@ async function lookupBarcode(code) {
   document.getElementById('search-input').value = code;
   try {
     var res = await fetch('/api/price/barcode?code=' + encodeURIComponent(code), {
-      headers: {'X-Price-Token': _token}
+      headers: _priceHeaders()
     });
     if (res.status === 401) { showUnpaired(); return; }
     if (res.status === 404) {
