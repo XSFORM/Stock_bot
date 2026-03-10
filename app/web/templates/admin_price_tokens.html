@@ -52,10 +52,7 @@
         <tr class="{{ 'table-secondary text-muted' if tok.revoked else '' }}">
           <td>{{ tok.id }}</td>
           <td>{{ tok.label or "—" }}</td>
-          <td>
-            {% endif %}
-          </td>
-          <td class="small text-muted">{{ tok.created_at }}</td>
+          <td>{{ tok.created_at }}</td>
           <td class="small text-muted">{{ tok.last_seen or t.price_tokens_never }}</td>
           <td>
             {% if tok.revoked %}
