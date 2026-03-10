@@ -33,12 +33,21 @@
     .price-big { font-size: 1.4rem; font-weight: 700; color: #4aff91; }
     .price-small { font-size: 0.9rem; color: #aaa; }
     #scan-status { font-size: 0.85rem; color: #ffc107; min-height: 1.4em; }
+    .result-list-item {
+      background: #0f3460; border-radius: 8px; padding: 10px 14px;
+      margin-bottom: 8px; cursor: pointer; border: 1px solid transparent;
+    }
+    .result-list-item:hover { border-color: #4a9eff; }
+    .result-list-item .item-title { font-weight: 600; font-size: 0.95rem; }
+    .result-list-item .item-sub { font-size: 0.8rem; color: #aaa; }
+    #back-btn { display: none; }
   </style>
 </head>
 <body>
 <div class="container-fluid py-3" style="max-width:600px">
   <div class="d-flex align-items-center justify-content-between mb-3">
     <h5 class="mb-0 fw-bold">📱 Pocket Price</h5>
+    <button id="back-btn" class="btn btn-sm btn-outline-secondary" onclick="showList()">← Back</button>
   </div>
 
   <div id="not-paired" class="alert alert-warning">
@@ -63,8 +72,11 @@
       <button class="btn btn-sm btn-outline-danger mt-2" onclick="stopScan()">✕ Cancel scan</button>
     </div>
 
-    <!-- Results -->
+    <!-- Results: list of matching products -->
     <div id="results"></div>
+
+    <!-- Price detail view (hidden until product selected) -->
+    <div id="price-detail" style="display:none"></div>
   </div>
 </div>
 
@@ -82,6 +94,7 @@ var _token = '';
 var _mode = 'SIMPLE';
 var _stream = null;
 var _scanInterval = null;
+var _lastResults = [];
 
 (function() {
   // Read token from URL query param first
@@ -125,11 +138,16 @@ async function fetchTokenInfo() {
 
 // ── Search ────────────────────────────────────────────────────────────────────
 var _debounce = null;
-var _lastResults = [];
 
 document.getElementById('search-input').addEventListener('input', function() {
   clearTimeout(_debounce);
-  var val = this.value;
+  var val = this.value.trim();
+  if (!val) {
+    document.getElementById('results').innerHTML = '';
+    showList();
+    return;
+  }
+  _debounce = setTimeout(function() { doSearch(val); }, 300);
 });
 
 async function doSearch(q) {
@@ -141,42 +159,65 @@ async function doSearch(q) {
     if (res.status === 401) { showUnpaired(); return; }
     var data = await res.json();
     _lastResults = data.results || [];
-    renderResults(_lastResults);
+    showList();
+    renderList(_lastResults);
   } catch(e) {
     document.getElementById('results').innerHTML = '<p class="text-warning small">Offline or error.</p>';
   }
 }
 
-function renderResults(items) {
+function renderList(items) {
   var el = document.getElementById('results');
   if (!items || items.length === 0) {
     el.innerHTML = '<p class="text-muted small mt-2">No products found.</p>';
     return;
   }
-  el.innerHTML = items.map(function(p) {
+  el.innerHTML = items.map(function(p, idx) {
     var brand = escHtml(p.brand || '');
     var model = escHtml(p.model || '');
     var name = escHtml(p.name || '');
-    var wh25 = fmt(p.price_wh25);
-    if (_mode === 'FULL') {
-      var wh = fmt(p.wh_price);
-      var wh10 = fmt(p.price_wh10);
-      return '<div class="price-card">' +
-        '<div class="prod-name">' + brand + ' ' + model + '</div>' +
-        '<div class="prod-sub">' + name + '</div>' +
-        '<div class="d-flex gap-3 mt-2 flex-wrap">' +
-          '<div><div class="price-small">WH</div><div class="fw-semibold">' + wh + ' $</div></div>' +
-          '<div><div class="price-small">+10%</div><div class="fw-semibold">' + wh10 + ' $</div></div>' +
-          '<div><div class="price-small">+25%</div><div class="price-big">' + wh25 + ' $</div></div>' +
-        '</div></div>';
-    } else {
-      return '<div class="price-card">' +
-        '<div class="prod-name">' + brand + ' ' + model + '</div>' +
-        '<div class="prod-sub">' + name + '</div>' +
-        '<div class="price-big mt-1">' + wh25 + ' $</div>' +
-        '</div>';
-    }
+    return '<div class="result-list-item" onclick="selectProduct(' + idx + ')">' +
+      '<div class="item-title">' + brand + ' ' + model + '</div>' +
+      '<div class="item-sub">' + name + '</div>' +
+    '</div>';
   }).join('');
+}
+
+function selectProduct(idx) {
+  var p = _lastResults[idx];
+  if (!p) return;
+  // Hide list, show detail
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('back-btn').style.display = '';
+  var detail = document.getElementById('price-detail');
+  detail.style.display = '';
+  var brand = escHtml(p.brand || '');
+  var model = escHtml(p.model || '');
+  var name = escHtml(p.name || '');
+  var html = '<div class="price-card">' +
+    '<div class="prod-name">' + brand + ' ' + model + '</div>' +
+    '<div class="prod-sub">' + name + '</div>';
+  if (_mode === 'FULL') {
+    var wh = fmt(p.wh_price);
+    var wh10 = fmt(p.price_wh10);
+    var wh25 = fmt(p.price_wh25);
+    html += '<div class="d-flex gap-3 mt-2 flex-wrap">' +
+      '<div><div class="price-small">Wholesale</div><div class="fw-semibold">' + wh + ' $</div></div>' +
+      '<div><div class="price-small">Retail</div><div class="price-big">' + wh25 + ' $</div></div>' +
+    '</div>';
+  } else {
+    var wh25 = fmt(p.price_wh25);
+    html += '<div class="mt-2"><div class="price-small">Price</div><div class="price-big">' + wh25 + ' $</div></div>';
+  }
+  html += '</div>';
+  detail.innerHTML = html;
+}
+
+function showList() {
+  document.getElementById('price-detail').style.display = 'none';
+  document.getElementById('price-detail').innerHTML = '';
+  document.getElementById('results').style.display = '';
+  document.getElementById('back-btn').style.display = 'none';
 }
 
 function fmt(v) { return v != null ? Number(v).toFixed(2) : '—'; }
@@ -215,6 +256,7 @@ async function startScan() {
 
 function stopScan() {
   if (_scanInterval) { clearInterval(_scanInterval); _scanInterval = null; }
+  if (_stream) { _stream.getTracks().forEach(function(t){ t.stop(); }); _stream = null; }
   document.getElementById('scanner-area').style.display = 'none';
   setScanStatus('');
 }
@@ -257,7 +299,8 @@ async function lookupBarcode(code) {
     }
     var data = await res.json();
     _lastResults = [data.product];
-    renderResults(_lastResults);
+    renderList(_lastResults);
+    selectProduct(0);
     setScanStatus('');
   } catch(e) {
     setScanStatus('Error: ' + e.message);
