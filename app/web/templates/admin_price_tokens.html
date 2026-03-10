@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <div class="bg-white rounded shadow-sm p-4">
   <h2 class="mb-3">{{ t.price_tokens_heading }}</h2>
 
@@ -122,7 +123,6 @@
   <p class="text-muted small">No tokens yet.</p>
   {% endif %}
 </div>
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
 function copyText(elemId, btn) {
   var elem = document.getElementById(elemId);
