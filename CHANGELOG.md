@@ -29,6 +29,7 @@ git show --stat <commit-sha>
 
 ## 2026-03-09
 
+- Fix `/admin/price-tokens` 500 error caused by mismatched Jinja2 block in `admin_price_tokens.html`: replaced stray `{% endif %}` inside `{% for %}` loop (line ~56) with correct `{{ tok.created_at }}` cell content, resolving `TemplateSyntaxError` (#PR)
 - Fix Pocket Price token creation: `POST /admin/price-tokens/create` no longer throws 500; token is now created and the plain token is shown on `/admin/price-tokens` via `new_token` query param (#PR)
 - Fix Pocket Price feature: reconstruct complete `app/db/sqlite.py` with all required DB functions; fix broken `search_products_for_price` (was connecting to placeholder `your_database.db`) and `set_price_token_mode` (was a no-op stub) ([#15](https://github.com/XSFORM/Stock_bot/pull/15))
 
