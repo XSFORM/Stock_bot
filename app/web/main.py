@@ -1468,6 +1468,9 @@ def api_price_search(request: Request, q: str = ""):
     row = _require_price_token(request)
     if not row:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
+    mode = (row.get("mode") or "SIMPLE").upper()
+    results = search_products_for_price(q.strip(), limit=30, mode=mode)
+    return JSONResponse({"results": results, "mode": mode})
 
 
 @app.get("/api/price/barcode")
