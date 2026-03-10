@@ -82,6 +82,23 @@ var _token = '';
 var _mode = 'SIMPLE';
 var _stream = null;
 var _scanInterval = null;
+
+(function() {
+  // Read token from URL query param first
+  var params = new URLSearchParams(window.location.search);
+  var urlToken = params.get('token');
+  if (urlToken && /^[A-Za-z0-9_\-]{8,128}$/.test(urlToken)) {
+    try { localStorage.setItem('pocket_price_token', urlToken); } catch(e) {}
+    _token = urlToken;
+    // Remove token from URL to keep it clean
+    params.delete('token');
+    var newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+    history.replaceState(null, '', newUrl);
+  } else {
+    try { _token = localStorage.getItem('pocket_price_token') || ''; } catch(e) {}
+  }
+  if (_token) {
+    fetchTokenInfo();
   }
   // Register service worker
   if ('serviceWorker' in navigator) {
