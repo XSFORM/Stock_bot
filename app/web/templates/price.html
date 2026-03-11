@@ -244,12 +244,11 @@ function selectProduct(idx) {
     '<div class="prod-name">' + brand + ' ' + model + '</div>' +
     '<div class="prod-sub">' + name + '</div>';
   if (_mode === 'FULL') {
-    var wh = fmt(p.wh_price);
     var wh10 = fmt(p.price_wh10);
     var wh25 = fmt(p.price_wh25);
     html += '<div class="d-flex gap-3 mt-2 flex-wrap">' +
-      '<div><div class="price-small">Wholesale</div><div class="fw-semibold">' + wh + ' $</div></div>' +
-      '<div><div class="price-small">Retail</div><div class="price-big">' + wh25 + ' $</div></div>' +
+      '<div><div class="price-small">+10%</div><div class="price-big">' + wh10 + ' $</div></div>' +
+      '<div><div class="price-small">+25%</div><div class="price-big">' + wh25 + ' $</div></div>' +
     '</div>';
   } else {
     var wh25 = fmt(p.price_wh25);
