@@ -55,8 +55,9 @@
         <th>{{ t.lbl_brand }}</th>
         <th>{{ t.lbl_model }}</th>
         <th>{{ t.lbl_name }}</th>
-        <th class="text-end">{{ t.stock_col_wh }}</th>
-        <th class="text-end">{{ t.stock_col_sale }}</th>
+        <th class="text-end">{{ t.stock_col_income }}</th>
+        <th class="text-end">{{ t.stock_col_wh10 }}</th>
+        <th class="text-end">{{ t.stock_col_wh25 }}</th>
         <th class="text-end">{{ t.lbl_qty }}</th>
         <th></th>
       </tr>
@@ -69,7 +70,8 @@
         <td>{{ r.model }}{% if r.archived %}<span class="badge bg-secondary ms-1">{{ t.badge_archived }}</span>{% endif %}</td>
         <td>{{ r.name }}</td>
         <td class="text-end">{{ "%.2f"|format(r.wh_price) }}</td>
-        <td class="text-end">{{ "%.2f"|format(r.sale_price) }}</td>
+        <td class="text-end">{{ "%.2f"|format(r.wh10_price) }}</td>
+        <td class="text-end">{{ "%.2f"|format(r.wh25_price) }}</td>
         <td class="text-end">{{ r.qty|int }}</td>
         <td class="text-end">
           <div class="dropdown">
