@@ -41,6 +41,9 @@ git show --stat <commit-sha>
 
 ## Безопасность: nginx Basic Auth
 
+> **Начиная с версии 2026-03-11**, `install.sh` настраивает nginx + Basic Auth + HTTPS **автоматически** при интерактивной установке.  
+> Раздел ниже актуален для ручной настройки или кастомных сценариев.
+
 По умолчанию веб-интерфейс доступен на публичном IP без авторизации.
 Рекомендуется закрыть его с помощью HTTP Basic Auth через nginx.
 
@@ -120,6 +123,14 @@ sudo certbot --nginx -d YOUR_DOMAIN
 bash <(curl -fsSL https://raw.githubusercontent.com/XSFORM/Stock_bot/main/install.sh)
 ```
 
+Установщик выполнит следующие шаги:
+
+| Шаг | Описание |
+|-----|---------|
+| 1 | Обновление системных пакетов (включая `nginx`, `certbot`, `apache2-utils`) |
+| 2–7 | Клонирование репозитория, создание `.env`, venv, запуск сервисов |
+| **8** | **Интерактивная настройка nginx + Basic Auth + HTTPS (Let's Encrypt)** |
+
 После установки запускаются два systemd-сервиса:
 
 | Сервис | Назначение |
@@ -129,6 +140,62 @@ bash <(curl -fsSL https://raw.githubusercontent.com/XSFORM/Stock_bot/main/instal
 
 ```bash
 sudo systemctl status stockbot stockweb --no-pager
+```
+
+---
+
+## Автоматическая настройка HTTPS + Basic Auth
+
+При **интерактивном** запуске `install.sh` шаг 8 автоматически:
+
+1. Создаёт конфигурацию nginx с Basic Auth (`/etc/nginx/sites-available/stockweb`).
+2. Создаёт файл паролей `/etc/nginx/.htpasswd` (по введённым логину/паролю).
+3. Активирует сайт, проверяет конфигурацию nginx и перезагружает его.
+4. Запускает `certbot --nginx` для получения сертификата Let's Encrypt и настройки редиректа HTTP → HTTPS.
+
+На шаге 8 установщик запросит:
+
+| Параметр | По умолчанию |
+|----------|-------------|
+| Домен | `admin.sonifer.net.ru` |
+| Basic Auth логин | `admin` |
+| Basic Auth пароль | *(обязательно ввести)* |
+
+### Неинтерактивная установка (например, CI/CD)
+
+Если `stdin` не является TTY, шаг 8 пропускается. Для последующей настройки HTTPS запустите:
+
+```bash
+sudo bash /opt/stock_bot/scripts/setup-https.sh
+```
+
+Или передайте параметры через переменные окружения (без интерактивных запросов):
+
+```bash
+DOMAIN=example.com AUTH_USER=admin AUTH_PASS=secret \
+  sudo -E bash /opt/stock_bot/scripts/setup-https.sh
+```
+
+### Продление сертификатов
+
+Certbot настраивает автоматическое продление через systemd timer или cron.  
+Для ручного продления:
+
+```bash
+sudo certbot renew
+```
+
+Проверить, что автопродление работает:
+
+```bash
+sudo certbot renew --dry-run
+```
+
+### Добавление пользователей Basic Auth
+
+```bash
+# Добавить нового пользователя (без флага -c, чтобы не перезаписать файл)
+sudo htpasswd /etc/nginx/.htpasswd newuser
 ```
 
 ---
