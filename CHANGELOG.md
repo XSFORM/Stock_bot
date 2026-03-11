@@ -27,6 +27,13 @@ git show --stat <commit-sha>
 
 ---
 
+## 2026-03-11
+
+- Add automatic HTTPS + Basic Auth setup to `install.sh`: installs nginx, certbot, apache2-utils; prompts for domain (default `admin.sonifer.net.ru`), Basic Auth username/password; creates `/etc/nginx/sites-available/stockweb` with reverse proxy to `127.0.0.1:8000`; creates `/etc/nginx/.htpasswd`; enables site, tests nginx config, reloads nginx; runs `certbot --nginx` for HTTPS + redirect; non-interactive installs skip step 8 and print instructions to run `scripts/setup-https.sh`
+- Add `scripts/setup-https.sh`: standalone script to configure nginx + Basic Auth + HTTPS after a non-interactive install; accepts `DOMAIN`, `AUTH_USER`, `AUTH_PASS` env vars for fully automated usage
+- Update `docs/nginx-basic-auth.conf`: add note that `install.sh` now automates the setup
+- Update `README.md`: document new auto HTTPS/Basic Auth install flow, non-interactive usage, cert renewal, and adding Basic Auth users
+
 ## 2026-03-10
 
 - Implement one-device binding for Pocket Price tokens: device UUID generated in `localStorage` (`pocket_price_device_id`) is sent as `X-Price-Device` header; first use binds the token to that device; subsequent requests from other devices receive 401/`not_paired`; revoking a token clears its device binding so it can be re-paired on next use; admin page now shows bound device (first 8 chars of UUID)
