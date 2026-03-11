@@ -76,6 +76,7 @@ from app.db.sqlite import (
     receive_invoice_get_items,
     add_product_simple,
     update_product_wh_price,
+    update_product_full,
     # NEW: suppliers list for UI suggestions
     list_receive_suppliers,
     # NEW: warehouse management
@@ -389,6 +390,22 @@ def stock_update_wh_price(
 ):
     ok, err = update_product_wh_price(product_id, wh_price)
     msg = "wh_price_updated" if ok else f"error:{err}"
+    return RedirectResponse(url=f"/stock?warehouse={warehouse}&q={q}&msg={msg}&show_archived={show_archived}", status_code=303)
+
+
+@app.post("/stock/product/edit")
+def stock_edit_product(
+    product_id: int = Form(...),
+    barcode: str = Form(""),
+    wh_price: float = Form(...),
+    model: str = Form(""),
+    name: str = Form(""),
+    warehouse: str = Form(""),
+    q: str = Form(""),
+    show_archived: int = Form(0),
+):
+    ok, err = update_product_full(product_id, barcode, wh_price, model, name)
+    msg = "product_updated" if ok else f"error:{err}"
     return RedirectResponse(url=f"/stock?warehouse={warehouse}&q={q}&msg={msg}&show_archived={show_archived}", status_code=303)
 
 
