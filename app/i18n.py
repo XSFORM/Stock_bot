@@ -773,7 +773,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "stock_col_income": "Giriş",
         "stock_col_wh10": "+10%",
         "stock_col_wh25": "+25%",
-        "stock_change_wh_price": "Lomaý bahany üýtget",
+        "stock_change_wh_price": "Üýtget",
+        "stock_edit_product": "Harydyň maglumatlaryny üýtget",
+        "stock_lbl_barcode": "Ştrikhod",
+        "stock_lbl_purchase_price": "Giriş bahasy",
+        "stock_updated": "Haryt täzelendi.",
         "stock_new_wh_price": "Täze lomaý baha",
         "stock_search_placeholder": "model / brend / ady",
         # Receive page
