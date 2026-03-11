@@ -202,6 +202,25 @@ def add_or_get_product_id(
         return row["id"], True
 
 
+def update_product_full(
+    product_id: int,
+    barcode: str,
+    wh_price: float,
+    model: str,
+    name: str,
+) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE products SET barcode = ?, wh_price = ?, model = ?, name = ? WHERE id = ?",
+                (barcode.strip(), wh_price, model.strip(), name.strip(), product_id),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
 def update_product_wh_price(product_id: int, wh_price: float) -> tuple[bool, str]:
     try:
         with _connect() as conn:
