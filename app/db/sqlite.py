@@ -113,12 +113,12 @@ def _product_with_prices(row: Any) -> dict[str, Any]:
 
 
 def _apply_price_mode(product: dict[str, Any], mode: str) -> dict[str, Any]:
-    """Add computed price fields; keep or strip wholesale fields by mode."""
+    """Add computed price fields; always strip wholesale purchase price."""
     wh = float(product.get("wh_price", 0) or 0)
     product["price_wh10"] = round(wh * 1.10, 4)
     product["price_wh25"] = round(wh * 1.25, 4)
+    product.pop("wh_price", None)
     if (mode or "SIMPLE").upper() != "FULL":
-        product.pop("wh_price", None)
         product.pop("price_wh10", None)
     return product
 
