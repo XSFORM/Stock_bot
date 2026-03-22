@@ -104,6 +104,9 @@
               <li>
                 <a class="dropdown-item" href="/products/{{ r.product_id }}/history">{{ t.nav_history }}</a>
               </li>
+              <li>
+                <a class="dropdown-item" href="/products?highlight={{ r.product_id }}#product-{{ r.product_id }}">{{ t.stock_open_in_products }}</a>
+              </li>
             </ul>
           </div>
         </td>
