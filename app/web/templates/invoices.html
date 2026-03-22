@@ -107,7 +107,7 @@
       <tr>
         <td>{{ inv.number }}</td>
         <td>{{ inv.created_at }}</td>
-        <td>{{ inv.client or '—' }}</td>
+        <td>{{ inv.client_name or '—' }}</td>
         <td>{{ inv.warehouse_code or '—' }}</td>
         <td class="text-end">{{ "%.2f"|format(inv.total) }} {{ inv.currency }}</td>
         <td>

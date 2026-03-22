@@ -27,6 +27,11 @@ git show --stat <commit-sha>
 
 ---
 
+## 2026-03-22
+
+- Auto-migrate `receive_invoices.total` on startup: detect missing column via `PRAGMA table_info`, `ALTER TABLE receive_invoices ADD COLUMN total REAL DEFAULT 0`, backfill totals from `SUM(receive_items.total)` for all existing invoices; `receive_invoice_finish()` now also updates `total` when marking an invoice DONE — resolves 500 (`UndefinedError: 'dict object' has no attribute 'total'`) on `/invoices?tab=receive` for older databases.
+- Fix missing client name in return invoices UI: `return_xlsx_view.html` now renders `invoice.client_name` (fallback `'—'`) instead of the absent `invoice.client`; `invoices.html` Return tab likewise uses `inv.client_name` (fallback `'—'`).
+
 ## 2026-03-11
 
 - Fix Return item add: product selection from suggestions now works correctly — `/api/products-search` returns `id` (not `product_id`), so `selectProduct()` in `return.html` now resolves the product id as `const pid = item.product_id ?? item.id;`; same fallback applied to `receive.html` and all invoice edit templates (`invoice_sale_edit.html`, `invoice_receive_edit.html`, `invoice_return_edit.html`) for consistency.
