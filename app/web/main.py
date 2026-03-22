@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 import shutil
@@ -147,6 +148,8 @@ from app.db.sqlite import (
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Stock Bot Web")
 
@@ -804,8 +807,17 @@ def sale_finish(cart_id: int = Form(...)):
     if not ok:
         return RedirectResponse(url=f"/sale?msg=finish:{err}", status_code=303)
 
-    pdf_path = generate_invoice_pdf(invoice, items)
-    backup_path = make_backup()
+    try:
+        pdf_path = generate_invoice_pdf(invoice, items)
+    except Exception:
+        logger.exception("Failed to generate invoice PDF for invoice #%s", invoice.get("number"))
+        pdf_path = ""
+
+    try:
+        backup_path = make_backup()
+    except Exception:
+        logger.exception("Failed to create backup after finishing invoice #%s", invoice.get("number"))
+        backup_path = ""
 
     return RedirectResponse(
         url=f"/sale/done?pdf={pdf_path}&backup={backup_path}&n={invoice['number']}",
