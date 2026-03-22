@@ -29,6 +29,10 @@ git show --stat <commit-sha>
 
 ## 2026-03-22
 
+- Products page UX overhaul: add per-row **Edit** action (⋯ dropdown) that opens an edit modal to update barcode, purchase price, model and name — without leaving `/products`; new `POST /products/{id}/edit` route reuses `update_product_full()` (same as Stock page edit).
+- Pricing label fix in Products add form: renamed "Оптовая цена (WH)" / "Wholesale cost (WH)" → "Цена закупки (входящая)" / "Purchase price (incoming)" across EN/RU/TK locales so the field name matches the Receive section terminology; stored field (`wh_price`) and derived prices (+10%, +25%) are unchanged.
+- Add optional **Barcode** (штрих-код) field to the Products add form; `POST /products/add` now passes barcode to `add_product_simple()` so it is persisted in the DB; barcode is also shown in the products table and editable via the new edit modal.
+- Stock page UX: add **"Open in Products"** option in the stock row ⋯ menu; links to `/products?highlight={product_id}#product-{id}` which scrolls to and highlights the matching product row on the Products page.
 - Auto-migrate `receive_invoices.total` on startup: detect missing column via `PRAGMA table_info`, `ALTER TABLE receive_invoices ADD COLUMN total REAL DEFAULT 0`, backfill totals from `SUM(receive_items.total)` for all existing invoices; `receive_invoice_finish()` now also updates `total` when marking an invoice DONE — resolves 500 (`UndefinedError: 'dict object' has no attribute 'total'`) on `/invoices?tab=receive` for older databases.
 - Fix missing client name in return invoices UI: `return_xlsx_view.html` now renders `invoice.client_name` (fallback `'—'`) instead of the absent `invoice.client`; `invoices.html` Return tab likewise uses `inv.client_name` (fallback `'—'`).
 

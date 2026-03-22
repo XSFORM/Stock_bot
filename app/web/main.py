@@ -322,10 +322,10 @@ def index(request: Request):
 # ---------------- products ----------------
 
 @app.get("/products", response_class=HTMLResponse)
-def products(request: Request, show_archived: int = 0):
+def products(request: Request, show_archived: int = 0, highlight: int = 0):
     rows = list_products(include_archived=bool(show_archived))
     brands = list_brands()
-    return _render(request, "products.html", {"products": rows, "brands": brands, "show_archived": show_archived})
+    return _render(request, "products.html", {"products": rows, "brands": brands, "show_archived": show_archived, "highlight": highlight})
 
 
 @app.post("/products/add")
@@ -334,21 +334,37 @@ def products_add(
     model: str = Form(...),
     name: str = Form(...),
     wh_price: float = Form(...),
+    barcode: str = Form(""),
     source: str = Form("CHINA"),
     warehouse: str = Form("TM_DEPO"),
     qty: float = Form(...),
 ):
     try:
-        product_id, created = add_or_get_product_id(brand, model, name, float(wh_price))
-        ok, err = receive_stock_by_product_id(warehouse, product_id, float(qty), source=source)
+        ok, err, product_id = add_product_simple(brand, model, name, barcode, note="", wh_price=float(wh_price))
         if not ok:
-            return RedirectResponse(url=f"/products?msg=received:{err}", status_code=303)
+            return RedirectResponse(url=f"/products?msg=product_error:{err}", status_code=303)
+        ok2, err2 = receive_stock_by_product_id(warehouse, product_id, float(qty), source=source)
+        if not ok2:
+            return RedirectResponse(url=f"/products?msg=received:{err2}", status_code=303)
 
-        msg = "created+received" if created else "received (existing product)"
-        return RedirectResponse(url=f"/products?msg={msg}", status_code=303)
+        return RedirectResponse(url=f"/products?msg=created+received", status_code=303)
     except Exception as e:
         # вместо черного экрана
         return RedirectResponse(url=f"/products?msg=error:{e}", status_code=303)
+
+
+@app.post("/products/{product_id}/edit")
+def products_edit(
+    product_id: int,
+    barcode: str = Form(""),
+    wh_price: float = Form(...),
+    model: str = Form(""),
+    name: str = Form(""),
+    show_archived: int = Form(0),
+):
+    ok, err = update_product_full(product_id, barcode, wh_price, model, name)
+    msg = "product_updated" if ok else f"error:{err}"
+    return RedirectResponse(url=f"/products?msg={msg}&show_archived={show_archived}", status_code=303)
 
 
 @app.post("/products/{product_id}/archive")
