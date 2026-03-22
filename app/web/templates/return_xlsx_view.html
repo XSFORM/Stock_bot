@@ -10,7 +10,7 @@
   <div class="d-flex justify-content-between align-items-start mb-3">
     <div>
       <div class="xlsx-title">RETURN #{{ "%06d"|format(invoice.number) }}</div>
-      <div class="text-muted small">{{ t.xlsx_lbl_client }} {{ invoice.client }}</div>
+      <div class="text-muted small">{{ t.xlsx_lbl_client }} {{ invoice.client_name or '—' }}</div>
       <div class="text-muted small">{{ t.xlsx_lbl_date }} {{ invoice.created_at[:16] | replace("T", " ") if invoice.created_at else "" }}</div>
       <div class="text-muted small">{{ t.xlsx_lbl_warehouse }} {{ invoice.warehouse_code }}</div>
     </div>

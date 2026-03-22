@@ -81,6 +81,23 @@ def _ensure_price_tokens_device_id_column(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE price_tokens ADD COLUMN device_id TEXT")
 
 
+def _ensure_receive_invoices_total(conn: sqlite3.Connection) -> None:
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(receive_invoices)")}
+    if "total" not in cols:
+        conn.execute(
+            "ALTER TABLE receive_invoices ADD COLUMN total REAL NOT NULL DEFAULT 0"
+        )
+        conn.execute(
+            """
+            UPDATE receive_invoices
+            SET total = COALESCE(
+                (SELECT SUM(ri.total) FROM receive_items ri WHERE ri.invoice_id = receive_invoices.id),
+                0
+            )
+            """
+        )
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript(_SCHEMA_SQL.read_text())
@@ -91,6 +108,7 @@ def init_db() -> None:
         _ensure_price_tokens_mode_column(conn)
         _ensure_price_tokens_plain_token_column(conn)
         _ensure_price_tokens_device_id_column(conn)
+        _ensure_receive_invoices_total(conn)
         conn.commit()
 
 
@@ -1668,7 +1686,16 @@ def receive_invoice_finish(invoice_id: int) -> tuple[bool, str]:
                     (inv["supplier"] or "RECEIVE", warehouse, item["product_id"], item["qty"]),
                 )
             conn.execute(
-                "UPDATE receive_invoices SET status = 'DONE' WHERE id = ?", (invoice_id,)
+                """
+                UPDATE receive_invoices
+                SET status = 'DONE',
+                    total = COALESCE(
+                        (SELECT SUM(ri.total) FROM receive_items ri WHERE ri.invoice_id = ?),
+                        0
+                    )
+                WHERE id = ?
+                """,
+                (invoice_id, invoice_id),
             )
             conn.commit()
         return True, ""
