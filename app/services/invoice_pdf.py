@@ -24,10 +24,13 @@ def generate_invoice_pdf(invoice: dict[str, Any], items: list[dict[str, Any]]) -
     c.drawString(50, y, f"INVOICE #{number:06d}")
     y -= 25
 
+    dt = invoice.get("created_at") or invoice.get("date") or ""
+    client = invoice.get("client") or ""
+
     c.setFont("Helvetica", 11)
-    c.drawString(50, y, f"Client: {invoice['client']}")
+    c.drawString(50, y, f"Client: {client}")
     y -= 16
-    c.drawString(50, y, f"Date: {invoice['date']}")
+    c.drawString(50, y, f"Date: {dt}")
     y -= 25
 
     c.setFont("Helvetica-Bold", 11)
@@ -46,7 +49,9 @@ def generate_invoice_pdf(invoice: dict[str, Any], items: list[dict[str, Any]]) -
 
     y -= 10
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(50, y, f"TOTAL: {float(invoice['total']):.2f} {invoice['currency']}")
+    total = invoice.get("total") or 0
+    currency = invoice.get("currency") or ""
+    c.drawString(50, y, f"TOTAL: {float(total):.2f} {currency}")
 
     c.save()
     return str(filename)
