@@ -334,8 +334,9 @@
     }
 
     function selectProduct(item) {
+      const pid = item.product_id ?? item.id;
       searchInput.value = item.brand + ' ' + item.model + ' — ' + item.name;
-      productIdIn.value = item.product_id;
+      productIdIn.value = pid;
 
       // prefill last purchase price if available
       if (item.last_purchase_price != null && item.last_purchase_price !== '' && !isNaN(parseFloat(item.last_purchase_price))) {

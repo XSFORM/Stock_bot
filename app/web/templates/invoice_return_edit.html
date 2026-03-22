@@ -158,7 +158,8 @@ function attachRowListeners(row) {
             a.addEventListener('click', function(e) {
               e.preventDefault();
               searchInput.value = `${p.brand} ${p.model} — ${p.name}`;
-              pidField.value = p.product_id;
+              const pid = p.product_id ?? p.id;
+              pidField.value = pid;
               resultsDiv.style.display = 'none';
             });
             resultsDiv.appendChild(a);

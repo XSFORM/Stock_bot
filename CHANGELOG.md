@@ -29,6 +29,8 @@ git show --stat <commit-sha>
 
 ## 2026-03-11
 
+- Fix Return item add: product selection from suggestions now works correctly — `/api/products-search` returns `id` (not `product_id`), so `selectProduct()` in `return.html` now resolves the product id as `const pid = item.product_id ?? item.id;`; same fallback applied to `receive.html` and all invoice edit templates (`invoice_sale_edit.html`, `invoice_receive_edit.html`, `invoice_return_edit.html`) for consistency.
+
 - Fix Return page add-item: prevent `product_id` being submitted as `"undefined"` (422 validation error); reset hidden product-id field on search input change, block submission when no product is selected (browser validation message), guard `/return/item/add` backend to redirect instead of raising a 422, make `clientId` assignment safe via `tojson`.
 - Fix Stock page edit action click: change `onclick` attribute to single quotes in `stock.html` so embedded JSON strings from `tojson` (which use double quotes) do not break the HTML attribute and cause "Unexpected end of input" JS errors; clicking **"Изменить"** now correctly opens the edit modal.
 - Fix Stock page edit action: implement `openEditForm(productId, whPrice, barcode, model, name)` JS function in `stock.html` so that clicking **"Изменить"** in the action menu opens the Bootstrap modal (`editProductModal`) and pre-fills all fields (barcode, purchase price, model, name) from the row data; null/undefined values are set to empty strings. Turkmen (TK) i18n keys added: `stock_change_wh_price` → "Üýtget", `stock_edit_product`, `stock_lbl_barcode`, `stock_lbl_purchase_price`, `stock_updated`.
