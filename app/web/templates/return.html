@@ -205,13 +205,15 @@
     const productIdInput = document.getElementById('add-product-id');
     const unitPriceInput = document.getElementById('add-unit-price');
     const form         = document.getElementById('add-item-form');
-    const clientId     = {{ open_inv.client_id }};
+    const clientId     = {{ (open_inv.client_id if open_inv else None) | tojson }};
 
     let debounceTimer;
     let selectedProductId = null;
 
     searchInput.addEventListener('input', function () {
       clearTimeout(debounceTimer);
+      selectedProductId = null;
+      if (productIdInput) productIdInput.value = '';
       const q = this.value.trim();
       if (q.length < 1) { hideSuggestions(); return; }
       debounceTimer = setTimeout(() => fetchSuggestions(q), 220);
@@ -251,7 +253,7 @@
       productIdInput.value = item.product_id;
       hideSuggestions();
       // Fetch last sale price for this product and client
-      fetch('/api/last-sale-price?product_id=' + item.product_id + '&client_id=' + clientId)
+      fetch('/api/last-sale-price?product_id=' + item.product_id + (clientId !== null ? '&client_id=' + clientId : ''))
         .then(r => r.json())
         .then(data => {
           if (data.last_sale_price !== null && data.last_sale_price !== undefined) {
@@ -268,7 +270,8 @@
     }
 
     form.addEventListener('submit', function (e) {
-      if (!productIdInput.value) {
+      const pid = productIdInput ? productIdInput.value : '';
+      if (!pid || pid === 'undefined' || !/^\d+$/.test(pid)) {
         e.preventDefault();
         searchInput.setCustomValidity('Please select a product from the list.');
         searchInput.reportValidity();

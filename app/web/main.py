@@ -1144,10 +1144,12 @@ def return_cancel(invoice_id: int = Form(...)):
 @app.post("/return/item/add")
 def return_item_add_post(
     invoice_id: int = Form(...),
-    product_id: int = Form(...),
+    product_id: Optional[int] = Form(None),
     qty: float = Form(...),
     unit_price: float = Form(...),
 ):
+    if not product_id or product_id <= 0:
+        return RedirectResponse(url="/return?msg=select_product", status_code=303)
     ok, err = return_item_add(int(invoice_id), int(product_id), float(qty), float(unit_price))
     msg = "item_added" if ok else f"add_error:{err}"
     return RedirectResponse(url=f"/return?msg={msg}", status_code=303)
