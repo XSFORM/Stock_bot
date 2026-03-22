@@ -248,12 +248,13 @@
     }
 
     function selectProduct(item) {
-      selectedProductId = item.product_id;
+      const pid = item.product_id ?? item.id;
+      selectedProductId = pid;
       searchInput.value = item.brand + ' ' + item.model + ' - ' + item.name;
-      productIdInput.value = item.product_id;
+      productIdInput.value = pid;
       hideSuggestions();
       // Fetch last sale price for this product and client
-      fetch('/api/last-sale-price?product_id=' + item.product_id + (clientId !== null ? '&client_id=' + clientId : ''))
+      fetch('/api/last-sale-price?product_id=' + pid + (clientId !== null ? '&client_id=' + clientId : ''))
         .then(r => r.json())
         .then(data => {
           if (data.last_sale_price !== null && data.last_sale_price !== undefined) {

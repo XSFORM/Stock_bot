@@ -160,10 +160,11 @@ function attachRowListeners(row) {
             a.addEventListener('click', function(e) {
               e.preventDefault();
               searchInput.value = `${p.brand} ${p.model} — ${p.name}`;
-              pidField.value = p.product_id;
+              const pid = p.product_id ?? p.id;
+              pidField.value = pid;
               resultsDiv.style.display = 'none';
               // Suggest last sale price
-              fetch(`/api/last-sale-price?product_id=${p.product_id}`)
+              fetch(`/api/last-sale-price?product_id=${pid}`)
                 .then(r => r.json())
                 .then(d => {
                   if (d.last_sale_price != null) {
