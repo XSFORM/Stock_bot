@@ -34,6 +34,11 @@ def _ensure_products_extra_cols(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE products ADD COLUMN note TEXT NOT NULL DEFAULT ''")
     if "archived" not in cols:
         conn.execute("ALTER TABLE products ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+    # Unique index on non-empty barcodes (partial index supported in SQLite >= 3.8.9)
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_products_barcode_unique"
+        " ON products(barcode) WHERE barcode != ''"
+    )
 
 
 def _ensure_clients_archived(conn: sqlite3.Connection) -> None:
@@ -313,6 +318,69 @@ def get_product_by_barcode(
         if not row:
             return None
         return _product_with_prices(dict(row))
+
+
+def get_product_by_barcode_for_scan(barcode: str) -> Optional[dict[str, Any]]:
+    """Return a product dict suitable for the mobile scan API (id, brand, model, name, purchase_price, barcode)."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, brand, model, name, wh_price, barcode"
+            " FROM products WHERE barcode = ? AND archived = 0 LIMIT 1",
+            (barcode.strip(),),
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["purchase_price"] = float(d.pop("wh_price", 0) or 0)
+        return d
+
+
+def create_product_with_barcode(
+    brand: str,
+    model: str,
+    name: str,
+    purchase_price: float,
+    barcode: str,
+) -> tuple[bool, str, int]:
+    """Create a catalog-only product (no stock movement). Returns (ok, error_msg, product_id)."""
+    barcode = barcode.strip()
+    if not barcode:
+        return False, "barcode_empty", 0
+    # Check uniqueness first to give a clear error before hitting the DB constraint
+    existing = get_product_by_barcode_for_scan(barcode)
+    if existing:
+        return False, "barcode_exists", existing["id"]
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "INSERT INTO products (brand, model, name, barcode, note, wh_price)"
+                " VALUES (?, ?, ?, ?, '', ?)",
+                (brand.strip(), model.strip(), name.strip(), barcode, purchase_price),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT id FROM products WHERE barcode = ?",
+                (barcode,),
+            ).fetchone()
+            if not row:
+                return False, "product_not_found_after_insert", 0
+            return True, "", row["id"]
+    except Exception as exc:
+        return False, str(exc), 0
+
+
+def update_product_purchase_price(product_id: int, purchase_price: float) -> tuple[bool, str]:
+    """Update purchase (wh) price for a product by id."""
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE products SET wh_price = ? WHERE id = ?",
+                (purchase_price, product_id),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
 
 
 # ── Stock ─────────────────────────────────────────────────────────────────────

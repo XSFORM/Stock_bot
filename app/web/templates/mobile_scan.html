@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="{{ ui_lang | default('en') }}" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>{{ t.mscan_title }}</title>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background-color: #0a0f28;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+    .card-dark {
+      background: rgba(15,30,70,0.9);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .form-control, .form-select {
+      background: rgba(15,52,96,0.85);
+      border-color: #444;
+      color: #e0e0e0;
+    }
+    .form-control:focus, .form-select:focus {
+      background: rgba(15,52,96,0.95);
+      color: #e0e0e0;
+      border-color: #4a9eff;
+      box-shadow: none;
+    }
+    .form-control::placeholder { color: #888; }
+    .form-label { color: #ccc; font-size: 0.9rem; }
+    #scanner-wrapper { position: relative; width: 100%; max-width: 480px; margin: 0 auto; }
+    #scanner-video { width: 100%; border-radius: 8px; }
+    #scanner-overlay {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      border-radius: 8px;
+      pointer-events: none;
+    }
+    #scanner-line {
+      position: absolute; left: 15%; right: 15%; top: 50%;
+      height: 2px; background: #ff4444;
+      animation: scan-anim 2s linear infinite;
+    }
+    @keyframes scan-anim { 0%,100%{top:20%} 50%{top:80%} }
+    #scan-status { font-size: 0.85rem; color: #ffc107; min-height: 1.4em; }
+    .field-readonly { background: rgba(15,52,96,0.5) !important; color: #aaa !important; }
+    .product-info-row { font-size: 0.9rem; margin-bottom: 4px; }
+    .product-info-label { color: #888; }
+    .success-box { background: rgba(0,120,0,0.3); border: 1px solid #00cc44; border-radius: 8px; padding: 14px; text-align: center; }
+    .success-box .success-icon { font-size: 2rem; }
+    .success-box .success-msg { font-size: 1.1rem; font-weight: 600; color: #4aff91; }
+  </style>
+</head>
+<body>
+<div class="container-fluid py-3" style="max-width:600px">
+
+  <!-- Header -->
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h5 class="mb-0 fw-bold">{{ t.mscan_title }}</h5>
+    <a href="/products" class="btn btn-sm btn-outline-secondary">← {{ t.nav_products }}</a>
+  </div>
+
+  <!-- Scan button -->
+  <div id="scan-section" class="card-dark">
+    <button id="btn-scan" class="btn btn-primary w-100 mb-2" onclick="startScan()">
+      {{ t.mscan_btn_scan }}
+    </button>
+    <div id="scan-status"></div>
+    <div id="scanner-area" style="display:none" class="mt-2">
+      <div id="scanner-wrapper">
+        <video id="scanner-video" autoplay muted playsinline></video>
+        <div id="scanner-overlay"><div id="scanner-line"></div></div>
+      </div>
+      <button class="btn btn-sm btn-outline-danger mt-2" onclick="stopScan()">
+        {{ t.mscan_btn_stop }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Dynamic area: found / not found / success -->
+  <div id="result-area"></div>
+
+</div>
+
+<script>
+// ── i18n strings from server ─────────────────────────────────────────────────
+var T = {
+  scanning:        {{ t.mscan_scanning | tojson }},
+  scanError:       {{ t.mscan_scan_error | tojson }},
+  notSupported:    {{ t.mscan_not_supported | tojson }},
+  lookingUp:       {{ t.mscan_looking_up | tojson }},
+  foundTitle:      {{ t.mscan_found_title | tojson }},
+  lblNewPrice:     {{ t.mscan_lbl_new_price | tojson }},
+  btnSavePrice:    {{ t.mscan_btn_save_price | tojson }},
+  notFoundTitle:   {{ t.mscan_not_found_title | tojson }},
+  lblBrand:        {{ t.mscan_lbl_brand | tojson }},
+  lblPrefix:       {{ t.mscan_lbl_prefix | tojson }},
+  prefixNone:      {{ t.mscan_prefix_none | tojson }},
+  lblModelSuffix:  {{ t.mscan_lbl_model_suffix | tojson }},
+  lblName:         {{ t.mscan_lbl_name | tojson }},
+  lblPrice:        {{ t.mscan_lbl_price | tojson }},
+  lblBarcode:      {{ t.mscan_lbl_barcode | tojson }},
+  btnCreate:       {{ t.mscan_btn_create | tojson }},
+  successCreated:  {{ t.mscan_success_created | tojson }},
+  successUpdated:  {{ t.mscan_success_updated | tojson }},
+  btnScanNext:     {{ t.mscan_btn_scan_next | tojson }},
+  errBarcodeEmpty: {{ t.mscan_error_barcode_empty | tojson }},
+  errBrandReq:     {{ t.mscan_error_brand_required | tojson }},
+  errModelReq:     {{ t.mscan_error_model_required | tojson }},
+  errNameReq:      {{ t.mscan_error_name_required | tojson }},
+  errGeneric:      {{ t.mscan_error_generic | tojson }},
+  httpsRequired:   {{ t.mscan_https_required | tojson }},
+};
+
+// ── Brand/prefix map from server ─────────────────────────────────────────────
+var BRANDS = {{ brands | tojson }};
+var PREFIX_MAP = {{ prefix_map | tojson }};
+
+var _stream = null;
+var _scanInterval = null;
+var _currentBarcode = null;
+
+// ── Scan helpers ─────────────────────────────────────────────────────────────
+function setScanStatus(msg) {
+  document.getElementById('scan-status').textContent = msg;
+}
+
+function startScan() {
+  if (!window.isSecureContext) {
+    setScanStatus(T.httpsRequired);
+    return;
+  }
+  setScanStatus(T.scanning);
+  document.getElementById('scanner-area').style.display = '';
+  document.getElementById('btn-scan').style.display = 'none';
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(function(stream) {
+      _stream = stream;
+      var video = document.getElementById('scanner-video');
+      video.srcObject = stream;
+      startBarcodeDetection(video);
+    })
+    .catch(function(e) {
+      setScanStatus(T.scanError + e.message);
+      document.getElementById('scanner-area').style.display = 'none';
+      document.getElementById('btn-scan').style.display = '';
+    });
+}
+
+function stopScan() {
+  if (_scanInterval) { clearInterval(_scanInterval); _scanInterval = null; }
+  if (_stream) { _stream.getTracks().forEach(function(t){ t.stop(); }); _stream = null; }
+  document.getElementById('scanner-area').style.display = 'none';
+  document.getElementById('btn-scan').style.display = '';
+  setScanStatus('');
+}
+
+function startBarcodeDetection(video) {
+  if (!('BarcodeDetector' in window)) {
+    setScanStatus(T.notSupported);
+    stopScan();
+    return;
+  }
+  var detector = new BarcodeDetector({
+    formats: ['ean_13','ean_8','code_128','code_39','qr_code','upc_a','upc_e']
+  });
+  _scanInterval = setInterval(async function() {
+    if (video.readyState < 2) return;
+    try {
+      var codes = await detector.detect(video);
+      if (codes.length > 0) {
+        var code = codes[0].rawValue;
+        stopScan();
+        await handleBarcode(code);
+      }
+    } catch(e) {}
+  }, 300);
+}
+
+// ── Barcode lookup ───────────────────────────────────────────────────────────
+async function handleBarcode(barcode) {
+  _currentBarcode = barcode;
+  setScanStatus(T.lookingUp);
+  document.getElementById('result-area').innerHTML = '';
+  try {
+    var res = await fetch('/api/products/by-barcode?barcode=' + encodeURIComponent(barcode));
+    var data = await res.json();
+    setScanStatus('');
+    if (data.found) {
+      renderFoundProduct(data.product);
+    } else {
+      renderNewProductForm(barcode);
+    }
+  } catch(e) {
+    setScanStatus(T.errGeneric + e.message);
+  }
+}
+
+// ── Found product view ───────────────────────────────────────────────────────
+function renderFoundProduct(product) {
+  var area = document.getElementById('result-area');
+  area.innerHTML =
+    '<div class="card-dark">' +
+      '<h6 class="mb-3 fw-bold">' + escHtml(T.foundTitle) + '</h6>' +
+      '<div class="product-info-row"><span class="product-info-label">ID: </span>' + escHtml(product.id) + '</div>' +
+      '<div class="product-info-row"><span class="product-info-label">' + escHtml(T.lblBrand) + ': </span>' + escHtml(product.brand) + '</div>' +
+      '<div class="product-info-row"><span class="product-info-label">Model: </span>' + escHtml(product.model) + '</div>' +
+      '<div class="product-info-row"><span class="product-info-label">' + escHtml(T.lblName) + ': </span>' + escHtml(product.name) + '</div>' +
+      '<div class="product-info-row mb-3"><span class="product-info-label">' + escHtml(T.lblPrice) + ': </span>' +
+        '<strong>' + fmt(product.purchase_price) + ' $</strong></div>' +
+      '<div class="mb-2">' +
+        '<label class="form-label">' + escHtml(T.lblNewPrice) + '</label>' +
+        '<input id="update-price-input" type="number" step="0.01" min="0" class="form-control" placeholder="' + fmt(product.purchase_price) + '">' +
+      '</div>' +
+      '<button class="btn btn-success w-100" onclick="savePrice(' + product.id + ')">' + escHtml(T.btnSavePrice) + '</button>' +
+      '<div id="found-error" class="text-danger mt-2" style="display:none"></div>' +
+    '</div>';
+}
+
+async function savePrice(productId) {
+  var val = document.getElementById('update-price-input').value.trim();
+  var errEl = document.getElementById('found-error');
+  errEl.style.display = 'none';
+
+  var body = { barcode: _currentBarcode };
+  if (val !== '') {
+    var parsed = parseFloat(val);
+    if (isNaN(parsed) || parsed < 0) {
+      errEl.textContent = T.errGeneric + 'invalid price';
+      errEl.style.display = '';
+      return;
+    }
+    body.purchase_price = parsed;
+  }
+
+  try {
+    var res = await fetch('/api/products/upsert-by-barcode', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    var data = await res.json();
+    if (data.ok) {
+      renderSuccess(T.successUpdated);
+    } else {
+      errEl.textContent = T.errGeneric + (data.error || '');
+      errEl.style.display = '';
+    }
+  } catch(e) {
+    errEl.textContent = T.errGeneric + e.message;
+    errEl.style.display = '';
+  }
+}
+
+// ── New product form ─────────────────────────────────────────────────────────
+function renderNewProductForm(barcode) {
+  var brandOptions = BRANDS.map(function(b) {
+    return '<option value="' + escHtml(b) + '">' + escHtml(b) + '</option>';
+  }).join('');
+
+  var area = document.getElementById('result-area');
+  area.innerHTML =
+    '<div class="card-dark">' +
+      '<h6 class="mb-3 fw-bold">' + escHtml(T.notFoundTitle) + '</h6>' +
+      '<div class="mb-2">' +
+        '<label class="form-label">' + escHtml(T.lblBrand) + '</label>' +
+        '<select id="new-brand" class="form-select" onchange="onBrandChange()">' +
+          '<option value="">—</option>' + brandOptions +
+        '</select>' +
+      '</div>' +
+      '<div class="mb-2">' +
+        '<label class="form-label">' + escHtml(T.lblPrefix) + '</label>' +
+        '<select id="new-prefix" class="form-select">' +
+          '<option value="">' + escHtml(T.prefixNone) + '</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="mb-2">' +
+        '<label class="form-label">' + escHtml(T.lblModelSuffix) + '</label>' +
+        '<input id="new-model-suffix" class="form-control" placeholder="1086A">' +
+      '</div>' +
+      '<div class="mb-2">' +
+        '<label class="form-label">' + escHtml(T.lblName) + '</label>' +
+        '<input id="new-name" class="form-control">' +
+      '</div>' +
+      '<div class="mb-2">' +
+        '<label class="form-label">' + escHtml(T.lblPrice) + '</label>' +
+        '<input id="new-price" type="number" step="0.01" min="0" class="form-control" value="0.00">' +
+      '</div>' +
+      '<div class="mb-3">' +
+        '<label class="form-label">' + escHtml(T.lblBarcode) + '</label>' +
+        '<input class="form-control field-readonly" value="' + escHtml(barcode) + '" readonly>' +
+      '</div>' +
+      '<button class="btn btn-primary w-100" onclick="createProduct()">' + escHtml(T.btnCreate) + '</button>' +
+      '<div id="create-error" class="text-danger mt-2" style="display:none"></div>' +
+    '</div>';
+
+  // Auto-select first brand if available
+  if (BRANDS.length > 0) {
+    document.getElementById('new-brand').value = BRANDS[0];
+    onBrandChange();
+  }
+}
+
+function onBrandChange() {
+  var brand = document.getElementById('new-brand').value;
+  var prefixSel = document.getElementById('new-prefix');
+  prefixSel.innerHTML = '<option value="">' + escHtml(T.prefixNone) + '</option>';
+  var prefixes = PREFIX_MAP[brand] || [];
+  prefixes.forEach(function(p) {
+    var opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = p + '-';
+    prefixSel.appendChild(opt);
+  });
+  // Auto-select if exactly one prefix
+  if (prefixes.length === 1) {
+    prefixSel.value = prefixes[0];
+  }
+}
+
+async function createProduct() {
+  var brand = document.getElementById('new-brand').value.trim();
+  var prefix = document.getElementById('new-prefix').value.trim();
+  var suffix = document.getElementById('new-model-suffix').value.trim();
+  var name = document.getElementById('new-name').value.trim();
+  var priceVal = document.getElementById('new-price').value.trim();
+  var errEl = document.getElementById('create-error');
+  errEl.style.display = 'none';
+
+  if (!brand) { errEl.textContent = T.errBrandReq; errEl.style.display = ''; return; }
+  if (!suffix) { errEl.textContent = T.errModelReq; errEl.style.display = ''; return; }
+  if (!name) { errEl.textContent = T.errNameReq; errEl.style.display = ''; return; }
+
+  var model = prefix ? (prefix + '-' + suffix) : suffix;
+  var price = parseFloat(priceVal) || 0;
+
+  try {
+    var res = await fetch('/api/products/upsert-by-barcode', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        barcode: _currentBarcode,
+        brand: brand,
+        model: model,
+        name: name,
+        purchase_price: price
+      })
+    });
+    var data = await res.json();
+    if (data.ok) {
+      renderSuccess(T.successCreated);
+    } else {
+      errEl.textContent = T.errGeneric + (data.error || '');
+      errEl.style.display = '';
+    }
+  } catch(e) {
+    errEl.textContent = T.errGeneric + e.message;
+    errEl.style.display = '';
+  }
+}
+
+// ── Success view ─────────────────────────────────────────────────────────────
+function renderSuccess(msg) {
+  var area = document.getElementById('result-area');
+  area.innerHTML =
+    '<div class="success-box mb-3">' +
+      '<div class="success-icon">✅</div>' +
+      '<div class="success-msg">' + escHtml(msg) + '</div>' +
+    '</div>' +
+    '<button class="btn btn-primary w-100" onclick="scanNext()">' + escHtml(T.btnScanNext) + '</button>';
+}
+
+function scanNext() {
+  _currentBarcode = null;
+  document.getElementById('result-area').innerHTML = '';
+  setScanStatus('');
+  startScan();
+}
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+function fmt(v) { return v != null ? Number(v).toFixed(2) : '0.00'; }
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+</script>
+</body>
+</html>
