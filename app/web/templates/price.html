@@ -106,6 +106,8 @@
 var _token = '';
 var _deviceId = '';
 var _mode = 'SIMPLE';
+var _showQty = false;
+var _qtyLabel = {{ (t.price_qty_label if t is defined and t.price_qty_label is defined else 'Qty') | tojson }};
 var _stream = null;
 var _scanInterval = null;
 var _lastResults = [];
@@ -173,11 +175,14 @@ async function fetchTokenInfo() {
     if (res.status === 401) { showUnpaired(); return; }
     var data = await res.json();
     _mode = (data.mode === 'FULL') ? 'FULL' : 'SIMPLE';
+    _showQty = data.show_qty === true;
   } catch(e) {
     // Offline: use cached mode or default SIMPLE
     try { _mode = localStorage.getItem('pocket_price_mode') || 'SIMPLE'; } catch(e2) {}
+    try { _showQty = localStorage.getItem('pocket_price_show_qty') === '1'; } catch(e2) {}
   }
   try { localStorage.setItem('pocket_price_mode', _mode); } catch(e) {}
+  try { localStorage.setItem('pocket_price_show_qty', _showQty ? '1' : '0'); } catch(e) {}
   document.getElementById('not-paired').style.display = 'none';
   document.getElementById('app-shell').style.display = '';
 }
@@ -222,9 +227,10 @@ function renderList(items) {
     var brand = escHtml(p.brand || '');
     var model = escHtml(p.model || '');
     var name = escHtml(p.name || '');
+    var qtySub = (_showQty && p.qty_total != null) ? '<span class="ms-2 text-info">' + _qtyLabel + ': ' + Number(p.qty_total).toFixed(0) + '</span>' : '';
     return '<div class="result-list-item" onclick="selectProduct(' + idx + ')">' +
       '<div class="item-title">' + brand + ' ' + model + '</div>' +
-      '<div class="item-sub">' + name + '</div>' +
+      '<div class="item-sub">' + name + qtySub + '</div>' +
     '</div>';
   }).join('');
 }
@@ -253,6 +259,9 @@ function selectProduct(idx) {
   } else {
     var wh25 = fmt(p.price_wh25);
     html += '<div class="mt-2"><div class="price-small">Price</div><div class="price-big">' + wh25 + ' $</div></div>';
+  }
+  if (_showQty && p.qty_total != null) {
+    html += '<div class="mt-2 small text-info">' + _qtyLabel + ': ' + Number(p.qty_total).toFixed(0) + '</div>';
   }
   html += '</div>';
   detail.innerHTML = html;

@@ -86,6 +86,14 @@ def _ensure_price_tokens_device_id_column(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE price_tokens ADD COLUMN device_id TEXT")
 
 
+def _ensure_price_tokens_show_qty_column(conn: sqlite3.Connection) -> None:
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(price_tokens)")}
+    if "show_qty" not in cols:
+        conn.execute(
+            "ALTER TABLE price_tokens ADD COLUMN show_qty INTEGER NOT NULL DEFAULT 0"
+        )
+
+
 def _ensure_catalog_tokens_table(conn: sqlite3.Connection) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS catalog_tokens (
@@ -128,6 +136,7 @@ def init_db() -> None:
         _ensure_price_tokens_mode_column(conn)
         _ensure_price_tokens_plain_token_column(conn)
         _ensure_price_tokens_device_id_column(conn)
+        _ensure_price_tokens_show_qty_column(conn)
         _ensure_catalog_tokens_table(conn)
         _ensure_receive_invoices_total(conn)
         conn.commit()
@@ -2584,6 +2593,21 @@ def set_price_token_mode(token_id: int, mode: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def set_price_token_show_qty(token_id: int, show_qty: bool) -> tuple[bool, str]:
+    """Enable or disable qty display for a price token."""
+    try:
+        with _connect() as conn:
+            _ensure_price_tokens_show_qty_column(conn)
+            conn.execute(
+                "UPDATE price_tokens SET show_qty = ? WHERE id = ?",
+                (1 if show_qty else 0, token_id),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
 def revoke_price_token(token_id: int) -> tuple[bool, str]:
     try:
         with _connect() as conn:
@@ -2607,8 +2631,18 @@ def delete_price_token(token_id: int) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def get_product_total_qty(product_id: int) -> float:
+    """Return the total stock quantity for a product summed across all warehouses."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(qty), 0) AS total FROM stock WHERE product_id = ?",
+            (product_id,),
+        ).fetchone()
+        return float(row["total"]) if row else 0.0
+
+
 def search_products_for_price(
-    q: str, limit: int = 30, mode: str = "SIMPLE"
+    q: str, limit: int = 30, mode: str = "SIMPLE", show_qty: bool = False
 ) -> list[dict[str, Any]]:
     """Search non-archived products for Pocket Price by brand/model/name/barcode.
 
@@ -2617,6 +2651,8 @@ def search_products_for_price(
         limit: Maximum number of results (default 30).
         mode: ``"SIMPLE"`` returns only the retail +25% price tier;
               ``"FULL"`` returns all price tiers including the wholesale price.
+        show_qty: When ``True`` each product dict will include a ``qty_total``
+                  field with the sum of stock qty across all warehouses.
 
     Returns:
         List of product dicts with computed price fields filtered by *mode*.
@@ -2634,7 +2670,24 @@ def search_products_for_price(
             """,
             (like, like, like, like, limit),
         ).fetchall()
-        return [_apply_price_mode(dict(r), mode) for r in rows]
+        result = []
+        if show_qty and rows:
+            product_ids = [r["id"] for r in rows]
+            placeholders = ",".join("?" * len(product_ids))
+            qty_rows = conn.execute(
+                f"SELECT product_id, COALESCE(SUM(qty), 0) AS total"
+                f" FROM stock WHERE product_id IN ({placeholders}) GROUP BY product_id",
+                product_ids,
+            ).fetchall()
+            qty_map = {r["product_id"]: float(r["total"]) for r in qty_rows}
+            for r in rows:
+                product = _apply_price_mode(dict(r), mode)
+                product["qty_total"] = qty_map.get(product["id"], 0.0)
+                result.append(product)
+        else:
+            for r in rows:
+                result.append(_apply_price_mode(dict(r), mode))
+        return result
 
 
 # ── Catalog tokens ──────────────────────────────────────────────────────────
