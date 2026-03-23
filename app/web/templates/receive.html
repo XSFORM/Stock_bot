@@ -338,13 +338,13 @@
       searchInput.value = item.brand + ' ' + item.model + ' — ' + item.name;
       productIdIn.value = pid;
 
-      // prefill last purchase price if available
-      if (item.last_purchase_price != null && item.last_purchase_price !== '' && !isNaN(parseFloat(item.last_purchase_price))) {
-        const p = parseFloat(item.last_purchase_price);
-        priceIn.value = p.toFixed(2);
-        priceIn.title = 'Last purchase price: ' + p.toFixed(2);
+      // prefill base incoming price from Products only if field is empty or 0
+      const basePrice = parseFloat(item.wh_price);
+      const currentVal = parseFloat(priceIn.value);
+      if (!isNaN(basePrice) && basePrice > 0 && (priceIn.value === '' || isNaN(currentVal) || currentVal === 0)) {
+        priceIn.value = basePrice.toFixed(2);
+        priceIn.title = 'Base incoming price: ' + basePrice.toFixed(2);
       } else {
-        // do not overwrite user's value, but clear title
         priceIn.title = '';
       }
 

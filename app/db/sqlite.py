@@ -1669,6 +1669,12 @@ def receive_item_add(
                 " VALUES (?, ?, ?, ?, ?)",
                 (invoice_id, product_id, qty, purchase_price, total),
             )
+            # Always update the product's base incoming price to keep it current
+            if purchase_price > 0:
+                conn.execute(
+                    "UPDATE products SET wh_price = ? WHERE id = ?",
+                    (purchase_price, product_id),
+                )
             conn.commit()
         return True, ""
     except Exception as exc:
