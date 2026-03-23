@@ -253,12 +253,12 @@ function selectProduct(idx) {
     var wh10 = fmt(p.price_wh10);
     var wh25 = fmt(p.price_wh25);
     html += '<div class="d-flex gap-3 mt-2 flex-wrap">' +
-      '<div><div class="price-small">+10%</div><div class="price-big">' + wh10 + ' $</div></div>' +
-      '<div><div class="price-small">+25%</div><div class="price-big">' + wh25 + ' $</div></div>' +
+      '<div><div class="price-big">' + wh10 + ' $</div></div>' +
+      '<div><div class="price-big">' + wh25 + ' $</div></div>' +
     '</div>';
   } else {
     var wh25 = fmt(p.price_wh25);
-    html += '<div class="mt-2"><div class="price-small">Price</div><div class="price-big">' + wh25 + ' $</div></div>';
+    html += '<div class="mt-2"><div class="price-big">' + wh25 + ' $</div></div>';
   }
   if (_showQty && p.qty_total != null) {
     html += '<div class="mt-2 small text-info">' + _qtyLabel + ': ' + Number(p.qty_total).toFixed(0) + '</div>';
