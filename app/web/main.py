@@ -335,19 +335,23 @@ def products_add(
     name: str = Form(...),
     wh_price: float = Form(...),
     barcode: str = Form(""),
+    create_receive: str = Form(""),
     source: str = Form("CHINA"),
     warehouse: str = Form("TM_DEPO"),
-    qty: float = Form(...),
+    qty: Optional[float] = Form(None),
 ):
     try:
         ok, err, product_id = add_product_simple(brand, model, name, barcode, note="", wh_price=float(wh_price))
         if not ok:
             return RedirectResponse(url=f"/products?msg=product_error:{err}", status_code=303)
-        ok2, err2 = receive_stock_by_product_id(warehouse, product_id, float(qty), source=source)
-        if not ok2:
-            return RedirectResponse(url=f"/products?msg=received:{err2}", status_code=303)
 
-        return RedirectResponse(url=f"/products?msg=created+received", status_code=303)
+        if create_receive and qty is not None:
+            ok2, err2 = receive_stock_by_product_id(warehouse, product_id, float(qty), source=source)
+            if not ok2:
+                return RedirectResponse(url=f"/products?msg=received:{err2}", status_code=303)
+            return RedirectResponse(url=f"/products?msg=created+received&highlight={product_id}", status_code=303)
+
+        return RedirectResponse(url=f"/products?msg=created&highlight={product_id}", status_code=303)
     except Exception as e:
         # вместо черного экрана
         return RedirectResponse(url=f"/products?msg=error:{e}", status_code=303)
