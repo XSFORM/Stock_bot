@@ -142,6 +142,7 @@ from app.db.sqlite import (
     touch_price_token,
     bind_price_token_device,
     set_price_token_mode,
+    set_price_token_show_qty,
     search_products_for_price,
     # Mobile barcode scan
     get_product_by_barcode_for_scan,
@@ -1651,7 +1652,8 @@ def api_price_search(request: Request, q: str = ""):
     if row == "not_paired":
         return JSONResponse({"error": "not_paired"}, status_code=401)
     mode = (row.get("mode") or "SIMPLE").upper()
-    results = search_products_for_price(q.strip(), limit=30, mode=mode)
+    show_qty = bool(row.get("show_qty", 0))
+    results = search_products_for_price(q.strip(), limit=30, mode=mode, show_qty=show_qty)
     return JSONResponse({"results": results, "mode": mode})
 
 
@@ -1663,7 +1665,8 @@ def api_price_barcode(request: Request, code: str = ""):
     if row == "not_paired":
         return JSONResponse({"error": "not_paired"}, status_code=401)
     mode = (row.get("mode") or "SIMPLE").upper()
-    results = search_products_for_price(code.strip(), limit=1, mode=mode)
+    show_qty = bool(row.get("show_qty", 0))
+    results = search_products_for_price(code.strip(), limit=1, mode=mode, show_qty=show_qty)
     if not results:
         return JSONResponse({"error": "not_found"}, status_code=404)
     return JSONResponse({"product": results[0], "mode": mode})
@@ -1676,7 +1679,7 @@ def api_price_token_info(request: Request):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     if row == "not_paired":
         return JSONResponse({"error": "not_paired"}, status_code=401)
-    return JSONResponse({"mode": row.get("mode", "SIMPLE")})
+    return JSONResponse({"mode": row.get("mode", "SIMPLE"), "show_qty": bool(row.get("show_qty", 0))})
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1711,6 +1714,12 @@ def admin_price_tokens_create(label: str = Form(""), mode: str = Form("SIMPLE"))
 @app.post("/admin/price-tokens/set-mode")
 def admin_price_tokens_set_mode(token_id: int = Form(...), mode: str = Form("SIMPLE")):
     set_price_token_mode(int(token_id), mode)
+    return RedirectResponse(url="/admin/price-tokens", status_code=303)
+
+
+@app.post("/admin/price-tokens/toggle-qty")
+def admin_price_tokens_toggle_qty(token_id: int = Form(...), show_qty: int = Form(0)):
+    set_price_token_show_qty(int(token_id), bool(show_qty))
     return RedirectResponse(url="/admin/price-tokens", status_code=303)
 
 
