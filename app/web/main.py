@@ -16,6 +16,7 @@ from urllib.parse import quote
 from fastapi import FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+import jinja2
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import JSONResponse
 
@@ -167,7 +168,17 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Stock Bot Web")
 
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+# Disable Jinja2 template caching (cache_size=0) to avoid
+# "TypeError: unhashable type: 'dict'" errors that occur when Starlette
+# passes dict globals as part of the cache key on clean installs.
+templates = Jinja2Templates(
+    env=jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(TEMPLATES_DIR)),
+        autoescape=jinja2.select_autoescape(),
+        cache_size=0,
+        auto_reload=True,
+    )
+)
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
