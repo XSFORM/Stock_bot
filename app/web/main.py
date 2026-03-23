@@ -324,10 +324,10 @@ def index(request: Request):
 # ---------------- products ----------------
 
 @app.get("/products", response_class=HTMLResponse)
-def products(request: Request, show_archived: int = 0, highlight: int = 0):
-    rows = list_products(include_archived=bool(show_archived))
+def products(request: Request, show_archived: int = 0, highlight: int = 0, q: str = ""):
+    rows = list_products(include_archived=bool(show_archived), search=q if q else None)
     brands = list_brands()
-    return _render(request, "products.html", {"products": rows, "brands": brands, "show_archived": show_archived, "highlight": highlight})
+    return _render(request, "products.html", {"products": rows, "brands": brands, "show_archived": show_archived, "highlight": highlight, "search_q": q})
 
 
 @app.post("/products/add")
