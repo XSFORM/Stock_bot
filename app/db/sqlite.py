@@ -2121,6 +2121,18 @@ def return_invoice_finish(invoice_id: int) -> tuple[bool, str]:
             conn.execute(
                 "UPDATE return_invoices SET status = 'DONE' WHERE id = ?", (invoice_id,)
             )
+            return_total = round(float(inv["total"] or 0), 4)
+            if return_total > 0:
+                number = int(inv["number"]) if inv["number"] is not None else 0
+                conn.execute(
+                    "INSERT INTO client_ledger (client_id, amount, note)"
+                    " VALUES (?, ?, ?)",
+                    (
+                        inv["client_id"],
+                        return_total,
+                        f"RETURN #{number:06d}",
+                    ),
+                )
             conn.commit()
         return True, ""
     except Exception as exc:
