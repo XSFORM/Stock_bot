@@ -27,6 +27,10 @@ git show --stat <commit-sha>
 
 ---
 
+## 2026-03-23
+
+- Brand prefixes editor: add **Edit** and **Delete** actions to each prefix chip on `/brands`; clicking the ✕ on a chip opens a modal with a rename input and a delete button. New `POST /brands/prefix/update` and `POST /brands/prefix/delete` routes backed by `update_brand_model_prefix()` / `delete_brand_model_prefix()` in `app/db/sqlite.py`. Prefix values are normalized on save (spaces + trailing `-`/`.` stripped) preventing duplicates like `r.-` vs `r-`.
+
 ## 2026-03-22
 
 - Products page UX overhaul: add per-row **Edit** action (⋯ dropdown) that opens an edit modal to update barcode, purchase price, model and name — without leaving `/products`; new `POST /products/{id}/edit` route reuses `update_product_full()` (same as Stock page edit).

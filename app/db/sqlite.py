@@ -597,12 +597,60 @@ def list_brand_model_prefixes(brand_name: str) -> list[str]:
         return [r["prefix"] for r in rows]
 
 
+def _normalize_prefix(raw: str) -> str:
+    """Normalize a brand model prefix: strip spaces and trailing '-'/'.' chars."""
+    return raw.strip().rstrip("-.")
+
+
 def add_brand_model_prefix(brand_name: str, prefix: str) -> tuple[bool, str]:
+    norm = _normalize_prefix(prefix)
+    if not norm:
+        return False, "Prefix cannot be empty"
     try:
         with _connect() as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO brand_model_prefixes (brand_name, prefix) VALUES (?, ?)",
-                (brand_name.strip(), prefix.strip()),
+                (brand_name.strip(), norm),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def update_brand_model_prefix(brand_name: str, old_prefix: str, new_prefix: str) -> tuple[bool, str]:
+    norm_new = _normalize_prefix(new_prefix)
+    if not norm_new:
+        return False, "New prefix cannot be empty"
+    norm_old = _normalize_prefix(old_prefix)
+    if norm_new == norm_old:
+        return True, ""
+    try:
+        with _connect() as conn:
+            # Check if new prefix already exists for this brand
+            exists = conn.execute(
+                "SELECT 1 FROM brand_model_prefixes WHERE brand_name = ? AND prefix = ?",
+                (brand_name.strip(), norm_new),
+            ).fetchone()
+            if exists:
+                return False, f"Prefix '{norm_new}' already exists for this brand"
+            conn.execute(
+                "UPDATE brand_model_prefixes SET prefix = ? WHERE brand_name = ? AND prefix = ?",
+                (norm_new, brand_name.strip(), norm_old),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def delete_brand_model_prefix(brand_name: str, prefix: str) -> tuple[bool, str]:
+    norm = _normalize_prefix(prefix)
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "DELETE FROM brand_model_prefixes WHERE brand_name = ? AND prefix = ?",
+                (brand_name.strip(), norm),
             )
             conn.commit()
         return True, ""

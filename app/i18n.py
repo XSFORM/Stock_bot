@@ -190,6 +190,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "brands_no_prefixes": "no prefixes",
         "brands_add_prefix_title": "Add model prefix",
         "brands_prefix_help": "We will use it as: tf-XXXX",
+        "brands_prefix_edit_title": "Edit prefix",
+        "brands_prefix_new_value": "New prefix value",
+        "brands_prefix_delete_confirm": "Delete prefix?",
         "brands_add_title": "Add brand",
         # Clients page
         "clients_title": "Clients",
@@ -526,6 +529,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "brands_no_prefixes": "нет префиксов",
         "brands_add_prefix_title": "Добавить префикс модели",
         "brands_prefix_help": "Будет использоваться как: tf-XXXX",
+        "brands_prefix_edit_title": "Редактировать префикс",
+        "brands_prefix_new_value": "Новое значение префикса",
+        "brands_prefix_delete_confirm": "Удалить префикс?",
         "brands_add_title": "Добавить бренд",
         # Clients page
         "clients_title": "Клиенты",
@@ -863,6 +869,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "brands_no_prefixes": "prefiks ýok",
         "brands_add_prefix_title": "Model prefiksi goş",
         "brands_prefix_help": "Şeýle ulanylýar: tf-XXXX",
+        "brands_prefix_edit_title": "Prefiksi düzet",
+        "brands_prefix_new_value": "Täze prefiks bahasy",
+        "brands_prefix_delete_confirm": "Prefiksi poz?",
         "brands_add_title": "Brend goş",
         # Clients page
         "clients_title": "Müşderiler",

@@ -35,6 +35,8 @@ from app.db.sqlite import (
     add_brand,
     list_brand_model_prefixes,
     add_brand_model_prefix,
+    update_brand_model_prefix,
+    delete_brand_model_prefix,
     # clients
     list_clients,
     add_client,
@@ -942,6 +944,27 @@ def brand_prefix_add(
     prefix: str = Form(...),
 ):
     ok, err = add_brand_model_prefix(brand_name, prefix)
+    msg = "OK" if ok else err
+    return RedirectResponse(url=f"/brands?msg={msg}", status_code=303)
+
+
+@app.post("/brands/prefix/update")
+def brand_prefix_update(
+    brand_name: str = Form(...),
+    old_prefix: str = Form(...),
+    new_prefix: str = Form(...),
+):
+    ok, err = update_brand_model_prefix(brand_name, old_prefix, new_prefix)
+    msg = "OK" if ok else err
+    return RedirectResponse(url=f"/brands?msg={msg}", status_code=303)
+
+
+@app.post("/brands/prefix/delete")
+def brand_prefix_delete(
+    brand_name: str = Form(...),
+    prefix: str = Form(...),
+):
+    ok, err = delete_brand_model_prefix(brand_name, prefix)
     msg = "OK" if ok else err
     return RedirectResponse(url=f"/brands?msg={msg}", status_code=303)
 

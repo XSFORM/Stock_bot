@@ -21,7 +21,16 @@
               {% set ps = prefix_map.get(b, []) %}
               {% if ps and ps|length > 0 %}
                 {% for p in ps %}
-                  <span class="badge bg-secondary me-1">{{ p }}-</span>
+                  <span class="badge bg-secondary me-1 d-inline-flex align-items-center gap-1">
+                    {{ p }}-
+                    <button type="button"
+                      class="btn-close btn-close-white"
+                      style="font-size:.6rem;"
+                      title="{{ t.brands_prefix_edit_title }}"
+                      aria-label="{{ t.brands_prefix_edit_title }}"
+                      onclick="openEditPrefix({{ b|tojson }}, {{ p|tojson }})"
+                    ></button>
+                  </span>
                 {% endfor %}
               {% else %}
                 <span class="text-muted">{{ t.brands_no_prefixes }}</span>
@@ -68,4 +77,59 @@
     </div>
   </div>
 </div>
+
+<!-- Edit / Delete prefix modal -->
+<div class="modal fade" id="editPrefixModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">{{ t.brands_prefix_edit_title }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p id="editPrefixCurrent" class="text-muted small mb-2"></p>
+        <label class="form-label" for="editPrefixInput">{{ t.brands_prefix_new_value }}</label>
+        <input class="form-control" id="editPrefixInput" placeholder="r">
+        <div class="form-text">{{ t.brands_prefix_help }}</div>
+      </div>
+      <div class="modal-footer flex-nowrap gap-2">
+        <form method="post" action="/brands/prefix/update" id="editPrefixForm" class="flex-grow-1">
+          <input type="hidden" name="brand_name" id="editPrefixBrand">
+          <input type="hidden" name="old_prefix" id="editPrefixOld">
+          <input type="hidden" name="new_prefix" id="editPrefixNew">
+          <button type="submit" class="btn btn-primary w-100">{{ t.btn_save }}</button>
+        </form>
+        <form method="post" action="/brands/prefix/delete" id="deletePrefixForm">
+          <input type="hidden" name="brand_name" id="deletePrefixBrand">
+          <input type="hidden" name="prefix" id="deletePrefixValue">
+          <button type="submit" class="btn btn-outline-danger"
+            onclick="return confirm('{{ t.brands_prefix_delete_confirm }}')">🗑</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function openEditPrefix(brand, prefix) {
+  document.getElementById('editPrefixCurrent').textContent = brand + ' / ' + prefix + '-';
+  document.getElementById('editPrefixInput').value = prefix;
+  document.getElementById('editPrefixBrand').value = brand;
+  document.getElementById('editPrefixOld').value = prefix;
+  document.getElementById('editPrefixNew').value = prefix;
+  document.getElementById('deletePrefixBrand').value = brand;
+  document.getElementById('deletePrefixValue').value = prefix;
+
+  document.getElementById('editPrefixInput').oninput = function() {
+    document.getElementById('editPrefixNew').value = this.value;
+  };
+
+  var modal = new bootstrap.Modal(document.getElementById('editPrefixModal'));
+  modal.show();
+  setTimeout(function() {
+    document.getElementById('editPrefixInput').focus();
+    document.getElementById('editPrefixInput').select();
+  }, 300);
+}
+</script>
 {% endblock %}
