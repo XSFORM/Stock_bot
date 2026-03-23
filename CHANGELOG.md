@@ -30,6 +30,7 @@ git show --stat <commit-sha>
 ## 2026-03-23
 
 - Brand prefixes editor: add **Edit** and **Delete** actions to each prefix chip on `/brands`; clicking the ✕ on a chip opens a modal with a rename input and a delete button. New `POST /brands/prefix/update` and `POST /brands/prefix/delete` routes backed by `update_brand_model_prefix()` / `delete_brand_model_prefix()` in `app/db/sqlite.py`. Prefix values are normalized on save (spaces + trailing `-`/`.` stripped) preventing duplicates like `r.-` vs `r-`.
+- Receive page: auto-fill "Цена закупки" from the product's current base incoming price when the field is empty or zero on product selection; saving a receive line now always updates the product's base incoming price in Products to the latest purchase price.
 
 ## 2026-03-22
 
