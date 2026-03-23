@@ -144,16 +144,25 @@ def _apply_price_mode(product: dict[str, Any], mode: str) -> dict[str, Any]:
 # ── Products ──────────────────────────────────────────────────────────────────
 
 
-def list_products(include_archived: bool = False) -> list[dict[str, Any]]:
+def list_products(
+    include_archived: bool = False, search: Optional[str] = None
+) -> list[dict[str, Any]]:
     with _connect() as conn:
-        if include_archived:
-            rows = conn.execute(
-                "SELECT * FROM products ORDER BY brand, model"
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM products WHERE archived = 0 ORDER BY brand, model"
-            ).fetchall()
+        conditions: list[str] = []
+        params: list[Any] = []
+        if not include_archived:
+            conditions.append("archived = 0")
+        tokens = [t.strip() for t in (search or "").split() if t.strip()]
+        for token in tokens:
+            like = f"%{token}%"
+            conditions.append(
+                "(brand LIKE ? OR model LIKE ? OR name LIKE ? OR barcode LIKE ?)"
+            )
+            params.extend([like, like, like, like])
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        rows = conn.execute(
+            f"SELECT * FROM products {where} ORDER BY brand, model", params
+        ).fetchall()
         return [_product_with_prices(r) for r in rows]
 
 

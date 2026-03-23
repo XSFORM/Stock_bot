@@ -9,8 +9,25 @@
         <div class="alert alert-info">{{ request.query_params.get('msg') }}</div>
       {% endif %}
 
+      <form class="row g-2 mb-3 align-items-end" method="get" action="/products">
+        <div class="col-auto">
+          <label class="form-label mb-1">{{ t.lbl_search }}</label>
+          <input class="form-control" name="q" value="{{ search_q }}" placeholder="{{ t.stock_search_placeholder }}">
+        </div>
+        <div class="col-auto">
+          <button class="btn btn-secondary">{{ t.btn_filter }}</button>
+        </div>
+        {% if search_q %}
+        <div class="col-auto">
+          <a href="/products?show_archived={{ show_archived }}" class="btn btn-outline-secondary">{{ t.btn_clear }}</a>
+        </div>
+        {% endif %}
+        <input type="hidden" name="show_archived" value="{{ show_archived }}">
+      </form>
+
       <div class="mb-2">
         <form method="get" action="/products" class="d-inline">
+          <input type="hidden" name="q" value="{{ search_q }}">
           {% if show_archived %}
             <input type="hidden" name="show_archived" value="0">
             <button class="btn btn-sm btn-secondary">{{ t.hide_archived }}</button>
