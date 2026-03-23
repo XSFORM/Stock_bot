@@ -143,7 +143,6 @@ from app.db.sqlite import (
     bind_price_token_device,
     set_price_token_mode,
     search_products_for_price,
-    get_product_by_barcode,
     # Mobile barcode scan
     get_product_by_barcode_for_scan,
     create_product_with_barcode,
@@ -1663,15 +1662,11 @@ def api_price_barcode(request: Request, code: str = ""):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     if row == "not_paired":
         return JSONResponse({"error": "not_paired"}, status_code=401)
-    mode = row.get("mode", "SIMPLE")
-    product = get_product_by_barcode(code, mode=mode)
-    if not product:
-        return JSONResponse({"error": "not_found"}, status_code=404)
     mode = (row.get("mode") or "SIMPLE").upper()
-    if mode != "FULL":
-        product.pop("wh_price", None)
-        product.pop("price_wh10", None)
-    return JSONResponse({"product": product, "mode": mode})
+    results = search_products_for_price(code.strip(), limit=1, mode=mode)
+    if not results:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse({"product": results[0], "mode": mode})
 
 
 @app.get("/api/price/token-info")
