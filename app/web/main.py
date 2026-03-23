@@ -148,6 +148,14 @@ from app.db.sqlite import (
     get_product_by_barcode_for_scan,
     create_product_with_barcode,
     update_product_purchase_price,
+    # Pocket Catalog tokens
+    create_catalog_token,
+    list_catalog_tokens,
+    revoke_catalog_token,
+    delete_catalog_token,
+    validate_catalog_token,
+    touch_catalog_token,
+    bind_catalog_token_device,
 )
 
 
@@ -226,7 +234,7 @@ def _get_ui_theme(request: Request) -> str:
 # Site-lock middleware
 # ──────────────────────────────────────────────────────────────────────────────
 
-_LOCK_BYPASS_PREFIXES = ("/static", "/unlock", "/api/", "/price")
+_LOCK_BYPASS_PREFIXES = ("/static", "/unlock", "/api/", "/price", "/catalog")
 
 
 @app.middleware("http")
@@ -1726,8 +1734,201 @@ def admin_price_tokens_delete(token_id: int = Form(...)):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Pocket Price – PWA page
+# Pocket Catalog – catalog token helpers
 # ──────────────────────────────────────────────────────────────────────────────
+
+def _get_catalog_token(request: Request) -> Optional[str]:
+    """Extract catalog token from X-Catalog-Token header or Authorization: Bearer."""
+    token = request.headers.get("x-catalog-token", "").strip()
+    if not token:
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            token = auth[7:].strip()
+    return token or None
+
+
+def _get_catalog_device_id(request: Request) -> Optional[str]:
+    """Extract device UUID from X-Catalog-Device header."""
+    device_id = request.headers.get("x-catalog-device", "").strip()
+    return device_id or None
+
+
+def _require_catalog_token(request: Request):
+    """Validate catalog token and enforce device binding; return token row or None."""
+    token = _get_catalog_token(request)
+    if not token:
+        return None
+    row = validate_catalog_token(token)
+    if not row:
+        return None
+    device_id = _get_catalog_device_id(request)
+    bound_device = row.get("device_id")
+    if bound_device:
+        if not device_id or device_id != bound_device:
+            return "not_paired"
+    else:
+        if device_id:
+            bind_catalog_token_device(row["id"], device_id)
+            row = dict(row)
+            row["device_id"] = device_id
+    touch_catalog_token(row["id"])
+    return row
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Pocket Catalog – public API endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/catalog/barcode")
+def api_catalog_barcode(request: Request, code: str = ""):
+    row = _require_catalog_token(request)
+    if row is None or row == "not_paired":
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    code = code.strip()
+    if not code:
+        return JSONResponse({"error": "barcode_empty"}, status_code=400)
+    product = get_product_by_barcode_for_scan(code)
+    if product:
+        return JSONResponse({"product": product})
+    return JSONResponse({"error": "not_found"}, status_code=404)
+
+
+@app.post("/api/catalog/create")
+async def api_catalog_create(request: Request):
+    row = _require_catalog_token(request)
+    if row is None or row == "not_paired":
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    try:
+        ct = request.headers.get("content-type", "")
+        if "application/json" in ct:
+            body = await request.json()
+        else:
+            form = await request.form()
+            body = dict(form)
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    barcode = str(body.get("barcode", "")).strip()
+    brand = str(body.get("brand", "")).strip()
+    model = str(body.get("model", "")).strip()
+    name = str(body.get("name", "")).strip()
+    raw_price = body.get("purchase_price", "0")
+
+    if not barcode:
+        return JSONResponse({"ok": False, "error": "barcode_empty"}, status_code=400)
+    if not brand:
+        return JSONResponse({"ok": False, "error": "brand_required"}, status_code=400)
+    if not model:
+        return JSONResponse({"ok": False, "error": "model_required"}, status_code=400)
+    if not name:
+        return JSONResponse({"ok": False, "error": "name_required"}, status_code=400)
+
+    # Reject if barcode already exists
+    existing = get_product_by_barcode_for_scan(barcode)
+    if existing:
+        return JSONResponse({"ok": False, "error": "barcode_exists"}, status_code=400)
+
+    try:
+        price = round(float(raw_price or 0), 2)
+    except (ValueError, TypeError):
+        return JSONResponse({"ok": False, "error": "invalid_price"}, status_code=400)
+
+    ok, err, product_id = create_product_with_barcode(brand, model, name, price, barcode)
+    if not ok:
+        return JSONResponse({"ok": False, "error": err}, status_code=400)
+    product = get_product_by_barcode_for_scan(barcode)
+    return JSONResponse({"ok": True, "product": product})
+
+
+@app.post("/api/catalog/update-price")
+async def api_catalog_update_price(request: Request):
+    row = _require_catalog_token(request)
+    if row is None or row == "not_paired":
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    try:
+        ct = request.headers.get("content-type", "")
+        if "application/json" in ct:
+            body = await request.json()
+        else:
+            form = await request.form()
+            body = dict(form)
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    barcode = str(body.get("barcode", "")).strip()
+    if not barcode:
+        return JSONResponse({"ok": False, "error": "barcode_empty"}, status_code=400)
+
+    existing = get_product_by_barcode_for_scan(barcode)
+    if not existing:
+        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+
+    raw_price = body.get("purchase_price", "")
+    if raw_price not in (None, ""):
+        try:
+            price = round(float(raw_price), 2)
+        except (ValueError, TypeError):
+            return JSONResponse({"ok": False, "error": "invalid_price"}, status_code=400)
+        ok, err = update_product_purchase_price(existing["id"], price)
+        if not ok:
+            return JSONResponse({"ok": False, "error": err}, status_code=500)
+        existing["purchase_price"] = price
+
+    return JSONResponse({"ok": True, "product": existing})
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Pocket Catalog – admin token management
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.get("/admin/catalog-tokens", response_class=HTMLResponse)
+def admin_catalog_tokens_get(request: Request, msg: str = "", new_token: str = ""):
+    tokens = list_catalog_tokens()
+    return _render(
+        request,
+        "admin_catalog_tokens.html",
+        {"tokens": tokens, "msg": msg, "new_token": new_token},
+    )
+
+
+@app.post("/admin/catalog-tokens/create")
+def admin_catalog_tokens_create(label: str = Form("")):
+    try:
+        plain, _row = create_catalog_token(label)
+        return RedirectResponse(
+            url=f"/admin/catalog-tokens?new_token={quote(plain, safe='')}",
+            status_code=303,
+        )
+    except Exception as exc:
+        return RedirectResponse(
+            url=f"/admin/catalog-tokens?msg=error:{quote(str(exc), safe='')}",
+            status_code=303,
+        )
+
+
+@app.post("/admin/catalog-tokens/revoke")
+def admin_catalog_tokens_revoke(token_id: int = Form(...)):
+    ok, err = revoke_catalog_token(int(token_id))
+    msg = "revoked" if ok else f"error:{quote(err, safe='')}"
+    return RedirectResponse(url=f"/admin/catalog-tokens?msg={msg}", status_code=303)
+
+
+@app.post("/admin/catalog-tokens/delete")
+def admin_catalog_tokens_delete(token_id: int = Form(...)):
+    ok, err = delete_catalog_token(int(token_id))
+    msg = "deleted" if ok else f"error:{quote(err, safe='')}"
+    return RedirectResponse(url=f"/admin/catalog-tokens?msg={msg}", status_code=303)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Pocket Catalog – PWA page
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.get("/catalog", response_class=HTMLResponse)
+def catalog_page(request: Request):
+    brands = list_brands()
+    prefix_map = {b: list_brand_model_prefixes(b) for b in brands}
+    return _render(request, "catalog.html", {"brands": brands, "prefix_map": prefix_map})
 
 @app.get("/price", response_class=HTMLResponse)
 def price_page(request: Request):

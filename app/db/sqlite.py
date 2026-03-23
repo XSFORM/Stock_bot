@@ -86,6 +86,21 @@ def _ensure_price_tokens_device_id_column(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE price_tokens ADD COLUMN device_id TEXT")
 
 
+def _ensure_catalog_tokens_table(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS catalog_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            label TEXT NOT NULL DEFAULT '',
+            token_hash TEXT NOT NULL UNIQUE,
+            plain_token TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            last_used_at TEXT,
+            revoked INTEGER NOT NULL DEFAULT 0,
+            device_id TEXT
+        )
+    """)
+
+
 def _ensure_receive_invoices_total(conn: sqlite3.Connection) -> None:
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(receive_invoices)")}
     if "total" not in cols:
@@ -113,6 +128,7 @@ def init_db() -> None:
         _ensure_price_tokens_mode_column(conn)
         _ensure_price_tokens_plain_token_column(conn)
         _ensure_price_tokens_device_id_column(conn)
+        _ensure_catalog_tokens_table(conn)
         _ensure_receive_invoices_total(conn)
         conn.commit()
 
@@ -2619,3 +2635,86 @@ def search_products_for_price(
             (like, like, like, like, limit),
         ).fetchall()
         return [_apply_price_mode(dict(r), mode) for r in rows]
+
+
+# ── Catalog tokens ──────────────────────────────────────────────────────────
+
+
+def create_catalog_token(label: str = "") -> tuple[str, dict[str, Any]]:
+    """Create a new catalog token. Returns (plain_token, row_dict)."""
+    plain = secrets.token_urlsafe(32)
+    token_hash = _hash_token(plain)
+    with _connect() as conn:
+        _ensure_catalog_tokens_table(conn)
+        conn.execute(
+            "INSERT INTO catalog_tokens (label, token_hash, plain_token) VALUES (?, ?, ?)",
+            (label.strip(), token_hash, plain),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM catalog_tokens WHERE token_hash = ?", (token_hash,)
+        ).fetchone()
+        return plain, _row_to_dict(row)
+
+
+def list_catalog_tokens() -> list[dict[str, Any]]:
+    with _connect() as conn:
+        _ensure_catalog_tokens_table(conn)
+        rows = conn.execute(
+            "SELECT * FROM catalog_tokens ORDER BY id DESC"
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
+def validate_catalog_token(plain: str) -> Optional[dict[str, Any]]:
+    token_hash = _hash_token(plain)
+    with _connect() as conn:
+        _ensure_catalog_tokens_table(conn)
+        row = conn.execute(
+            "SELECT * FROM catalog_tokens WHERE token_hash = ? AND revoked = 0",
+            (token_hash,),
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+
+
+def touch_catalog_token(token_id: int) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE catalog_tokens"
+            " SET last_used_at = datetime('now','localtime') WHERE id = ?",
+            (token_id,),
+        )
+        conn.commit()
+
+
+def bind_catalog_token_device(token_id: int, device_id: str) -> None:
+    """Bind a catalog token to a device UUID (only if not already bound)."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE catalog_tokens SET device_id = ? WHERE id = ? AND device_id IS NULL",
+            (device_id, token_id),
+        )
+        conn.commit()
+
+
+def revoke_catalog_token(token_id: int) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE catalog_tokens SET revoked = 1, device_id = NULL WHERE id = ?",
+                (token_id,),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def delete_catalog_token(token_id: int) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            conn.execute("DELETE FROM catalog_tokens WHERE id = ?", (token_id,))
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
