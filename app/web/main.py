@@ -297,7 +297,7 @@ def _render(request: Request, name: str, ctx: dict[str, Any]) -> HTMLResponse:
         "nav_stock_value_usd": get_total_stock_value(),
     }
     base.update(ctx)
-    return templates.TemplateResponse(name, base)
+    return templates.TemplateResponse(request, name, base)
 
 
 @app.get("/api/brand-prefixes")
@@ -1362,9 +1362,9 @@ def unlock_get(request: Request, next: str = "/"):
     lang = _get_ui_lang(request)
     theme = _get_ui_theme(request)
     return templates.TemplateResponse(
+        request,
         "unlock.html",
         {
-            "request": request,
             "next": next,
             "error": False,
             "ui_lang": lang,
@@ -1395,9 +1395,9 @@ def unlock_post(
     lang = _get_ui_lang(request)
     theme = _get_ui_theme(request)
     return templates.TemplateResponse(
+        request,
         "unlock.html",
         {
-            "request": request,
             "next": next,
             "error": True,
             "ui_lang": lang,
@@ -1950,9 +1950,9 @@ def price_page(request: Request):
     lang = _get_ui_lang(request)
     theme = _get_ui_theme(request)
     return templates.TemplateResponse(
+        request,
         "price.html",
         {
-            "request": request,
             "ui_lang": lang,
             "ui_theme": theme,
             "t": get_translations(lang),
