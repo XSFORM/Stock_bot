@@ -21,15 +21,25 @@
               {% set ps = prefix_map.get(b, []) %}
               {% if ps and ps|length > 0 %}
                 {% for p in ps %}
-                  <span class="badge bg-secondary me-1 d-inline-flex align-items-center gap-1">
-                    {{ p }}-
+                  <span class="badge bg-secondary me-1 mb-1 d-inline-flex align-items-center gap-1">
                     <button type="button"
-                      class="btn-close btn-close-white"
-                      style="font-size:.6rem;"
+                      class="border-0 bg-transparent text-white p-0 lh-1"
+                      style="font-size:inherit;"
+                      data-brand="{{ b }}"
+                      data-prefix="{{ p }}"
                       title="{{ t.brands_prefix_edit_title }}"
                       aria-label="{{ t.brands_prefix_edit_title }}"
-                      onclick="openEditPrefix({{ b|tojson }}, {{ p|tojson }})"
-                    ></button>
+                    >{{ p }}-</button>
+                    <form method="post" action="/brands/prefix/delete" style="display:contents">
+                      <input type="hidden" name="brand_name" value="{{ b }}">
+                      <input type="hidden" name="prefix" value="{{ p }}">
+                      <button type="submit"
+                        class="btn-close btn-close-white"
+                        style="font-size:.6rem;"
+                        title="{{ t.brands_prefix_delete_confirm }}"
+                        aria-label="{{ t.brands_prefix_delete_confirm }}"
+                      ></button>
+                    </form>
                   </span>
                 {% endfor %}
               {% else %}
@@ -111,25 +121,31 @@
 </div>
 
 <script>
-function openEditPrefix(brand, prefix) {
-  document.getElementById('editPrefixCurrent').textContent = brand + ' / ' + prefix + '-';
-  document.getElementById('editPrefixInput').value = prefix;
-  document.getElementById('editPrefixBrand').value = brand;
-  document.getElementById('editPrefixOld').value = prefix;
-  document.getElementById('editPrefixNew').value = prefix;
-  document.getElementById('deletePrefixBrand').value = brand;
-  document.getElementById('deletePrefixValue').value = prefix;
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('[data-brand][data-prefix]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var brand = this.dataset.brand;
+      var prefix = this.dataset.prefix;
+      document.getElementById('editPrefixCurrent').textContent = brand + ' / ' + prefix + '-';
+      document.getElementById('editPrefixInput').value = prefix;
+      document.getElementById('editPrefixBrand').value = brand;
+      document.getElementById('editPrefixOld').value = prefix;
+      document.getElementById('editPrefixNew').value = prefix;
+      document.getElementById('deletePrefixBrand').value = brand;
+      document.getElementById('deletePrefixValue').value = prefix;
 
-  document.getElementById('editPrefixInput').oninput = function() {
-    document.getElementById('editPrefixNew').value = this.value;
-  };
+      document.getElementById('editPrefixInput').oninput = function() {
+        document.getElementById('editPrefixNew').value = this.value;
+      };
 
-  var modal = new bootstrap.Modal(document.getElementById('editPrefixModal'));
-  modal.show();
-  setTimeout(function() {
-    document.getElementById('editPrefixInput').focus();
-    document.getElementById('editPrefixInput').select();
-  }, 300);
-}
+      var modal = new bootstrap.Modal(document.getElementById('editPrefixModal'));
+      modal.show();
+      setTimeout(function() {
+        document.getElementById('editPrefixInput').focus();
+        document.getElementById('editPrefixInput').select();
+      }, 300);
+    });
+  });
+});
 </script>
 {% endblock %}
