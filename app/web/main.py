@@ -144,6 +144,10 @@ from app.db.sqlite import (
     set_price_token_mode,
     search_products_for_price,
     get_product_by_barcode,
+    # Mobile barcode scan
+    get_product_by_barcode_for_scan,
+    create_product_with_barcode,
+    update_product_purchase_price,
 )
 
 
@@ -385,6 +389,81 @@ def product_unarchive(product_id: int, show_archived: int = Form(0)):
     ok, err = set_product_archived(int(product_id), 0)
     msg = "unarchived" if ok else f"unarchive_error:{err}"
     return RedirectResponse(url=f"/products?msg={msg}&show_archived={show_archived}", status_code=303)
+
+
+# ---------------- mobile barcode scan ----------------
+
+@app.get("/m/scan", response_class=HTMLResponse)
+def mobile_scan(request: Request):
+    brands = list_brands()
+    prefix_map = {b: list_brand_model_prefixes(b) for b in brands}
+    return _render(request, "mobile_scan.html", {"brands": brands, "prefix_map": prefix_map})
+
+
+@app.get("/api/products/by-barcode")
+def api_products_by_barcode(barcode: str = ""):
+    barcode = barcode.strip()
+    if not barcode:
+        return JSONResponse({"found": False, "product": None, "error": "barcode_empty"})
+    product = get_product_by_barcode_for_scan(barcode)
+    if product:
+        return JSONResponse({"found": True, "product": product})
+    return JSONResponse({"found": False, "product": None})
+
+
+@app.post("/api/products/upsert-by-barcode")
+async def api_products_upsert_by_barcode(request: Request):
+    try:
+        ct = request.headers.get("content-type", "")
+        if "application/json" in ct:
+            body = await request.json()
+        else:
+            form = await request.form()
+            body = dict(form)
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    barcode = str(body.get("barcode", "")).strip()
+    if not barcode:
+        return JSONResponse({"ok": False, "error": "barcode_empty"}, status_code=400)
+
+    existing = get_product_by_barcode_for_scan(barcode)
+
+    if existing:
+        # Barcode exists – update purchase_price if provided
+        raw_price = body.get("purchase_price", "")
+        if raw_price not in (None, ""):
+            try:
+                price = round(float(raw_price), 2)
+            except (ValueError, TypeError):
+                return JSONResponse({"ok": False, "error": "invalid_price"}, status_code=400)
+            ok, err = update_product_purchase_price(existing["id"], price)
+            if not ok:
+                return JSONResponse({"ok": False, "error": err}, status_code=500)
+            existing["purchase_price"] = price
+        return JSONResponse({"ok": True, "created": False, "product": existing})
+    else:
+        # Barcode not found – create new product
+        brand = str(body.get("brand", "")).strip()
+        model = str(body.get("model", "")).strip()
+        name = str(body.get("name", "")).strip()
+        raw_price = body.get("purchase_price", "0")
+        if not brand:
+            return JSONResponse({"ok": False, "error": "brand_required"}, status_code=400)
+        if not model:
+            return JSONResponse({"ok": False, "error": "model_required"}, status_code=400)
+        if not name:
+            return JSONResponse({"ok": False, "error": "name_required"}, status_code=400)
+        try:
+            price = round(float(raw_price or 0), 2)
+        except (ValueError, TypeError):
+            return JSONResponse({"ok": False, "error": "invalid_price"}, status_code=400)
+
+        ok, err, product_id = create_product_with_barcode(brand, model, name, price, barcode)
+        if not ok:
+            return JSONResponse({"ok": False, "error": err}, status_code=400)
+        product = get_product_by_barcode_for_scan(barcode)
+        return JSONResponse({"ok": True, "created": True, "product": product})
 
 
 # ---------------- stock ----------------
