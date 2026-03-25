@@ -58,6 +58,7 @@
           <th>{{ t.price_tokens_col_label }}</th>
           <th>{{ t.price_tokens_col_mode }}</th>
           <th>{{ t.price_tokens_col_qty }}</th>
+          <th>{{ t.price_tokens_col_buy_price }}</th>
           <th>{{ t.price_tokens_col_created }}</th>
           <th>{{ t.price_tokens_col_last_seen }}</th>
           <th>{{ t.price_tokens_col_status }}</th>
@@ -96,6 +97,19 @@
             </form>
             {% else %}
             <span class="small text-muted">{{ t.price_tokens_qty_on if tok.show_qty else t.price_tokens_qty_off }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if not tok.revoked %}
+            <form method="post" action="/admin/price-tokens/toggle-buy-price" class="d-inline">
+              <input type="hidden" name="token_id" value="{{ tok.id }}">
+              <input type="hidden" name="show_buy_price" value="{{ 0 if tok.show_buy_price else 1 }}">
+              <button type="submit" class="btn btn-sm py-0 {{ 'btn-success' if tok.show_buy_price else 'btn-outline-secondary' }}">
+                {{ t.price_tokens_buy_price_on if tok.show_buy_price else t.price_tokens_buy_price_off }}
+              </button>
+            </form>
+            {% else %}
+            <span class="small text-muted">{{ t.price_tokens_buy_price_on if tok.show_buy_price else t.price_tokens_buy_price_off }}</span>
             {% endif %}
           </td>
           <td>{{ tok.created_at }}</td>
