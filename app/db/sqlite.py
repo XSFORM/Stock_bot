@@ -170,13 +170,23 @@ def _product_with_prices(row: Any) -> dict[str, Any]:
 
 
 def _apply_price_mode(product: dict[str, Any], mode: str) -> dict[str, Any]:
-    """Add computed price fields; always strip wholesale purchase price."""
+    """Add computed price fields and filter by mode.
+
+    SIMPLE mode: returns only the safe minimal subset for public display
+    (id, brand, model, name, barcode, price_wh25).  Internal/extended fields
+    such as price_wh10 and note are stripped.
+
+    FULL mode: returns all of the above plus price_wh10 and note.
+
+    In both modes the raw wh_price is always removed.
+    """
     wh = float(product.get("wh_price", 0) or 0)
     product["price_wh10"] = round(wh * 1.10, 4)
     product["price_wh25"] = round(wh * 1.25, 4)
     product.pop("wh_price", None)
     if (mode or "SIMPLE").upper() != "FULL":
         product.pop("price_wh10", None)
+        product.pop("note", None)
     return product
 
 
@@ -2686,12 +2696,14 @@ def search_products_for_price(
     Args:
         q: Search query string.
         limit: Maximum number of results (default 30).
-        mode: ``"SIMPLE"`` returns only the retail +25% price tier;
-              ``"FULL"`` returns all price tiers including the wholesale price.
+        mode: ``"SIMPLE"`` returns only the safe minimal subset (id, brand,
+              model, name, barcode, price_wh25); ``"FULL"`` additionally returns
+              price_wh10, note, and optionally buy_price.
         show_qty: When ``True`` each product dict will include a ``qty_total``
                   field with the sum of stock qty across all warehouses.
-        show_buy_price: When ``True`` each product dict will include a
-                        ``buy_price`` field with the purchase (warehouse) price.
+        show_buy_price: When ``True`` **and** mode is ``"FULL"``, each product
+                        dict will include a ``buy_price`` field with the
+                        purchase (warehouse) price.  Ignored in SIMPLE mode.
 
     Returns:
         List of product dicts with computed price fields filtered by *mode*.
@@ -2721,11 +2733,12 @@ def search_products_for_price(
             ).fetchall()
             qty_map = {r["product_id"]: float(r["total"]) for r in qty_rows}
         for r in rows:
-            wh = float(r["wh_price"] or 0) if show_buy_price else None
+            is_full = (mode or "SIMPLE").upper() == "FULL"
+            wh = float(r["wh_price"] or 0) if (show_buy_price and is_full) else None
             product = _apply_price_mode(dict(r), mode)
             if show_qty:
                 product["qty_total"] = qty_map.get(product["id"], 0.0)
-            if show_buy_price:
+            if show_buy_price and is_full:
                 product["buy_price"] = wh
             result.append(product)
         return result
