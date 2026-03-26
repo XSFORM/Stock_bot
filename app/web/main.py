@@ -390,9 +390,10 @@ def products_edit(
     wh_price: float = Form(...),
     model: str = Form(""),
     name: str = Form(""),
+    brand: str = Form(""),
     show_archived: int = Form(0),
 ):
-    ok, err = update_product_full(product_id, barcode, wh_price, model, name)
+    ok, err = update_product_full(product_id, barcode, wh_price, model, name, brand)
     msg = "product_updated" if ok else f"error:{err}"
     return RedirectResponse(url=f"/products?msg={msg}&show_archived={show_archived}", status_code=303)
 
