@@ -49,6 +49,37 @@ server {
     auth_basic "Stock Bot";
     auth_basic_user_file /etc/nginx/.htpasswd;
 
+    # Pocket Price PWA — token-based access, no Basic Auth prompt.
+    location /price {
+        auth_basic off;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    # Pocket Price API — token-based access, no Basic Auth prompt.
+    location /api/price {
+        auth_basic off;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    # Static assets (icons, images) used by Pocket Price PWA.
+    location /static/ {
+        auth_basic off;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    # All other routes (ERP UI, admin, products, stock, …) — Basic Auth required.
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host              \$host;
