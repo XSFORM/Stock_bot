@@ -64,7 +64,7 @@
                 <ul class="dropdown-menu dropdown-menu-end">
                   <li>
                     <button type="button" class="dropdown-item"
-                            onclick='openProductEditModal({{ p.id }}, {{ p.wh_price|tojson }}, {{ p.barcode|tojson }}, {{ p.model|tojson }}, {{ p.name|tojson }})'>{{ t.btn_edit }}</button>
+                            onclick='openProductEditModal({{ p.id }}, {{ p.wh_price|tojson }}, {{ p.barcode|tojson }}, {{ p.model|tojson }}, {{ p.name|tojson }}, {{ p.brand|tojson }})'>{{ t.btn_edit }}</button>
                   </li>
                   <li><hr class="dropdown-divider"></li>
                   <li>
@@ -250,12 +250,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
-function openProductEditModal(productId, currentPrice, barcode, model, name) {
+function openProductEditModal(productId, currentPrice, barcode, model, name, brand) {
   document.getElementById('pedit-product-id').value = productId;
   document.getElementById('pedit-wh-price').value = currentPrice;
   document.getElementById('pedit-barcode').value = barcode || '';
   document.getElementById('pedit-model').value = model || '';
   document.getElementById('pedit-name').value = name || '';
+  var brandSel = document.getElementById('pedit-brand');
+  if (brandSel) brandSel.value = brand || '';
   var modal = new bootstrap.Modal(document.getElementById('editProductModal'));
   modal.show();
 }
@@ -289,6 +291,14 @@ function openProductEditModal(productId, currentPrice, barcode, model, name) {
           <div class="mb-2">
             <label class="form-label form-label-sm">{{ t.lbl_name }}</label>
             <input type="text" class="form-control form-control-sm" name="name" id="pedit-name">
+          </div>
+          <div class="mb-2">
+            <label class="form-label form-label-sm">{{ t.lbl_brand }}</label>
+            <select class="form-select form-select-sm" name="brand" id="pedit-brand">
+              {% for b in brands %}
+                <option value="{{ b }}">{{ b }}</option>
+              {% endfor %}
+            </select>
           </div>
         </div>
         <div class="modal-footer py-2">

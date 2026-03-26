@@ -284,13 +284,25 @@ def update_product_full(
     wh_price: float,
     model: str,
     name: str,
+    brand: str = "",
 ) -> tuple[bool, str]:
     try:
         with _connect() as conn:
-            conn.execute(
-                "UPDATE products SET barcode = ?, wh_price = ?, model = ?, name = ? WHERE id = ?",
-                (barcode.strip(), wh_price, model.strip(), name.strip(), product_id),
-            )
+            if brand.strip():
+                row = conn.execute(
+                    "SELECT name FROM brands WHERE name = ?", (brand.strip(),)
+                ).fetchone()
+                if not row:
+                    return False, "brand_not_found"
+                conn.execute(
+                    "UPDATE products SET barcode = ?, wh_price = ?, model = ?, name = ?, brand = ? WHERE id = ?",
+                    (barcode.strip(), wh_price, model.strip(), name.strip(), brand.strip(), product_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE products SET barcode = ?, wh_price = ?, model = ?, name = ? WHERE id = ?",
+                    (barcode.strip(), wh_price, model.strip(), name.strip(), product_id),
+                )
             conn.commit()
         return True, ""
     except Exception as exc:
