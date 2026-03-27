@@ -238,6 +238,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "invoice_edit_purchase_price": "Purchase Price",
         "msg_invoice_updated": "Invoice updated successfully.",
         "msg_invoice_update_error": "Failed to update invoice: ",
+        "btn_delete_invoice": "Delete",
+        "confirm_delete_invoice": "Delete this invoice? Stock will be restored and client balance recalculated.",
+        "msg_invoice_deleted": "Invoice deleted.",
+        "msg_invoice_delete_error": "Failed to delete invoice: ",
         "invoice_edit_min_items": "At least one item is required.",
         "invoice_edit_select_product": "Please select a product for each item row.",
         # History page
@@ -671,6 +675,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "invoice_edit_purchase_price": "Цена закупки",
         "msg_invoice_updated": "Накладная успешно обновлена.",
         "msg_invoice_update_error": "Ошибка при обновлении накладной: ",
+        "btn_delete_invoice": "Удалить",
+        "confirm_delete_invoice": "Удалить накладную? Товар будет возвращён на склад, долг клиента пересчитан.",
+        "msg_invoice_deleted": "Накладная удалена.",
+        "msg_invoice_delete_error": "Ошибка при удалении накладной: ",
         "invoice_edit_min_items": "Необходима хотя бы одна позиция.",
         "invoice_edit_select_product": "Выберите товар для каждой позиции.",
         # History page
@@ -1105,6 +1113,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "invoice_edit_purchase_price": "Satyn alyş bahasy",
         "msg_invoice_updated": "Hasap-faktura üstünlikli täzelendi.",
         "msg_invoice_update_error": "Hasap-fakturani täzelemek başartmady: ",
+        "btn_delete_invoice": "Öçürmek",
+        "confirm_delete_invoice": "Hasap-fakturany öçürmelimi? Haryt anbara gaýtarylar, müşderi karzy täzeden hasaplanar.",
+        "msg_invoice_deleted": "Hasap-faktura öçürildi.",
+        "msg_invoice_delete_error": "Hasap-fakturany öçürmek başartmady: ",
         "invoice_edit_min_items": "Azyndan bir setir gerek.",
         "invoice_edit_select_product": "Her setir üçin haryt saýlaň.",
         # History page

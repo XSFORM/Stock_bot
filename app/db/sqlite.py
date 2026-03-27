@@ -1736,6 +1736,55 @@ def update_sale_invoice(
         return False, str(exc)
 
 
+def delete_sale_invoice(number: int) -> tuple[bool, str]:
+    """Delete a completed sale invoice: restore stock, remove items, delete invoice."""
+    try:
+        with _connect() as conn:
+            inv_row = conn.execute(
+                "SELECT i.id, i.cart_id FROM invoices i WHERE i.number = ?",
+                (number,),
+            ).fetchone()
+            if not inv_row:
+                return False, "invoice_not_found"
+            inv_id = inv_row["id"]
+            cart_id = inv_row["cart_id"]
+
+            cart_row = conn.execute(
+                "SELECT warehouse_code FROM carts WHERE id = ?", (cart_id,)
+            ).fetchone()
+            if not cart_row:
+                return False, "cart_not_found"
+            warehouse_code = cart_row["warehouse_code"]
+
+            items = conn.execute(
+                "SELECT product_id, qty FROM cart_items WHERE cart_id = ?",
+                (cart_id,),
+            ).fetchall()
+
+            for item in items:
+                conn.execute(
+                    "UPDATE stock SET qty = qty + ?"
+                    " WHERE warehouse_code = ? AND product_id = ?",
+                    (item["qty"], warehouse_code, item["product_id"]),
+                )
+                conn.execute(
+                    "INSERT INTO stock_ops"
+                    " (op_type, source, warehouse_code, product_id, qty)"
+                    " VALUES ('SALE_CANCEL', 'ADMIN', ?, ?, ?)",
+                    (warehouse_code, item["product_id"], item["qty"]),
+                )
+
+            conn.execute("DELETE FROM cart_items WHERE cart_id = ?", (cart_id,))
+            conn.execute("DELETE FROM invoices WHERE id = ?", (inv_id,))
+            conn.execute(
+                "UPDATE carts SET status = 'CANCELLED' WHERE id = ?", (cart_id,)
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
 # ── Receive invoices ──────────────────────────────────────────────────────────
 
 

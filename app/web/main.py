@@ -113,6 +113,7 @@ from app.db.sqlite import (
     get_sale_invoice_full,
     get_sale_invoice_items_full,
     update_sale_invoice,
+    delete_sale_invoice,
     get_receive_invoice_items_for_edit,
     update_receive_invoice,
     get_return_invoice_items_for_edit,
@@ -1150,6 +1151,22 @@ def invoice_sale_edit_post(
         except Exception:
             pass
     return RedirectResponse(url="/invoices?tab=sale&msg=invoice_updated", status_code=303)
+
+
+@app.post("/invoices/sale/{number}/delete")
+def invoice_sale_delete(number: int):
+    ok, err = delete_sale_invoice(number)
+    if not ok:
+        return RedirectResponse(
+            url=f"/invoices?tab=sale&msg=delete_error:{err}", status_code=303
+        )
+    try:
+        pdf_path = INVOICES_DIR / f"invoice_{number:06d}.pdf"
+        if pdf_path.exists():
+            pdf_path.unlink()
+    except Exception:
+        pass
+    return RedirectResponse(url="/invoices?tab=sale&msg=invoice_deleted", status_code=303)
 
 
 @app.get("/invoices/receive/{invoice_id}/edit", response_class=HTMLResponse)
