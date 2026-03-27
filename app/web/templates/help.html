@@ -28,6 +28,8 @@
       <li><a href="#ru-invoices">Накладные</a></li>
       <li><a href="#ru-history">История</a></li>
       <li><a href="#ru-admin">Настройки (Admin)</a></li>
+      <li><a href="#ru-pocket-price">Pocket Price</a></li>
+      <li><a href="#ru-pocket-catalog">Pocket Catalog</a></li>
       <li><a href="#ru-tips">Советы и частые ошибки</a></li>
       <li><a href="#ru-authors">Авторы</a></li>
     </ol>
@@ -53,8 +55,10 @@
         (например: Samsung, Artel, Sonifer).</li>
     <li><strong>Добавьте товары.</strong> В разделе <strong>Товары</strong> создайте карточки для каждого продукта:
         укажите бренд, модель, название и штрих-код.</li>
-    <li><strong>Создайте склады.</strong> В разделе <strong>Admin → Настройки</strong> добавьте склады (например:
-        «Основной склад», «Магазин»).</li>
+    <li><strong>Создайте склады.</strong> Склады создаются в разделе <strong>Приход</strong>: при создании нового
+        прихода в поле «Склад назначения» выберите «+ Новый склад» и введите код и название
+        (например: код <code>MAIN</code>, название «Основной склад»). После первого прихода склад
+        становится доступен во всей системе.</li>
     <li><strong>Добавьте клиентов.</strong> Перейдите в <strong>Клиенты</strong> и создайте карточки клиентов с именами
         и номерами телефонов.</li>
     <li><strong>Оприходуйте товар.</strong> В разделе <strong>Приход</strong> создайте новую операцию, выберите склад
@@ -183,7 +187,6 @@
   <h4 id="ru-admin" class="mt-4">13. Настройки (Admin)</h4>
   <p>Системные настройки и управление ERP.</p>
   <ul>
-    <li><strong>Склады:</strong> добавить/переименовать склады. Минимум 2 склада (основной и магазин — типичная схема).</li>
     <li><strong>Блокировка сайта (Site Lock):</strong> включить пароль для входа. Рекомендуется, если сервер доступен из интернета.</li>
     <li><strong>Язык интерфейса по умолчанию:</strong> EN / RU / TM.</li>
     <li><strong>Тема:</strong> светлая, тёмная или системная.</li>
@@ -192,8 +195,55 @@
     <li><strong>Токены (Price / Catalog):</strong> для доступа к публичному прайс-листу без пароля (для клиентов).</li>
   </ul>
 
-  {# 14. Tips #}
-  <h4 id="ru-tips" class="mt-4">14. Советы и частые ошибки</h4>
+  {# 14. Pocket Price #}
+  <h4 id="ru-pocket-price" class="mt-4">14. Pocket Price — публичный прайс-лист</h4>
+  <p>
+    Pocket Price — облегчённая страница просмотра актуальных цен и остатков. Она предназначена
+    для клиентов или сотрудников, которым нужно быстро узнать цену без доступа к основному ERP.
+  </p>
+  <p><strong>Как открыть:</strong></p>
+  <ul>
+    <li>Страница доступна по ссылке <code>/price?token=&lt;токен&gt;</code>.</li>
+    <li>Токен создаётся в <strong>Admin → Токены Price</strong>: нажмите «Создать токен», скопируйте ссылку
+        и передайте клиенту или сотруднику — пароль ERP не требуется.</li>
+  </ul>
+  <p><strong>Что умеет:</strong></p>
+  <ul>
+    <li>Поиск товара по названию, модели или штрих-коду.</li>
+    <li>Сканирование штрих-кода камерой телефона (требуется HTTPS).</li>
+    <li>Отображение цены продажи; опционально — количество в наличии и цена закупки (настраивается для каждого токена).</li>
+    <li>Работает как PWA: можно «установить» на главный экран смартфона.</li>
+  </ul>
+  <p><strong>Безопасность:</strong> любой, у кого есть ссылка, может просматривать прайс — не передавайте
+  токен посторонним. Отозвать или удалить токен можно в Admin → Токены Price.</p>
+
+  {# 15. Pocket Catalog #}
+  <h4 id="ru-pocket-catalog" class="mt-4">15. Pocket Catalog — мобильный каталог</h4>
+  <p>
+    Pocket Catalog — PWA-приложение для работы с каталогом товаров прямо на складе.
+    Сотрудник сканирует штрих-коды и обновляет цены закупки, не заходя в основной интерфейс ERP.
+  </p>
+  <p><strong>Как открыть:</strong></p>
+  <ul>
+    <li>Страница доступна по ссылке <code>/catalog?token=&lt;токен&gt;</code>.</li>
+    <li>Токен создаётся в <strong>Admin → Токены Catalog</strong>.</li>
+    <li>При первом открытии ссылки устройство <em>привязывается</em> к токену — повторная авторизация
+        не нужна, однако другое устройство с тем же токеном работать не будет (защита от утечки).</li>
+  </ul>
+  <p><strong>Что умеет:</strong></p>
+  <ul>
+    <li>Поиск товара по штрих-коду (ручной ввод или сканирование камерой).</li>
+    <li>Просмотр карточки товара: бренд, модель, название, остатки.</li>
+    <li>Обновление цены закупки прямо из каталога.</li>
+    <li>Добавление нового товара в каталог без входа в основной ERP.</li>
+  </ul>
+  <p><strong>Типичный сценарий:</strong> сотрудник на складе сканирует поступивший товар, смотрит остатки
+  и обновляет закупочную цену, не отвлекая менеджера на компьютере.</p>
+  <p><strong>Безопасность:</strong> токен привязан к конкретному устройству. Для смены устройства или
+  отзыва доступа используйте Admin → Токены Catalog.</p>
+
+  {# 16. Tips #}
+  <h4 id="ru-tips" class="mt-4">16. Советы и частые ошибки</h4>
   <ul>
     <li>✅ Всегда завершайте операцию кнопкой «Завершить» — незавершённый приход или продажа не влияет на остатки.</li>
     <li>✅ Перед продажей убедитесь, что товар есть на складе — система не позволит продать больше, чем есть в наличии.</li>
@@ -204,8 +254,8 @@
     <li>⚠️ Интернет обязателен. Если страница не загружается — проверьте соединение.</li>
   </ul>
 
-  {# 15. Authors #}
-  <h4 id="ru-authors" class="mt-4">15. Авторы</h4>
+  {# 17. Authors #}
+  <h4 id="ru-authors" class="mt-4">17. Авторы</h4>
   <p>
     <strong>Идея и разработка:</strong> <a href="mailto:berdyshka87@gmail.com">berdyshka87@gmail.com</a><br>
     <strong>Помощь ИИ:</strong> GitHub Copilot (AI-ассистент; не является официальной поддержкой GitHub)
@@ -241,6 +291,8 @@
       <li><a href="#tm-invoices">Hasap-fakturalar</a></li>
       <li><a href="#tm-history">Taryh</a></li>
       <li><a href="#tm-admin">Sazlamalar (Admin)</a></li>
+      <li><a href="#tm-pocket-price">Pocket Price</a></li>
+      <li><a href="#tm-pocket-catalog">Pocket Catalog</a></li>
       <li><a href="#tm-tips">Maslahatlar we ýalňyşlyklar</a></li>
       <li><a href="#tm-authors">Awtorlary</a></li>
     </ol>
@@ -267,8 +319,10 @@
         markalaryny goşuň (meselem: Samsung, Artel, Sonifer).</li>
     <li><strong>Harytlary goşuň.</strong> <strong>Harytlar</strong> bölüminde her önüm üçin kart dörediň:
         brendi, modeli, adyny we ştrik-kody görkeziň.</li>
-    <li><strong>Ammarlary dörediň.</strong> <strong>Admin → Sazlamalar</strong> bölümünde ammarlary goşuň
-        (meselem: «Esasy ammar», «Dükan»).</li>
+    <li><strong>Ammarlary dörediň.</strong> Ammarlar <strong>Kabul etmek</strong> bölüminde döredilýär:
+        täze kabul etmek döredilende «Baryş ammary» meýdanynda «+ Täze ammar» saýlaň we kod we ady
+        giriziň (meselem: kod <code>MAIN</code>, ady «Esasy ammar»). Ilkinji kabul etmeden soň ammar
+        ulgamda elýeterli bolýar.</li>
     <li><strong>Müşderileri goşuň.</strong> <strong>Müşderiler</strong> bölümine geçiň we müşderi kartlaryny
         at we telefon belgi bilen dörediň.</li>
     <li><strong>Haryt kabul ediň.</strong> <strong>Kabul etmek</strong> bölümünde täze amaly dörediň, ammary
@@ -382,15 +436,61 @@
   {# 13. Admin #}
   <h4 id="tm-admin" class="mt-4">13. Sazlamalar (Admin)</h4>
   <ul>
-    <li><strong>Ammarlar:</strong> ammar goşmak/adyny üýtgetmek.</li>
     <li><strong>Sahypa gulpy (Site Lock):</strong> giriş parolyny açmak.</li>
     <li><strong>Deslapky interfeýs dili:</strong> EN / RU / TM.</li>
     <li><strong>Tema:</strong> ýagty, garaňky ýa-da ulgam teması.</li>
     <li><strong>Ätiýaçlyk nusgasy:</strong> maglumat bazasyny döretmek ýa-da dikeltmek.</li>
   </ul>
 
-  {# 14. Tips #}
-  <h4 id="tm-tips" class="mt-4">14. Maslahatlar we ýalňyşlyklar</h4>
+  {# 14. Pocket Price #}
+  <h4 id="tm-pocket-price" class="mt-4">14. Pocket Price — jemgyýetçilik bahalar sanawy</h4>
+  <p>
+    Pocket Price — häzirki bahalary we galdyklary görmek üçin ýeňil sahypa. ERP-e girişsiz
+    müşderilere ýa-da işgärlere harydyň bahasyny çalt öwrenmäge niýetlenendir.
+  </p>
+  <p><strong>Nädip açmaly:</strong></p>
+  <ul>
+    <li>Sahypa <code>/price?token=&lt;token&gt;</code> salgy bilen açylýar.</li>
+    <li>Token <strong>Admin → Price Tokenleri</strong> bölümünde döredilýär: «Token dörediň» düwmesine basyň,
+        döredilen salgysy müşdere ýa-da işgäre iberiň — ERP paroly zerur däl.</li>
+  </ul>
+  <p><strong>Mümkinçilikleri:</strong></p>
+  <ul>
+    <li>Haryt adyny, modelini ýa-da ştrik-kody boýunça gözleg.</li>
+    <li>Telefon kamerasy arkaly ştrik-kody skanirlemek (HTTPS gerek).</li>
+    <li>Satyş bahasyny görmek; isleg boýunça — galdyk we satyn alyş bahasy (her token üçin aýratyn düzülýär).</li>
+    <li>PWA hökmünde işleýär: smartfonyň esasy ekranyna «gurnalyp» bilner.</li>
+  </ul>
+  <p><strong>Howpsuzlyk:</strong> salgysy bolan islendik adam bahalary görmäge mümkin — tokeni daşary adamlara bermäň.
+  Admin → Price Tokenleri bölümünde tokeni ýatyryp ýa-da pozup bolýar.</p>
+
+  {# 15. Pocket Catalog #}
+  <h4 id="tm-pocket-catalog" class="mt-4">15. Pocket Catalog — mobil katalog</h4>
+  <p>
+    Pocket Catalog — ammarda ştrik-kodlary skanirlemek we satyn alyş bahalaryny täzelemek üçin
+    PWA-goşundy. Işgär esasy ERP interfeýsine girmezden katalog bilen işläp bilýär.
+  </p>
+  <p><strong>Nädip açmaly:</strong></p>
+  <ul>
+    <li>Sahypa <code>/catalog?token=&lt;token&gt;</code> salgy bilen açylýar.</li>
+    <li>Token <strong>Admin → Catalog Tokenleri</strong> bölümünde döredilýär.</li>
+    <li>Salgy ilkinji gezek açylanda enjam tokene <em>baglanýar</em> — gaýtadan tassyklama gerek däl,
+        ýöne başga enjam şol token bilen işläp bilmez (syzdyrmakdan gorag).</li>
+  </ul>
+  <p><strong>Mümkinçilikleri:</strong></p>
+  <ul>
+    <li>Ştrik-kody boýunça gözleg (el bilen ýa-da kamera bilen).</li>
+    <li>Haryt kartoçkasyny görmek: brend, model, at, galdyklar.</li>
+    <li>Satyn alyş bahasyny katalogdan täzelemek.</li>
+    <li>Esasy ERP-e girmezden täze haryt goşmak.</li>
+  </ul>
+  <p><strong>Adaty ssenariý:</strong> ammardaky işgär gelen harydyň ştrik-kodyny skanirleýär, galdyklara
+  seredýär we satyn alyş bahasyny täzeleýär — kompýuterdäki menejeri bölmeýär.</p>
+  <p><strong>Howpsuzlyk:</strong> token belli bir enjama baglanýar. Enjamlary çalyşmak ýa-da girişi ýatyrmak
+  üçin Admin → Catalog Tokenleri bölümini ulanyň.</p>
+
+  {# 16. Tips #}
+  <h4 id="tm-tips" class="mt-4">16. Maslahatlar we ýalňyşlyklar</h4>
   <ul>
     <li>✅ Amaly hemişe «Tamamlamak» düwmesi bilen tamamlaň — tamamlanmadyk kabul etmek ýa-da satyş galdyklara täsir etmeýär.</li>
     <li>✅ Satmazdan ozal harydyň ammarda bardygyna göz ýetiriň — ulgam mümkin bolan mukdardan köp satmaga rugsat bermeýär.</li>
@@ -400,8 +500,8 @@
     <li>⚠️ Internet hökmandyr. Sahypa ýüklenmese — baglanyşygy barlaň.</li>
   </ul>
 
-  {# 15. Authors #}
-  <h4 id="tm-authors" class="mt-4">15. Awtorlary</h4>
+  {# 17. Authors #}
+  <h4 id="tm-authors" class="mt-4">17. Awtorlary</h4>
   <p>
     <strong>Pikir we işläp düzmek:</strong> <a href="mailto:berdyshka87@gmail.com">berdyshka87@gmail.com</a><br>
     <strong>AI kömegi:</strong> GitHub Copilot (AI-kömekçi; GitHub-yň resmi goldawy däl)
@@ -437,6 +537,8 @@
       <li><a href="#en-invoices">Invoices</a></li>
       <li><a href="#en-history">History</a></li>
       <li><a href="#en-admin">Admin settings</a></li>
+      <li><a href="#en-pocket-price">Pocket Price</a></li>
+      <li><a href="#en-pocket-catalog">Pocket Catalog</a></li>
       <li><a href="#en-tips">Tips &amp; common mistakes</a></li>
       <li><a href="#en-authors">Authors</a></li>
     </ol>
@@ -463,8 +565,10 @@
         your products (e.g. Samsung, Artel, Sonifer).</li>
     <li><strong>Add products.</strong> In the <strong>Products</strong> section, create a card for each product:
         set the brand, model, name and barcode.</li>
-    <li><strong>Create warehouses.</strong> In <strong>Admin → Settings</strong> add warehouses (e.g.
-        «Main warehouse», «Shop»).</li>
+    <li><strong>Create warehouses.</strong> Warehouses are created in the <strong>Receive</strong> section:
+        when starting a new receive operation, select «+ New warehouse» in the «Destination warehouse»
+        field and enter a code and name (e.g. code <code>MAIN</code>, name «Main warehouse»). Once the
+        first receive is completed the warehouse becomes available throughout the system.</li>
     <li><strong>Add clients.</strong> Go to <strong>Clients</strong> and create client cards with names and
         phone numbers.</li>
     <li><strong>Receive stock.</strong> In the <strong>Receive</strong> section create a new operation, choose
@@ -592,8 +696,6 @@
   {# 13. Admin #}
   <h4 id="en-admin" class="mt-4">13. Admin settings</h4>
   <ul>
-    <li><strong>Warehouses:</strong> add / rename warehouses. A minimum of two warehouses is typical
-        (e.g. «Main» and «Shop»).</li>
     <li><strong>Site Lock:</strong> enable a login password. Recommended when your server is accessible
         from the internet.</li>
     <li><strong>Default UI language:</strong> EN / RU / TM.</li>
@@ -604,8 +706,55 @@
         (for clients).</li>
   </ul>
 
-  {# 14. Tips #}
-  <h4 id="en-tips" class="mt-4">14. Tips &amp; common mistakes</h4>
+  {# 14. Pocket Price #}
+  <h4 id="en-pocket-price" class="mt-4">14. Pocket Price — public price list</h4>
+  <p>
+    Pocket Price is a lightweight page for viewing current prices and stock levels. It is designed
+    for clients or staff who need to quickly look up a price without accessing the main ERP.
+  </p>
+  <p><strong>How to access:</strong></p>
+  <ul>
+    <li>The page is available at <code>/price?token=&lt;your_token&gt;</code>.</li>
+    <li>Tokens are created in <strong>Admin → Price Tokens</strong>: click «Create token», then copy the
+        generated link and send it to the client or staff member — no ERP password needed.</li>
+  </ul>
+  <p><strong>Features:</strong></p>
+  <ul>
+    <li>Search products by name, model or barcode.</li>
+    <li>Scan barcodes with a phone camera (HTTPS required).</li>
+    <li>View sale price; optionally show stock quantity and purchase price — configurable per token.</li>
+    <li>Works as a PWA: can be «installed» on a smartphone home screen.</li>
+  </ul>
+  <p><strong>Security:</strong> anyone with the link can view the price list — do not share the token with
+  unauthorised people. Tokens can be revoked or deleted in Admin → Price Tokens.</p>
+
+  {# 15. Pocket Catalog #}
+  <h4 id="en-pocket-catalog" class="mt-4">15. Pocket Catalog — mobile catalogue</h4>
+  <p>
+    Pocket Catalog is a PWA for working with the product catalogue on the warehouse floor.
+    Staff can scan barcodes and update purchase prices without logging into the main ERP.
+  </p>
+  <p><strong>How to access:</strong></p>
+  <ul>
+    <li>The page is available at <code>/catalog?token=&lt;your_token&gt;</code>.</li>
+    <li>Tokens are created in <strong>Admin → Catalog Tokens</strong>.</li>
+    <li>On the first visit the device is <em>bound</em> to the token — no further login is needed,
+        but another device with the same token will be rejected (prevents token leaks).</li>
+  </ul>
+  <p><strong>Features:</strong></p>
+  <ul>
+    <li>Look up products by barcode (manual entry or camera scan).</li>
+    <li>View product card: brand, model, name, stock balances.</li>
+    <li>Update the purchase price directly from the catalogue.</li>
+    <li>Add a new product to the catalogue without accessing the main ERP.</li>
+  </ul>
+  <p><strong>Typical use case:</strong> a warehouse worker scans incoming goods, checks balances, and
+  updates the purchase price — without interrupting the office manager.</p>
+  <p><strong>Security:</strong> the token is bound to a specific device. To change devices or revoke
+  access use Admin → Catalog Tokens.</p>
+
+  {# 16. Tips #}
+  <h4 id="en-tips" class="mt-4">16. Tips &amp; common mistakes</h4>
   <ul>
     <li>✅ Always finish an operation with the «Finish» button — an unfinished receive or sale does not
         affect stock balances.</li>
@@ -619,8 +768,8 @@
     <li>⚠️ Internet is required. If the page does not load — check your connection.</li>
   </ul>
 
-  {# 15. Authors #}
-  <h4 id="en-authors" class="mt-4">15. Authors</h4>
+  {# 17. Authors #}
+  <h4 id="en-authors" class="mt-4">17. Authors</h4>
   <p>
     <strong>Idea &amp; development:</strong> <a href="mailto:berdyshka87@gmail.com">berdyshka87@gmail.com</a><br>
     <strong>AI assistance:</strong> GitHub Copilot (AI assistant; not an official GitHub support offering)
