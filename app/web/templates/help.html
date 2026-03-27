@@ -1,0 +1,636 @@
+{% extends "base.html" %}
+{% block content %}
+
+{# ── Language-specific content blocks ── #}
+
+{% if ui_lang == 'ru' %}
+
+{# ════════════════════════ RUSSIAN ════════════════════════ #}
+<div class="bg-white p-4 rounded shadow-sm" id="help-top">
+
+  <h2 class="mb-1">📖 Справочник ERP</h2>
+  <p class="text-muted mb-4">Полное руководство пользователя</p>
+
+  {# Table of contents #}
+  <nav class="mb-5 p-3 border rounded bg-light">
+    <strong>Содержание</strong>
+    <ol class="mb-0 mt-2">
+      <li><a href="#ru-about">О системе</a></li>
+      <li><a href="#ru-quickstart">Быстрый старт</a></li>
+      <li><a href="#ru-products">Товары</a></li>
+      <li><a href="#ru-stock">Склад</a></li>
+      <li><a href="#ru-receive">Приход</a></li>
+      <li><a href="#ru-move">Перемещение</a></li>
+      <li><a href="#ru-sale">Продажа</a></li>
+      <li><a href="#ru-return">Возврат</a></li>
+      <li><a href="#ru-brands">Бренды</a></li>
+      <li><a href="#ru-clients">Клиенты</a></li>
+      <li><a href="#ru-invoices">Накладные</a></li>
+      <li><a href="#ru-history">История</a></li>
+      <li><a href="#ru-admin">Настройки (Admin)</a></li>
+      <li><a href="#ru-tips">Советы и частые ошибки</a></li>
+      <li><a href="#ru-authors">Авторы</a></li>
+    </ol>
+  </nav>
+
+  {# 1. About #}
+  <h4 id="ru-about">1. О системе</h4>
+  <p>
+    Эта ERP создана специально для малого бизнеса. Здесь нет сотни ненужных функций — только
+    то, что реально нужно для ежедневной торговли: учёт товаров, склады, приход, продажи, накладные и долги клиентов.
+  </p>
+  <div class="alert alert-warning">
+    <strong>⚠️ Важно:</strong> для работы системы необходимо постоянное подключение к интернету.
+    Все данные хранятся на вашем сервере и синхронизируются через браузер в режиме реального времени.
+  </div>
+
+  {# 2. Quick start #}
+  <h4 id="ru-quickstart" class="mt-4">2. Быстрый старт — с чего начать</h4>
+  <ol>
+    <li><strong>Войдите в систему.</strong> Откройте браузер, перейдите по адресу вашего сервера.
+        Если включена блокировка (site lock), введите пароль на странице «Войти».</li>
+    <li><strong>Создайте бренды.</strong> Перейдите в раздел <strong>Бренды</strong> и добавьте торговые марки товаров
+        (например: Samsung, Artel, Sonifer).</li>
+    <li><strong>Добавьте товары.</strong> В разделе <strong>Товары</strong> создайте карточки для каждого продукта:
+        укажите бренд, модель, название и штрих-код.</li>
+    <li><strong>Создайте склады.</strong> В разделе <strong>Admin → Настройки</strong> добавьте склады (например:
+        «Основной склад», «Магазин»).</li>
+    <li><strong>Добавьте клиентов.</strong> Перейдите в <strong>Клиенты</strong> и создайте карточки клиентов с именами
+        и номерами телефонов.</li>
+    <li><strong>Оприходуйте товар.</strong> В разделе <strong>Приход</strong> создайте новую операцию, выберите склад
+        и источник, добавьте товары с количеством и ценой закупки.</li>
+    <li><strong>Сделайте продажу.</strong> В разделе <strong>Продажа</strong> выберите клиента, добавьте товары,
+        укажите цену продажи и завершите — система сформирует накладную.</li>
+    <li><strong>Следите за остатками.</strong> Раздел <strong>Склад</strong> показывает актуальные остатки по каждому товару
+        и складу в реальном времени.</li>
+  </ol>
+
+  {# 3. Products #}
+  <h4 id="ru-products" class="mt-4">3. Товары</h4>
+  <p>Каталог всех ваших продуктов. Каждый товар идентифицируется сочетанием «Бренд + Модель».</p>
+  <p><strong>Что можно делать:</strong></p>
+  <ul>
+    <li>Добавить новый товар: кнопка «Добавить товар» — выберите бренд, укажите модель, название и штрих-код.</li>
+    <li>Редактировать товар: нажмите кнопку ✏️ напротив товара — можно изменить бренд, модель, название, штрих-код, цену прихода.</li>
+    <li>Архивировать товар: если товар больше не продаётся, его можно скрыть из списка (архивировать), не удаляя историю.</li>
+    <li>Поиск: используйте строку поиска по бренду/модели/названию.</li>
+    <li>Показать/скрыть архивные товары — переключатель в верхней части страницы.</li>
+  </ul>
+  <p><strong>Совет:</strong> называйте модели единообразно (например, всегда латиницей: <code>SF-500</code>),
+  чтобы поиск работал точнее.</p>
+
+  {# 4. Stock #}
+  <h4 id="ru-stock" class="mt-4">4. Склад</h4>
+  <p>Показывает текущие остатки товаров по каждому складу. Здесь нельзя напрямую изменить количество — остатки
+  меняются только через операции: <em>Приход, Перемещение, Продажа, Возврат</em>.</p>
+  <ul>
+    <li>Фильтрация по складу — выберите нужный склад в выпадающем списке вверху.</li>
+    <li>Скачать XLSX — получить текущие остатки в формате Excel.</li>
+    <li>В строке каждого товара видно: количество, цену закупки (wh_price) и итоговую стоимость остатка.</li>
+  </ul>
+  <p><strong>STK</strong> в правом верхнем углу навигации — это общая стоимость всех товаров на всех складах по цене закупки.</p>
+
+  {# 5. Receive #}
+  <h4 id="ru-receive" class="mt-4">5. Приход</h4>
+  <p>Операция оприходования: товар поступает на склад от поставщика или из другого источника.</p>
+  <p><strong>Пошагово:</strong></p>
+  <ol>
+    <li>Нажмите «Новый приход».</li>
+    <li>Выберите <strong>склад назначения</strong> (куда поступит товар).</li>
+    <li>Выберите <strong>источник</strong> (поставщик, перемещение и т.д.).</li>
+    <li>Нажмите «Добавить товар» и выберите из каталога нужный.</li>
+    <li>Укажите <strong>количество</strong> и <strong>цену закупки (USD)</strong>.</li>
+    <li>Повторите для каждого товара в партии.</li>
+    <li>Нажмите «Завершить» — остатки обновятся автоматически, будет создан документ XLSX.</li>
+  </ol>
+  <p><strong>Важно:</strong> цена закупки влияет на STK (стоимость склада) и на расчёт прибыли при последующей продаже.</p>
+
+  {# 6. Move #}
+  <h4 id="ru-move" class="mt-4">6. Перемещение (Move / Move all)</h4>
+  <p>Перемещение товара между складами.</p>
+  <ul>
+    <li><strong>Move</strong> — выбираете конкретный товар и количество для перемещения с одного склада на другой.</li>
+    <li><strong>Move all</strong> — перемещает весь ассортимент (все позиции) с одного склада на другой.
+        Удобно, если нужно «отправить всё из основного склада в магазин».</li>
+  </ul>
+  <p><strong>Совет:</strong> используйте Move all в начале рабочего дня для быстрого пополнения торговой точки.</p>
+
+  {# 7. Sale #}
+  <h4 id="ru-sale" class="mt-4">7. Продажа (Sale)</h4>
+  <p>Создание накладной на продажу товара клиенту.</p>
+  <p><strong>Пошагово:</strong></p>
+  <ol>
+    <li>Выберите <strong>клиента</strong> из списка.</li>
+    <li>Выберите <strong>склад</strong>, с которого продаёте.</li>
+    <li>Нажмите «Добавить товар», выберите товар, укажите <strong>количество</strong> и <strong>цену продажи (USD)</strong>.</li>
+    <li>Повторите для всех позиций.</li>
+    <li>Нажмите «Завершить» — накладная создана. Остатки снижены, долг клиента увеличен на сумму продажи.</li>
+  </ol>
+  <p>После завершения продажи можно скачать накладную в XLSX или просмотреть в браузере.</p>
+  <p><strong>DEB</strong> в правом верхнем углу навигации — суммарный долг всех клиентов по всем продажам.</p>
+
+  {# 8. Return #}
+  <h4 id="ru-return" class="mt-4">8. Возврат (Return)</h4>
+  <p>Оформление возврата товара от клиента. Товар возвращается обратно на склад, долг клиента уменьшается.</p>
+  <ol>
+    <li>Выберите клиента.</li>
+    <li>Выберите склад, на который вернётся товар.</li>
+    <li>Добавьте позиции и укажите количество для возврата.</li>
+    <li>Завершите операцию — остатки пересчитаются, долг клиента скорректируется.</li>
+  </ol>
+
+  {# 9. Brands #}
+  <h4 id="ru-brands" class="mt-4">9. Бренды</h4>
+  <p>Справочник торговых марок. Каждый товар должен принадлежать бренду.</p>
+  <ul>
+    <li>Добавить бренд: укажите название (например, «Artel» или «Xiaomi»).</li>
+    <li>Редактировать название бренда.</li>
+    <li>Удалить бренд — только если к нему не привязан ни один товар.</li>
+  </ul>
+  <p><strong>Совет:</strong> создайте бренды перед добавлением товаров — иначе список выбора будет пустым.</p>
+
+  {# 10. Clients #}
+  <h4 id="ru-clients" class="mt-4">10. Клиенты</h4>
+  <p>Справочник покупателей. Здесь хранится информация о каждом клиенте и его текущий долг.</p>
+  <ul>
+    <li>Добавить клиента: имя и номер телефона.</li>
+    <li>Редактировать: изменить имя, телефон.</li>
+    <li>Долг клиента (Debt USD) — сумма неоплаченных накладных. Изменяется автоматически при продаже и возврате.</li>
+    <li>Архивировать клиента — скрыть неактивного клиента, не удаляя историю.</li>
+  </ul>
+
+  {# 11. Invoices #}
+  <h4 id="ru-invoices" class="mt-4">11. Накладные (Invoices)</h4>
+  <p>Список всех созданных документов: накладные продажи и возвраты.</p>
+  <ul>
+    <li>Просмотр: нажмите «Просмотреть» рядом с накладной — откроется страница с деталями.</li>
+    <li>Скачать XLSX: получить накладную в формате Excel для печати или передачи клиенту.</li>
+    <li>Отменить накладную: если продажа не состоялась после создания накладной, можно отменить её.
+        Товар вернётся на склад, долг клиента уменьшится.</li>
+    <li>Фильтрация по клиенту или дате для быстрого поиска нужной накладной.</li>
+  </ul>
+
+  {# 12. History #}
+  <h4 id="ru-history" class="mt-4">12. История (History)</h4>
+  <p>Полный журнал всех движений товаров: приходы, продажи, возвраты. Позволяет отследить любую операцию.</p>
+  <ul>
+    <li>Поиск по ключевому слову (бренд, модель, номер накладной, клиент).</li>
+    <li>Для каждой записи указано: дата/время, тип операции, товар, количество, цена, склад, контрагент.</li>
+    <li>Скачать XLSX или просмотреть документ прямо из истории.</li>
+  </ul>
+
+  {# 13. Admin #}
+  <h4 id="ru-admin" class="mt-4">13. Настройки (Admin)</h4>
+  <p>Системные настройки и управление ERP.</p>
+  <ul>
+    <li><strong>Склады:</strong> добавить/переименовать склады. Минимум 2 склада (основной и магазин — типичная схема).</li>
+    <li><strong>Блокировка сайта (Site Lock):</strong> включить пароль для входа. Рекомендуется, если сервер доступен из интернета.</li>
+    <li><strong>Язык интерфейса по умолчанию:</strong> EN / RU / TM.</li>
+    <li><strong>Тема:</strong> светлая, тёмная или системная.</li>
+    <li><strong>Фон:</strong> включить/выключить фоновое изображение, настроить затемнение.</li>
+    <li><strong>Резервная копия:</strong> создать или восстановить резервную копию базы данных.</li>
+    <li><strong>Токены (Price / Catalog):</strong> для доступа к публичному прайс-листу без пароля (для клиентов).</li>
+  </ul>
+
+  {# 14. Tips #}
+  <h4 id="ru-tips" class="mt-4">14. Советы и частые ошибки</h4>
+  <ul>
+    <li>✅ Всегда завершайте операцию кнопкой «Завершить» — незавершённый приход или продажа не влияет на остатки.</li>
+    <li>✅ Перед продажей убедитесь, что товар есть на складе — система не позволит продать больше, чем есть в наличии.</li>
+    <li>✅ Используйте штрих-коды — это ускоряет добавление товаров в накладную и исключает ошибки.</li>
+    <li>✅ Делайте резервную копию базы данных регулярно через Admin → Резервная копия.</li>
+    <li>⚠️ Не удаляйте товары, которые уже участвовали в продажах — лучше архивируйте их.</li>
+    <li>⚠️ Если после отмены накладной остатки не совпадают — проверьте историю: возможно, была ещё одна операция с тем же товаром.</li>
+    <li>⚠️ Интернет обязателен. Если страница не загружается — проверьте соединение.</li>
+  </ul>
+
+  {# 15. Authors #}
+  <h4 id="ru-authors" class="mt-4">15. Авторы</h4>
+  <p>
+    <strong>Идея и разработка:</strong> <a href="mailto:berdyshka87@gmail.com">berdyshka87@gmail.com</a><br>
+    <strong>Помощь ИИ:</strong> GitHub Copilot (AI-ассистент; не является официальной поддержкой GitHub)
+  </p>
+
+  <div class="mt-4 text-end">
+    <a href="#help-top" class="btn btn-sm btn-outline-secondary">↑ Наверх</a>
+  </div>
+</div>
+
+{% elif ui_lang == 'tm' %}
+
+{# ════════════════════════ TURKMEN ════════════════════════ #}
+<div class="bg-white p-4 rounded shadow-sm" id="help-top">
+
+  <h2 class="mb-1">📖 ERP Kömek Gollanmasy</h2>
+  <p class="text-muted mb-4">Doly ulanyjy gollanmasy</p>
+
+  {# Table of contents #}
+  <nav class="mb-5 p-3 border rounded bg-light">
+    <strong>Mazmuny</strong>
+    <ol class="mb-0 mt-2">
+      <li><a href="#tm-about">Ulgam hakynda</a></li>
+      <li><a href="#tm-quickstart">Çalt başlangyç</a></li>
+      <li><a href="#tm-products">Harytlar</a></li>
+      <li><a href="#tm-stock">Ammar</a></li>
+      <li><a href="#tm-receive">Kabul etmek</a></li>
+      <li><a href="#tm-move">Geçirmek</a></li>
+      <li><a href="#tm-sale">Satyş</a></li>
+      <li><a href="#tm-return">Yzyna gaýtarmak</a></li>
+      <li><a href="#tm-brands">Brendler</a></li>
+      <li><a href="#tm-clients">Müşderiler</a></li>
+      <li><a href="#tm-invoices">Hasap-fakturalar</a></li>
+      <li><a href="#tm-history">Taryh</a></li>
+      <li><a href="#tm-admin">Sazlamalar (Admin)</a></li>
+      <li><a href="#tm-tips">Maslahatlar we ýalňyşlyklar</a></li>
+      <li><a href="#tm-authors">Awtorlary</a></li>
+    </ol>
+  </nav>
+
+  {# 1. About #}
+  <h4 id="tm-about">1. Ulgam hakynda</h4>
+  <p>
+    Bu ERP kiçi işewürlik üçin döredildi. Bu ýerde ýüzlerçe gereksiz funksiýa ýok — diňe gündelik söwda üçin
+    zerur bolan zatlary öz içine alýar: haryt hasaby, ammarlar, kabul etmek, satyş, hasap-fakturalar we
+    müşderi bergisi.
+  </p>
+  <div class="alert alert-warning">
+    <strong>⚠️ Möhüm:</strong> ulgamyň işlemegi üçin hemişe internet baglanyşygy zerurdyr.
+    Ähli maglumatlar serweriňizde saklanýar we brauzer arkaly hakyky wagtda sinhronlaşdyrylýar.
+  </div>
+
+  {# 2. Quick start #}
+  <h4 id="tm-quickstart" class="mt-4">2. Çalt başlangyç — nireden başlamaly</h4>
+  <ol>
+    <li><strong>Ulgama giriň.</strong> Brauzeri açyň we serwer salgyňyza geçiň.
+        Eger gulp (site lock) açyk bolsa, «Giriş» sahypasynda parol giriziň.</li>
+    <li><strong>Brendleri dörediň.</strong> <strong>Brendler</strong> bölümine geçiň we harytlaryň söwda
+        markalaryny goşuň (meselem: Samsung, Artel, Sonifer).</li>
+    <li><strong>Harytlary goşuň.</strong> <strong>Harytlar</strong> bölüminde her önüm üçin kart dörediň:
+        brendi, modeli, adyny we ştrik-kody görkeziň.</li>
+    <li><strong>Ammarlary dörediň.</strong> <strong>Admin → Sazlamalar</strong> bölümünde ammarlary goşuň
+        (meselem: «Esasy ammar», «Dükan»).</li>
+    <li><strong>Müşderileri goşuň.</strong> <strong>Müşderiler</strong> bölümine geçiň we müşderi kartlaryny
+        at we telefon belgi bilen dörediň.</li>
+    <li><strong>Haryt kabul ediň.</strong> <strong>Kabul etmek</strong> bölümünde täze amaly dörediň, ammary
+        we çeşmäni saýlaň, harytlary mukdar we satyn alyş bahasy bilen goşuň.</li>
+    <li><strong>Satyş ediň.</strong> <strong>Satyş</strong> bölümünde müşderi saýlaň, harytlary goşuň,
+        satyş bahasyny görkeziň we tamamlaň — ulgam hasap-faktura döreder.</li>
+    <li><strong>Galdyklary gözegçilik ediň.</strong> <strong>Ammar</strong> bölümi her harytdaky we ammardaky
+        häzirki galdyklary hakyky wagtda görkezýär.</li>
+  </ol>
+
+  {# 3. Products #}
+  <h4 id="tm-products" class="mt-4">3. Harytlar</h4>
+  <p>Ähli önümleriňiziň katalogy. Her haryt «Brend + Model» kombinasiýasy bilen kesgitlenýär.</p>
+  <ul>
+    <li>Täze haryt goşmak: «Haryt goş» düwmesine basyň — brend saýlaň, model, at we ştrik-kody görkeziň.</li>
+    <li>Haryt redaktirlemek: ✏️ düwmesine basyň — brendi, modeli, ady, ştrik-kody we satyn alyş bahasyny üýtgedip bolýar.</li>
+    <li>Haryt arhiwlemek: haryt artyk satylmaýan bolsa, taryhy pozmadan ony sanawdan gizläp bolýar.</li>
+    <li>Gözleg: brend/model/at boýunça gözleg setirini ulanyň.</li>
+  </ul>
+
+  {# 4. Stock #}
+  <h4 id="tm-stock" class="mt-4">4. Ammar</h4>
+  <p>Her ammardaky haryt galdyklaryny görkezýär. Mukdary bu ýerde göni üýtgedip bolmaýar — galdyklar diňe
+  amallar arkaly üýtgeýär: <em>Kabul etmek, Geçirmek, Satyş, Yzyna gaýtarmak</em>.</p>
+  <ul>
+    <li>Ammar boýunça süzgüç — ýokarky sanawdan zerur ammary saýlaň.</li>
+    <li>XLSX ýüklemek — häzirki galdyklary Excel formatynda almak.</li>
+  </ul>
+
+  {# 5. Receive #}
+  <h4 id="tm-receive" class="mt-4">5. Kabul etmek</h4>
+  <p>Haryt üpjün edijiden ýa-da başga çeşmeden ammara gelýär.</p>
+  <ol>
+    <li>«Täze kabul etmek» düwmesine basyň.</li>
+    <li><strong>Ammar</strong> saýlaň (haryt geljek ýer).</li>
+    <li><strong>Çeşme</strong> saýlaň (üpjün ediji, geçiriş we ş.m.).</li>
+    <li>«Haryt goş» düwmesine basyň we katalogdan zeruryny saýlaň.</li>
+    <li><strong>Mukdary</strong> we <strong>satyn alyş bahasyny (USD)</strong> görkeziň.</li>
+    <li>Partiýadaky her haryt üçin gaýtalaň.</li>
+    <li>«Tamamlamak» düwmesine basyň — galdyklar awtomatik täzelener, XLSX resminamasy dörediler.</li>
+  </ol>
+
+  {# 6. Move #}
+  <h4 id="tm-move" class="mt-4">6. Geçirmek</h4>
+  <p>Harytlary ammarlar arasynda geçirmek.</p>
+  <ul>
+    <li><strong>Geçirmek</strong> — belli bir haryt we mukdar üçin bir ammardan beýlekisine geçirmek.</li>
+    <li><strong>Hemmesini geçir</strong> — bir ammardan beýlekisine ähli assortimenti geçirýär.
+        Söwda nokadyny çalt doldurmak üçin amatlydyr.</li>
+  </ul>
+
+  {# 7. Sale #}
+  <h4 id="tm-sale" class="mt-4">7. Satyş</h4>
+  <p>Müşderi üçin satyş hasap-fakturasy döretmek.</p>
+  <ol>
+    <li>Sanawdan <strong>müşderi</strong> saýlaň.</li>
+    <li>Satyş edýän <strong>ammary</strong> saýlaň.</li>
+    <li>«Haryt goş» düwmesine basyň, haryt saýlaň, <strong>mukdar</strong> we <strong>satyş bahasyny (USD)</strong> görkeziň.</li>
+    <li>Ähli pozisiýalar üçin gaýtalaň.</li>
+    <li>«Tamamlamak» düwmesine basyň — hasap-faktura döredildi. Galdyklar azaldy, müşderiniň bergisi satyş möçberinde artar.</li>
+  </ol>
+
+  {# 8. Return #}
+  <h4 id="tm-return" class="mt-4">8. Yzyna gaýtarmak</h4>
+  <p>Müşderiden haryt yzyna gaýtarmak. Haryt ammara gaýtýar, müşderiniň bergisi azalýar.</p>
+  <ol>
+    <li>Müşderi saýlaň.</li>
+    <li>Haryt gaýtjak ammary saýlaň.</li>
+    <li>Pozisiýalary goşuň we yzyna gaýtarjak mukdary görkeziň.</li>
+    <li>Amaly tamamlaň — galdyklar täzeden hasaplanar, müşderiniň bergisi sazlanar.</li>
+  </ol>
+
+  {# 9. Brands #}
+  <h4 id="tm-brands" class="mt-4">9. Brendler</h4>
+  <p>Söwda markalarynyň sanawy. Her haryt bir brende degişli bolmalydyr.</p>
+  <ul>
+    <li>Brend goşmak: at görkeziň (meselem, «Artel» ýa-da «Xiaomi»).</li>
+    <li>Brend adyny redaktirlemek.</li>
+    <li>Brendy pozmak — diňe oňa haryt baglanmadyk bolsa mümkindir.</li>
+  </ul>
+
+  {# 10. Clients #}
+  <h4 id="tm-clients" class="mt-4">10. Müşderiler</h4>
+  <p>Alyjylaryň sanawy. Bu ýerde her müşderiniň maglumaty we häzirki bergisi saklanýar.</p>
+  <ul>
+    <li>Müşderi goşmak: at we telefon belgisi.</li>
+    <li>Redaktirlemek: ady, telefony üýtgetmek.</li>
+    <li>Bergisi (Debt USD) — tölenmedik hasap-fakturaların jemi. Satyş we yzyna gaýtarmada awtomatik üýtgeýär.</li>
+    <li>Müşderi arhiwlemek — taryhy pozmadan işjeň däl müşderini gizlemek.</li>
+  </ul>
+
+  {# 11. Invoices #}
+  <h4 id="tm-invoices" class="mt-4">11. Hasap-fakturalar</h4>
+  <p>Döredilen ähli resminamalaryň sanawy: satyş hasap-fakturaları we yzyna gaýtarmalar.</p>
+  <ul>
+    <li>Görmek: hasap-fakturayň ýanyndaky «Görmek» düwmesine basyň — jikme-jik sahypa açylar.</li>
+    <li>XLSX ýüklemek: müşderi üçin çap etmek ýa-da bermek üçin Excel formatynda almak.</li>
+    <li>Hasap-fakturany ýatyrmak: hasap-faktura döredilenden soňra satyş bolmadyk bolsa ony ýatyryp bolýar.
+        Haryt ammara gaýtýar, müşderiniň bergisi azalýar.</li>
+  </ul>
+
+  {# 12. History #}
+  <h4 id="tm-history" class="mt-4">12. Taryh</h4>
+  <p>Ähli haryt hereketleriniň doly žurnaly: kabul etmek, satyş, yzyna gaýtarmak.</p>
+  <ul>
+    <li>Açar söz boýunça gözleg (brend, model, hasap-faktura belgisi, müşderi).</li>
+    <li>Her ýazgy üçin: sene/wagt, amal görnüşi, haryt, mukdar, baha, ammar, garşy tarap.</li>
+    <li>Tarypdan XLSX ýüklemek ýa-da resminamany görmek.</li>
+  </ul>
+
+  {# 13. Admin #}
+  <h4 id="tm-admin" class="mt-4">13. Sazlamalar (Admin)</h4>
+  <ul>
+    <li><strong>Ammarlar:</strong> ammar goşmak/adyny üýtgetmek.</li>
+    <li><strong>Sahypa gulpy (Site Lock):</strong> giriş parolyny açmak.</li>
+    <li><strong>Deslapky interfeýs dili:</strong> EN / RU / TM.</li>
+    <li><strong>Tema:</strong> ýagty, garaňky ýa-da ulgam teması.</li>
+    <li><strong>Ätiýaçlyk nusgasy:</strong> maglumat bazasyny döretmek ýa-da dikeltmek.</li>
+  </ul>
+
+  {# 14. Tips #}
+  <h4 id="tm-tips" class="mt-4">14. Maslahatlar we ýalňyşlyklar</h4>
+  <ul>
+    <li>✅ Amaly hemişe «Tamamlamak» düwmesi bilen tamamlaň — tamamlanmadyk kabul etmek ýa-da satyş galdyklara täsir etmeýär.</li>
+    <li>✅ Satmazdan ozal harydyň ammarda bardygyna göz ýetiriň — ulgam mümkin bolan mukdardan köp satmaga rugsat bermeýär.</li>
+    <li>✅ Ştrik-kodlary ulanyň — bu hasap-fakturany döretmäni çaltlaşdyrýar we ýalňyşlyklary azaldýar.</li>
+    <li>✅ Admin → Ätiýaçlyk nusgasy arkaly maglumat bazasyny yzygiderli ätiýaçlaň.</li>
+    <li>⚠️ Satyşa gatnaşan harytlary pozmañ — olary arhiwlemegiňiz has gowudyr.</li>
+    <li>⚠️ Internet hökmandyr. Sahypa ýüklenmese — baglanyşygy barlaň.</li>
+  </ul>
+
+  {# 15. Authors #}
+  <h4 id="tm-authors" class="mt-4">15. Awtorlary</h4>
+  <p>
+    <strong>Pikir we işläp düzmek:</strong> <a href="mailto:berdyshka87@gmail.com">berdyshka87@gmail.com</a><br>
+    <strong>AI kömegi:</strong> GitHub Copilot (AI-kömekçi; GitHub-yň resmi goldawy däl)
+  </p>
+
+  <div class="mt-4 text-end">
+    <a href="#help-top" class="btn btn-sm btn-outline-secondary">↑ Ýokary</a>
+  </div>
+</div>
+
+{% else %}
+
+{# ════════════════════════ ENGLISH (default) ════════════════════════ #}
+<div class="bg-white p-4 rounded shadow-sm" id="help-top">
+
+  <h2 class="mb-1">📖 ERP Help Guide</h2>
+  <p class="text-muted mb-4">Complete user manual</p>
+
+  {# Table of contents #}
+  <nav class="mb-5 p-3 border rounded bg-light">
+    <strong>Table of Contents</strong>
+    <ol class="mb-0 mt-2">
+      <li><a href="#en-about">About the system</a></li>
+      <li><a href="#en-quickstart">Quick start</a></li>
+      <li><a href="#en-products">Products</a></li>
+      <li><a href="#en-stock">Stock</a></li>
+      <li><a href="#en-receive">Receive</a></li>
+      <li><a href="#en-move">Move</a></li>
+      <li><a href="#en-sale">Sale</a></li>
+      <li><a href="#en-return">Return</a></li>
+      <li><a href="#en-brands">Brands</a></li>
+      <li><a href="#en-clients">Clients</a></li>
+      <li><a href="#en-invoices">Invoices</a></li>
+      <li><a href="#en-history">History</a></li>
+      <li><a href="#en-admin">Admin settings</a></li>
+      <li><a href="#en-tips">Tips &amp; common mistakes</a></li>
+      <li><a href="#en-authors">Authors</a></li>
+    </ol>
+  </nav>
+
+  {# 1. About #}
+  <h4 id="en-about">1. About the system</h4>
+  <p>
+    This ERP was built specifically for small business. There are no hundreds of unnecessary features here —
+    only what is genuinely needed for everyday trading: product catalogue, warehouses, receiving stock,
+    sales, invoices, and client debt tracking.
+  </p>
+  <div class="alert alert-warning">
+    <strong>⚠️ Important:</strong> a permanent internet connection is required for the system to work.
+    All data is stored on your server and synchronised through the browser in real time.
+  </div>
+
+  {# 2. Quick start #}
+  <h4 id="en-quickstart" class="mt-4">2. Quick start — where to begin</h4>
+  <ol>
+    <li><strong>Log in.</strong> Open a browser and navigate to your server address.
+        If site lock is enabled, enter the password on the «Login» page.</li>
+    <li><strong>Create brands.</strong> Go to the <strong>Brands</strong> section and add the trade marks of
+        your products (e.g. Samsung, Artel, Sonifer).</li>
+    <li><strong>Add products.</strong> In the <strong>Products</strong> section, create a card for each product:
+        set the brand, model, name and barcode.</li>
+    <li><strong>Create warehouses.</strong> In <strong>Admin → Settings</strong> add warehouses (e.g.
+        «Main warehouse», «Shop»).</li>
+    <li><strong>Add clients.</strong> Go to <strong>Clients</strong> and create client cards with names and
+        phone numbers.</li>
+    <li><strong>Receive stock.</strong> In the <strong>Receive</strong> section create a new operation, choose
+        the destination warehouse and source, then add products with quantity and purchase price.</li>
+    <li><strong>Make a sale.</strong> In the <strong>Sale</strong> section choose the client, add products,
+        set the sale price and finish — the system will generate an invoice.</li>
+    <li><strong>Monitor stock levels.</strong> The <strong>Stock</strong> section shows live balances for every
+        product and warehouse.</li>
+  </ol>
+
+  {# 3. Products #}
+  <h4 id="en-products" class="mt-4">3. Products</h4>
+  <p>A catalogue of all your products. Each product is identified by the combination «Brand + Model».</p>
+  <ul>
+    <li>Add a product: click «Add product» — choose a brand, enter model, name and barcode.</li>
+    <li>Edit a product: click the ✏️ button — you can change brand, model, name, barcode and purchase price.</li>
+    <li>Archive a product: if a product is no longer sold, hide it from the list without deleting its history.</li>
+    <li>Search: use the search bar to filter by brand/model/name.</li>
+    <li>Show/hide archived products — toggle at the top of the page.</li>
+  </ul>
+  <p><strong>Tip:</strong> name models consistently (e.g. always in Latin script: <code>SF-500</code>) so that
+  search results are accurate.</p>
+
+  {# 4. Stock #}
+  <h4 id="en-stock" class="mt-4">4. Stock</h4>
+  <p>Shows current stock balances per warehouse. You cannot change quantities directly here — balances are
+  updated only through operations: <em>Receive, Move, Sale, Return</em>.</p>
+  <ul>
+    <li>Filter by warehouse — choose the required warehouse from the dropdown at the top.</li>
+    <li>Download XLSX — export current balances to Excel.</li>
+    <li>Each row shows: quantity, purchase price (wh_price) and total stock value.</li>
+  </ul>
+  <p><strong>STK</strong> in the top-right navigation bar is the total value of all stock across all warehouses
+  at purchase price.</p>
+
+  {# 5. Receive #}
+  <h4 id="en-receive" class="mt-4">5. Receive</h4>
+  <p>Stock intake operation: goods arrive at a warehouse from a supplier or another source.</p>
+  <p><strong>Step by step:</strong></p>
+  <ol>
+    <li>Click «New Receive».</li>
+    <li>Choose the <strong>destination warehouse</strong> (where the goods will go).</li>
+    <li>Choose the <strong>source</strong> (supplier, transfer, etc.).</li>
+    <li>Click «Add product» and select from the catalogue.</li>
+    <li>Enter the <strong>quantity</strong> and <strong>purchase price (USD)</strong>.</li>
+    <li>Repeat for each item in the batch.</li>
+    <li>Click «Finish» — stock balances update automatically and an XLSX document is created.</li>
+  </ol>
+  <p><strong>Important:</strong> the purchase price affects STK (stock value) and profit calculation on
+  subsequent sales.</p>
+
+  {# 6. Move #}
+  <h4 id="en-move" class="mt-4">6. Move / Move all</h4>
+  <p>Move stock between warehouses.</p>
+  <ul>
+    <li><strong>Move</strong> — choose a specific product and quantity to move from one warehouse to another.</li>
+    <li><strong>Move all</strong> — moves the entire assortment (all items) from one warehouse to another.
+        Useful when you need to «send everything from the main warehouse to the shop».</li>
+  </ul>
+  <p><strong>Tip:</strong> use Move all at the start of a working day to quickly restock a point of sale.</p>
+
+  {# 7. Sale #}
+  <h4 id="en-sale" class="mt-4">7. Sale</h4>
+  <p>Create a sales invoice for a client.</p>
+  <ol>
+    <li>Choose a <strong>client</strong> from the list.</li>
+    <li>Choose the <strong>warehouse</strong> you are selling from.</li>
+    <li>Click «Add product», select the product, set <strong>quantity</strong> and <strong>sale price (USD)</strong>.</li>
+    <li>Repeat for all line items.</li>
+    <li>Click «Finish» — the invoice is created. Stock decreases; client debt increases by the invoice total.</li>
+  </ol>
+  <p>After finishing you can download the invoice as XLSX or view it in the browser.</p>
+  <p><strong>DEB</strong> in the top-right navigation bar is the total outstanding debt of all clients.</p>
+
+  {# 8. Return #}
+  <h4 id="en-return" class="mt-4">8. Return</h4>
+  <p>Process a product return from a client. The goods go back into the warehouse; client debt decreases.</p>
+  <ol>
+    <li>Choose the client.</li>
+    <li>Choose the warehouse the goods will return to.</li>
+    <li>Add line items and specify the return quantity.</li>
+    <li>Finish the operation — balances are recalculated and client debt is adjusted.</li>
+  </ol>
+
+  {# 9. Brands #}
+  <h4 id="en-brands" class="mt-4">9. Brands</h4>
+  <p>A directory of trade marks. Every product must belong to a brand.</p>
+  <ul>
+    <li>Add a brand: enter the name (e.g. «Artel» or «Xiaomi»).</li>
+    <li>Edit a brand name.</li>
+    <li>Delete a brand — only possible if no products are linked to it.</li>
+  </ul>
+  <p><strong>Tip:</strong> create brands before adding products — otherwise the brand dropdown will be empty.</p>
+
+  {# 10. Clients #}
+  <h4 id="en-clients" class="mt-4">10. Clients</h4>
+  <p>A directory of buyers. Stores each client's details and their current outstanding debt.</p>
+  <ul>
+    <li>Add a client: name and phone number.</li>
+    <li>Edit: change name, phone.</li>
+    <li>Debt USD — the sum of unpaid invoices. Automatically changes on sale and return.</li>
+    <li>Archive a client — hide an inactive client without deleting history.</li>
+  </ul>
+
+  {# 11. Invoices #}
+  <h4 id="en-invoices" class="mt-4">11. Invoices</h4>
+  <p>A list of all created documents: sales invoices and returns.</p>
+  <ul>
+    <li>View: click «View» next to an invoice — a details page opens.</li>
+    <li>Download XLSX: get the invoice in Excel format for printing or sending to the client.</li>
+    <li>Cancel invoice: if a sale did not go through after the invoice was created, you can cancel it.
+        Stock returns to the warehouse; client debt decreases.</li>
+    <li>Filter by client or date to find an invoice quickly.</li>
+  </ul>
+
+  {# 12. History #}
+  <h4 id="en-history" class="mt-4">12. History</h4>
+  <p>A complete log of all stock movements: receives, sales, returns. Use it to trace any operation.</p>
+  <ul>
+    <li>Search by keyword (brand, model, invoice number, client).</li>
+    <li>Each record shows: date/time, operation type, product, quantity, price, warehouse, counterparty.</li>
+    <li>Download XLSX or view the document directly from history.</li>
+  </ul>
+
+  {# 13. Admin #}
+  <h4 id="en-admin" class="mt-4">13. Admin settings</h4>
+  <ul>
+    <li><strong>Warehouses:</strong> add / rename warehouses. A minimum of two warehouses is typical
+        (e.g. «Main» and «Shop»).</li>
+    <li><strong>Site Lock:</strong> enable a login password. Recommended when your server is accessible
+        from the internet.</li>
+    <li><strong>Default UI language:</strong> EN / RU / TM.</li>
+    <li><strong>Theme:</strong> light, dark or system.</li>
+    <li><strong>Background:</strong> enable/disable background image, adjust overlay opacity.</li>
+    <li><strong>Backup:</strong> create or restore a database backup.</li>
+    <li><strong>Tokens (Price / Catalog):</strong> for public price-list access without a password
+        (for clients).</li>
+  </ul>
+
+  {# 14. Tips #}
+  <h4 id="en-tips" class="mt-4">14. Tips &amp; common mistakes</h4>
+  <ul>
+    <li>✅ Always finish an operation with the «Finish» button — an unfinished receive or sale does not
+        affect stock balances.</li>
+    <li>✅ Before making a sale, confirm the product is in stock — the system will not allow selling more
+        than what is available.</li>
+    <li>✅ Use barcodes — this speeds up adding products to an invoice and eliminates mistakes.</li>
+    <li>✅ Make regular database backups via Admin → Backup.</li>
+    <li>⚠️ Do not delete products that have already appeared in sales — archive them instead.</li>
+    <li>⚠️ If stock balances seem off after cancelling an invoice — check the history: there may be
+        another operation involving the same product.</li>
+    <li>⚠️ Internet is required. If the page does not load — check your connection.</li>
+  </ul>
+
+  {# 15. Authors #}
+  <h4 id="en-authors" class="mt-4">15. Authors</h4>
+  <p>
+    <strong>Idea &amp; development:</strong> <a href="mailto:berdyshka87@gmail.com">berdyshka87@gmail.com</a><br>
+    <strong>AI assistance:</strong> GitHub Copilot (AI assistant; not an official GitHub support offering)
+  </p>
+
+  <div class="mt-4 text-end">
+    <a href="#help-top" class="btn btn-sm btn-outline-secondary">↑ Top</a>
+  </div>
+</div>
+
+{% endif %}
+
+{% endblock %}

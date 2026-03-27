@@ -21,6 +21,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "nav_invoices": "Invoices",
         "nav_history": "History",
         "nav_admin": "Admin",
+        "nav_help": "Help",
         # Common buttons
         "btn_save": "Save",
         "btn_cancel": "Cancel",
@@ -460,6 +461,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "nav_invoices": "Накладные",
         "nav_history": "История",
         "nav_admin": "Админ",
+        "nav_help": "Справочник",
         # Common buttons
         "btn_save": "Сохранить",
         "btn_cancel": "Отмена",
@@ -897,6 +899,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "nav_invoices": "Hasap-fakturalar",
         "nav_history": "Taryh",
         "nav_admin": "Admin",
+        "nav_help": "Kömek",
         # Common buttons
         "btn_save": "Saklamak",
         "btn_cancel": "Ýatyr",
