@@ -50,7 +50,7 @@ def generate_stock_xlsx_bytes(rows: list[dict[str, Any]], warehouse_label: str) 
             r["brand"],
             r["model"],
             r["name"],
-            r["warehouse"],
+            r.get("warehouse") if "warehouse" in r else r.get("warehouse_code", warehouse_label),
             int(r["qty"]),
         ]
         for col_idx, val in enumerate(values, start=1):

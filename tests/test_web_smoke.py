@@ -14,6 +14,8 @@ import tempfile
 import pytest
 from fastapi.testclient import TestClient
 
+from app.services.stock_xlsx import generate_stock_xlsx_bytes
+
 
 @pytest.fixture(scope="module")
 def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
@@ -47,3 +49,46 @@ def test_unlock_page_returns_200(client: TestClient) -> None:
     """GET /unlock must render without error."""
     response = client.get("/unlock")
     assert response.status_code == 200
+
+
+def test_stock_xlsx_returns_xlsx_bytes(client: TestClient) -> None:
+    """GET /stock/xlsx must return an XLSX file (not 500) even with empty warehouse."""
+    response = client.get("/stock/xlsx?warehouse=&q=&show_archived=0")
+    assert response.status_code == 200, (
+        f"GET /stock/xlsx returned {response.status_code}; expected 200"
+    )
+    assert (
+        response.headers["content-type"]
+        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    # XLSX files start with PK (ZIP magic bytes)
+    assert response.content[:2] == b"PK"
+
+
+def test_generate_stock_xlsx_bytes_missing_warehouse_key() -> None:
+    """generate_stock_xlsx_bytes must not crash when rows lack a 'warehouse' key."""
+    rows = [
+        {
+            "brand": "Nike",
+            "model": "Air Max",
+            "name": "Sneaker",
+            "warehouse_code": "TM_DEPO",
+            "qty": 5,
+        }
+    ]
+    result = generate_stock_xlsx_bytes(rows, "TM_DEPO")
+    assert result[:2] == b"PK", "Expected XLSX (ZIP) bytes"
+
+
+def test_generate_stock_xlsx_bytes_both_keys_missing() -> None:
+    """generate_stock_xlsx_bytes must not crash even when both warehouse keys are missing."""
+    rows = [
+        {
+            "brand": "Adidas",
+            "model": "Stan Smith",
+            "name": "Shoe",
+            "qty": 3,
+        }
+    ]
+    result = generate_stock_xlsx_bytes(rows, "All Warehouses")
+    assert result[:2] == b"PK", "Expected XLSX (ZIP) bytes"
