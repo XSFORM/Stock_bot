@@ -29,22 +29,22 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     ws.title = f"Invoice {invoice['number']:06d}"
 
     # --- Title block ---
-    ws.merge_cells("A1:F1")
+    ws.merge_cells("A1:G1")
     title_cell = ws["A1"]
     title_cell.value = f"INVOICE #{invoice['number']:06d}"
     title_cell.font = Font(bold=True, size=14)
     title_cell.alignment = _CENTER
 
-    ws.merge_cells("A2:F2")
+    ws.merge_cells("A2:G2")
     ws["A2"].value = f"Client: {invoice['client']}"
-    ws.merge_cells("A3:F3")
+    ws.merge_cells("A3:G3")
     date_val = str(invoice.get("created_at", invoice.get("date", "")))[:16].replace("T", " ")
     ws["A3"].value = f"Date: {date_val}"
     ws["A4"].value = ""
 
     # --- Header row ---
-    headers = ["#", "Model", "Name", "Qty", "Unit Price", "Total"]
-    col_widths = [5, 18, 30, 8, 14, 14]
+    headers = ["#", "Model", "Name", "Barcode", "Qty", "Unit Price", "Total"]
+    col_widths = [5, 18, 30, 18, 8, 14, 14]
     header_row = 5
     for col_idx, (h, w) in enumerate(zip(headers, col_widths), start=1):
         cell = ws.cell(row=header_row, column=col_idx, value=h)
@@ -61,6 +61,7 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
             row_num,
             f"{item['brand']} {item['model']}",
             item["name"],
+            item.get("barcode") or "",
             float(item["qty"]),
             round(float(item["unit_price"]), 2),
             round(float(item["total"]), 2),
@@ -68,9 +69,9 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
         for col_idx, val in enumerate(values, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=val)
             cell.border = _BORDER
-            if col_idx in (1, 4):
+            if col_idx in (1, 5):
                 cell.alignment = _CENTER
-            elif col_idx in (5, 6):
+            elif col_idx in (6, 7):
                 cell.alignment = _RIGHT
 
     # --- Total row (styled like your 2nd screenshot) ---
@@ -84,36 +85,36 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     total_lbl.alignment = Alignment(horizontal="left")
     total_lbl.border = _BORDER
 
-    # Qty sum into Qty column (D)
-    qty_cell = ws.cell(row=total_row_idx, column=4, value=items_qty)
+    # Qty sum into Qty column (E)
+    qty_cell = ws.cell(row=total_row_idx, column=5, value=items_qty)
     qty_cell.font = _TOTAL_FONT
     qty_cell.alignment = _CENTER
     qty_cell.border = _BORDER
 
-    # Total amount into Total column (F)
-    total_cell = ws.cell(row=total_row_idx, column=6, value=invoice_total)
+    # Total amount into Total column (G)
+    total_cell = ws.cell(row=total_row_idx, column=7, value=invoice_total)
     total_cell.font = _TOTAL_FONT
     total_cell.alignment = _RIGHT
     total_cell.border = _BORDER
 
-    # Keep borders (and light-blue fill) across the whole row A..F
-    for col_idx in range(1, 7):
+    # Keep borders (and light-blue fill) across the whole row A..G
+    for col_idx in range(1, 8):
         cell = ws.cell(row=total_row_idx, column=col_idx)
         cell.border = _BORDER
         cell.fill = _TOTAL_FILL
 
-        if col_idx in (1, 4):
+        if col_idx in (1, 5):
             cell.alignment = _CENTER
-        elif col_idx in (5, 6):
+        elif col_idx in (6, 7):
             cell.alignment = _RIGHT
         else:
     # для текста/пустых ячеек можно left или оставить как есть
     # но лучше задать явно чтобы не было сюрпризов
             cell.alignment = Alignment(horizontal="left")
 
-    # Make sure Unit Price column (E) is empty but styled
-    ws.cell(row=total_row_idx, column=5, value="").fill = _TOTAL_FILL
-    ws.cell(row=total_row_idx, column=5).border = _BORDER
+    # Make sure Unit Price column (F) is empty but styled
+    ws.cell(row=total_row_idx, column=6, value="").fill = _TOTAL_FILL
+    ws.cell(row=total_row_idx, column=6).border = _BORDER
 
     return wb
 

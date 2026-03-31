@@ -1607,7 +1607,7 @@ def get_invoice_items_by_number(number: int) -> list[dict[str, Any]]:
         rows = conn.execute(
             """
             SELECT ci.id, ci.qty, ci.price_mode, ci.unit_price, ci.total,
-                   p.brand, p.model, p.name, p.id AS product_id
+                   p.brand, p.model, p.name, p.barcode, p.id AS product_id
             FROM invoices i
             JOIN carts c ON c.id = i.cart_id
             JOIN cart_items ci ON ci.cart_id = c.id
@@ -1952,7 +1952,7 @@ def receive_invoice_get_items(invoice_id: int) -> list[dict[str, Any]]:
         rows = conn.execute(
             """
             SELECT ri.id, ri.qty, ri.purchase_price, ri.total,
-                   p.brand, p.model, p.name, p.id AS product_id
+                   p.brand, p.model, p.name, p.barcode, p.id AS product_id
             FROM receive_items ri
             JOIN products p ON p.id = ri.product_id
             WHERE ri.invoice_id = ?
@@ -2238,7 +2238,7 @@ def return_invoice_get_items(invoice_id: int) -> list[dict[str, Any]]:
         rows = conn.execute(
             """
             SELECT ri.id, ri.qty, ri.unit_price, ri.total,
-                   p.brand, p.model, p.name, p.id AS product_id
+                   p.brand, p.model, p.name, p.barcode, p.id AS product_id
             FROM return_items ri
             JOIN products p ON p.id = ri.product_id
             WHERE ri.invoice_id = ?
