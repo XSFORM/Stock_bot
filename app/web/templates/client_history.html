@@ -60,10 +60,11 @@
         </td>
         <td>{{ ev.note or '—' }}</td>
         <td class="text-end">
-          {% if ev.balance_after > 0 %}
-            <span class="text-danger">{{ "%.2f"|format(ev.balance_after) }}</span>
-          {% elif ev.balance_after < 0 %}
-            <span class="text-success">{{ "%.2f"|format(ev.balance_after) }}</span>
+          {% set ba = ev.get('balance_after') %}
+          {% if ba is not none and ba > 0 %}
+            <span class="text-danger">{{ "%.2f"|format(ba) }}</span>
+          {% elif ba is not none and ba < 0 %}
+            <span class="text-success">{{ "%.2f"|format(ba) }}</span>
           {% else %}
             <span class="text-muted">0.00</span>
           {% endif %}
