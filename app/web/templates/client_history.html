@@ -51,11 +51,11 @@
         </td>
         <td class="text-end">
           {% if ev.kind == 'INVOICE' %}
-            <span class="text-danger">+{{ "%.2f"|format(ev.amount) }}</span>
+            <span class="text-danger">+{{ "%.2f"|format(ev.get('amount', 0)) }}</span>
           {% elif ev.kind == 'RETURN' %}
-            <span class="text-warning">-{{ "%.2f"|format(ev.amount) }}</span>
+            <span class="text-warning">-{{ "%.2f"|format(ev.get('amount', 0)) }}</span>
           {% else %}
-            <span class="text-success">-{{ "%.2f"|format(ev.amount) }}</span>
+            <span class="text-success">-{{ "%.2f"|format(ev.get('amount', 0)) }}</span>
           {% endif %}
         </td>
         <td>{{ ev.note or '—' }}</td>
