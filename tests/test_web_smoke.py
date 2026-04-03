@@ -15,6 +15,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.services.stock_xlsx import generate_stock_xlsx_bytes
+from app.services.invoice_xlsx import generate_invoice_xlsx_bytes
+from app.services.return_xlsx import generate_return_xlsx_bytes
+from app.services.receive_xlsx import generate_receive_xlsx_bytes
 
 
 @pytest.fixture(scope="module")
@@ -91,4 +94,70 @@ def test_generate_stock_xlsx_bytes_both_keys_missing() -> None:
         }
     ]
     result = generate_stock_xlsx_bytes(rows, "All Warehouses")
+    assert result[:2] == b"PK", "Expected XLSX (ZIP) bytes"
+
+
+def test_generate_invoice_xlsx_bytes_includes_barcode() -> None:
+    """generate_invoice_xlsx_bytes must include a Barcode column and not crash."""
+    import openpyxl, io
+
+    invoice = {
+        "number": 1,
+        "client": "Test Client",
+        "created_at": "2024-01-01T10:00:00",
+        "total": 200.0,
+    }
+    items = [
+        {
+            "brand": "Nike",
+            "model": "Air Max",
+            "name": "Sneaker",
+            "barcode": "1234567890",
+            "qty": 2,
+            "unit_price": 50.0,
+            "total": 100.0,
+        },
+        {
+            "brand": "Adidas",
+            "model": "Stan Smith",
+            "name": "Shoe",
+            "barcode": None,
+            "qty": 2,
+            "unit_price": 50.0,
+            "total": 100.0,
+        },
+    ]
+    result = generate_invoice_xlsx_bytes(invoice, items)
+    assert result[:2] == b"PK", "Expected XLSX (ZIP) bytes"
+
+    wb = openpyxl.load_workbook(io.BytesIO(result))
+    ws = wb.active
+    # Header row is row 5; Barcode is column D (4)
+    assert ws.cell(row=5, column=4).value == "Barcode"
+    # First data row barcode value
+    assert ws.cell(row=6, column=4).value == "1234567890"
+    # Second data row barcode is empty (None → empty cell)
+    assert not ws.cell(row=7, column=4).value
+
+
+def test_generate_invoice_xlsx_bytes_missing_barcode_no_crash() -> None:
+    """generate_invoice_xlsx_bytes must not crash when items have no barcode key."""
+    invoice = {
+        "number": 2,
+        "client": "Client B",
+        "created_at": "2024-02-01T10:00:00",
+        "total": 50.0,
+    }
+    items = [
+        {
+            "brand": "Puma",
+            "model": "RS-X",
+            "name": "Sneaker",
+            # No "barcode" key at all
+            "qty": 1,
+            "unit_price": 50.0,
+            "total": 50.0,
+        },
+    ]
+    result = generate_invoice_xlsx_bytes(invoice, items)
     assert result[:2] == b"PK", "Expected XLSX (ZIP) bytes"

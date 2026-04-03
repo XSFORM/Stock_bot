@@ -25,6 +25,7 @@
         <th style="width:40px">#</th>
         <th>{{ t.lbl_model }}</th>
         <th>{{ t.lbl_name }}</th>
+        <th>{{ t.lbl_barcode }}</th>
         <th style="width:70px">{{ t.lbl_qty }}</th>
         <th style="width:110px">{{ t.lbl_unit_price }}</th>
         <th style="width:110px">{{ t.lbl_total }}</th>
@@ -36,13 +37,14 @@
         <td class="text-center">{{ loop.index }}</td>
         <td>{{ item.brand }} {{ item.model }}</td>
         <td>{{ item.name }}</td>
+        <td>{{ item.barcode or '' }}</td>
         <td class="text-center">{{ item.qty | int }}</td>
         <td class="text-end">{{ "%.2f"|format(item.unit_price) }}</td>
         <td class="text-end">{{ "%.2f"|format(item.total) }}</td>
       </tr>
       {% endfor %}
       <tr class="total-row">
-        <td colspan="5" class="text-end">{{ t.lbl_total }}</td>
+        <td colspan="6" class="text-end">{{ t.lbl_total }}</td>
         <td class="text-end">{{ "%.2f"|format(cart_total) }}</td>
       </tr>
     </tbody>
