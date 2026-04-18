@@ -65,10 +65,10 @@
                 <input type="number" class="form-control form-control-sm qty-field" name="qty"
                        value="{{ item.qty }}" min="0.001" step="any" required>
               </td>
-              <td>
-                <input type="number" class="form-control form-control-sm price-field" name="unit_price"
-                       value="{{ item.unit_price }}" min="0" step="any" required>
-              </td>
+               <td>
+                 <input type="number" class="form-control form-control-sm price-field" name="unit_price"
+                        value="{{ "%.2f"|format(item.unit_price) }}" min="0" step="0.01" required>
+               </td>
               <td class="text-end align-middle item-total">{{ "%.2f"|format(item.total) }}</td>
               <td class="text-center align-middle">
                 <button type="button" class="btn btn-sm btn-outline-danger"
@@ -103,7 +103,7 @@ function addRow() {
       <div class="search-results list-group mt-1" style="display:none;position:absolute;z-index:100;min-width:300px"></div>
     </td>
     <td><input type="number" class="form-control form-control-sm qty-field" name="qty" value="1" min="0.001" step="any" required></td>
-    <td><input type="number" class="form-control form-control-sm price-field" name="unit_price" value="0" min="0" step="any" required></td>
+    <td><input type="number" class="form-control form-control-sm price-field" name="unit_price" value="0.00" min="0" step="0.01" required></td>
     <td class="text-end align-middle item-total">0.00</td>
     <td class="text-center align-middle">
       <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)" title="{{ t.btn_remove }}">✕</button>

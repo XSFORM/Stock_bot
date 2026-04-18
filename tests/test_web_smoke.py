@@ -247,3 +247,112 @@ def test_generate_receive_xlsx_bytes_rounds_like_display_price() -> None:
     assert ws.cell(row=7, column=6).value == pytest.approx(8.30)
     assert ws.cell(row=7, column=7).value == pytest.approx(24.90)
     assert ws.cell(row=8, column=7).value == pytest.approx(24.90)
+
+
+def test_sale_line_item_price_is_rounded_on_save_add_and_update(client: TestClient) -> None:
+    import uuid
+    from app.db import sqlite as db
+
+    open_cart = db.get_open_cart()
+    if open_cart:
+        db.cancel_cart(open_cart["cart_id"])
+
+    suffix = uuid.uuid4().hex[:8]
+    client_name = f"Round Client {suffix}"
+    ok, err = db.add_client(client_name)
+    assert ok, err
+    client_id = next(c["id"] for c in db.list_clients(include_archived=True) if c["name"] == client_name)
+    db.add_warehouse("1416_SHOP", "Shop")
+
+    brand = f"BR{suffix}".upper()
+    model = f"m{suffix}".lower()
+    product_id = db.add_product(brand, model, "Sale Round Test", 7.0)
+    assert product_id > 0
+
+    ok, err, cart_id = db.cart_start_by_id(client_id, "1416_SHOP")
+    assert ok, err
+    ok, err = db.cart_add_by_cart_id(cart_id, brand, model, 3, "custom", 8.305)
+    assert ok, err
+
+    _, items = db.get_cart_items_list(cart_id)
+    item = items[0]
+    assert item["unit_price"] == pytest.approx(8.30)
+    assert item["total"] == pytest.approx(24.90)
+
+    ok, err = db.update_cart_item(item["id"], 3, 8.305)
+    assert ok, err
+    _, items_after = db.get_cart_items_list(cart_id)
+    updated = next(i for i in items_after if i["id"] == item["id"])
+    assert updated["unit_price"] == pytest.approx(8.30)
+    assert updated["total"] == pytest.approx(24.90)
+
+    db.cancel_cart(cart_id)
+
+
+def test_receive_line_item_price_is_rounded_on_save_add_and_update(client: TestClient) -> None:
+    import uuid
+    from app.db import sqlite as db
+
+    open_inv = db.receive_invoice_get_open()
+    if open_inv:
+        db.receive_invoice_cancel(open_inv["id"])
+
+    suffix = uuid.uuid4().hex[:8]
+    product_id = db.add_product(f"RB{suffix}".upper(), f"r{suffix}".lower(), "Receive Round Test", 5.0)
+    assert product_id > 0
+    db.add_warehouse("TM_DEPO", "Depo")
+
+    ok, err, invoice_id = db.receive_invoice_start(f"Supp {suffix}", "TM_DEPO", "")
+    assert ok, err
+
+    ok, err = db.receive_item_add(invoice_id, product_id, 3, 8.305)
+    assert ok, err
+
+    items = db.receive_invoice_get_items(invoice_id)
+    item = items[0]
+    assert item["purchase_price"] == pytest.approx(8.30)
+    assert item["total"] == pytest.approx(24.90)
+
+    ok, err = db.receive_item_update(item["id"], 3, 8.305)
+    assert ok, err
+    updated = db.receive_invoice_get_items(invoice_id)[0]
+    assert updated["purchase_price"] == pytest.approx(8.30)
+    assert updated["total"] == pytest.approx(24.90)
+
+    db.receive_invoice_cancel(invoice_id)
+
+
+def test_return_line_item_price_is_rounded_on_save_add_and_update(client: TestClient) -> None:
+    import uuid
+    from app.db import sqlite as db
+
+    open_inv = db.return_invoice_get_open()
+    if open_inv:
+        db.return_invoice_cancel(open_inv["id"])
+
+    suffix = uuid.uuid4().hex[:8]
+    client_name = f"Return Round Client {suffix}"
+    ok, err = db.add_client(client_name)
+    assert ok, err
+    client_id = next(c["id"] for c in db.list_clients(include_archived=True) if c["name"] == client_name)
+    product_id = db.add_product(f"TB{suffix}".upper(), f"t{suffix}".lower(), "Return Round Test", 5.0)
+    assert product_id > 0
+    db.add_warehouse("1416_SHOP", "Shop")
+
+    ok, err, invoice_id = db.return_invoice_start(client_id, "1416_SHOP", "")
+    assert ok, err
+    ok, err = db.return_item_add(invoice_id, product_id, 3, 8.305)
+    assert ok, err
+
+    items = db.return_invoice_get_items(invoice_id)
+    item = items[0]
+    assert item["unit_price"] == pytest.approx(8.30)
+    assert item["total"] == pytest.approx(24.90)
+
+    ok, err = db.return_item_update(item["id"], 3, 8.305)
+    assert ok, err
+    updated = db.return_invoice_get_items(invoice_id)[0]
+    assert updated["unit_price"] == pytest.approx(8.30)
+    assert updated["total"] == pytest.approx(24.90)
+
+    db.return_invoice_cancel(invoice_id)

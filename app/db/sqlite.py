@@ -4,6 +4,7 @@ import hashlib
 import os
 import secrets
 import sqlite3
+from decimal import Decimal, ROUND_HALF_EVEN
 from pathlib import Path
 from typing import Any, Optional
 
@@ -15,6 +16,11 @@ _ROOT = Path(__file__).resolve().parents[3]  # Stock_bot root
 DB_PATH = Path(os.getenv("DB_PATH", str(_ROOT / "data" / "stock.db")))
 
 _SCHEMA_SQL = Path(__file__).resolve().parent / "schema.sql"
+_CENT = Decimal("0.01")
+
+
+def _normalize_unit_price(value: float) -> float:
+    return float(Decimal(str(value)).quantize(_CENT, rounding=ROUND_HALF_EVEN))
 
 
 def _connect() -> sqlite3.Connection:
@@ -1368,7 +1374,7 @@ def _cart_add_item(
         if not prod_row:
             return False, f"product_not_found:{brand} {model}"
         wh_price = float(prod_row["wh_price"])
-        unit_price = _compute_unit_price(wh_price, price_mode, custom_price)
+        unit_price = _normalize_unit_price(_compute_unit_price(wh_price, price_mode, custom_price))
         total = calc_line_total(unit_price, qty)
         conn.execute(
             "INSERT INTO cart_items"
@@ -1569,6 +1575,7 @@ def update_cart_item(
 ) -> tuple[bool, str]:
     try:
         with _connect() as conn:
+            unit_price = _normalize_unit_price(unit_price)
             total = calc_line_total(unit_price, qty)
             conn.execute(
                 "UPDATE cart_items SET qty = ?, unit_price = ?, total = ? WHERE id = ?",
@@ -1735,7 +1742,7 @@ def update_sale_invoice(
             for item in new_items:
                 pid = item["product_id"]
                 qty = float(item["qty"])
-                unit_price = float(item["unit_price"])
+                unit_price = _normalize_unit_price(float(item["unit_price"]))
                 item_total = calc_line_total(unit_price, qty)
                 conn.execute(
                     "INSERT INTO cart_items"
@@ -1867,6 +1874,7 @@ def receive_item_add(
 ) -> tuple[bool, str]:
     try:
         with _connect() as conn:
+            purchase_price = _normalize_unit_price(purchase_price)
             total = calc_line_total(purchase_price, qty)
             conn.execute(
                 "INSERT INTO receive_items"
@@ -1891,6 +1899,7 @@ def receive_item_update(
 ) -> tuple[bool, str]:
     try:
         with _connect() as conn:
+            purchase_price = _normalize_unit_price(purchase_price)
             total = calc_line_total(purchase_price, qty)
             conn.execute(
                 "UPDATE receive_items"
@@ -2046,7 +2055,7 @@ def update_receive_invoice(
 
             for item in new_items:
                 qty = float(item["qty"])
-                pp = float(item["purchase_price"])
+                pp = _normalize_unit_price(float(item["purchase_price"]))
                 total = calc_line_total(pp, qty)
                 conn.execute(
                     "INSERT INTO receive_items"
@@ -2138,6 +2147,7 @@ def return_item_add(
 ) -> tuple[bool, str]:
     try:
         with _connect() as conn:
+            unit_price = _normalize_unit_price(unit_price)
             total = calc_line_total(unit_price, qty)
             conn.execute(
                 "INSERT INTO return_items"
@@ -2160,6 +2170,7 @@ def return_item_update(
 ) -> tuple[bool, str]:
     try:
         with _connect() as conn:
+            unit_price = _normalize_unit_price(unit_price)
             old = conn.execute(
                 "SELECT total, invoice_id FROM return_items WHERE id = ?", (item_id,)
             ).fetchone()
@@ -2338,7 +2349,7 @@ def update_return_invoice(
 
             for item in new_items:
                 qty = float(item["qty"])
-                up = float(item["unit_price"])
+                up = _normalize_unit_price(float(item["unit_price"]))
                 item_total = calc_line_total(up, qty)
                 conn.execute(
                     "INSERT INTO return_items"
