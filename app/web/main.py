@@ -126,6 +126,7 @@ from app.services.return_xlsx import generate_return_xlsx_bytes
 from app.services.stock_xlsx import generate_stock_xlsx_bytes
 from app.services.backup import make_backup, INVOICES_DIR
 from app.i18n import get_translations, SUPPORTED_LANGS
+from app.utils.money import calc_document_total
 from app.db.sqlite import (
     DB_PATH,
     get_setting,
@@ -594,7 +595,7 @@ def receive_get(request: Request, msg: str = ""):
     inv_qty: float = 0.0
     if open_inv:
         inv_items = receive_invoice_get_items(open_inv["id"])
-        inv_total = sum(float(i["total"]) for i in inv_items)
+        inv_total = calc_document_total(inv_items, "purchase_price")
         inv_qty = sum(float(i["qty"]) for i in inv_items)
 
     return _render(
@@ -732,7 +733,7 @@ def receive_xlsx_view(request: Request, n: int):
     if not inv:
         return RedirectResponse(url="/receive?msg=invoice_not_found", status_code=303)
     items = receive_invoice_get_items(int(n))
-    inv_total = sum(float(i["total"]) for i in items)
+    inv_total = calc_document_total(items, "purchase_price")
     inv_qty = sum(float(i["qty"]) for i in items)
     return _render(
         request,
@@ -878,7 +879,7 @@ def sale_get(request: Request, msg: str = ""):
     cart_qty: float = 0.0
     if open_cart:
         _, cart_items = get_cart_items_list(open_cart["cart_id"])
-        cart_total = sum(float(i["total"]) for i in cart_items)
+        cart_total = calc_document_total(cart_items, "unit_price")
         cart_qty = sum(float(i["qty"]) for i in cart_items)
     return _render(
         request,
@@ -1004,7 +1005,7 @@ def sale_xlsx_view(request: Request, n: int):
     if not invoice:
         return RedirectResponse(url="/sale?msg=invoice_not_found", status_code=303)
     items = get_invoice_items_by_number(int(n))
-    cart_total = sum(float(i["total"]) for i in items)
+    cart_total = calc_document_total(items, "unit_price")
     return _render(
         request,
         "sale_xlsx_view.html",
@@ -1266,7 +1267,7 @@ def return_get(request: Request, msg: str = ""):
     inv_qty: float = 0.0
     if open_inv:
         inv_items = return_invoice_get_items(open_inv["id"])
-        inv_total = sum(float(i["total"]) for i in inv_items)
+        inv_total = calc_document_total(inv_items, "unit_price")
         inv_qty = sum(float(i["qty"]) for i in inv_items)
     return _render(
         request,
@@ -1364,7 +1365,7 @@ def return_xlsx_view(request: Request, n: int):
     if not inv:
         return RedirectResponse(url="/return?msg=invoice_not_found", status_code=303)
     items = return_invoice_get_items(int(n))
-    inv_total = sum(float(i["total"]) for i in items)
+    inv_total = calc_document_total(items, "unit_price")
     return _render(
         request,
         "return_xlsx_view.html",

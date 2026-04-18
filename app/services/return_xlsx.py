@@ -5,6 +5,7 @@ from typing import Any
 
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill, Side, Border
+from app.utils.money import calc_document_total, calc_line_total, round_money
 
 
 _HEADER_FILL = PatternFill("solid", fgColor="C0504D")  # Red tone for returns
@@ -62,8 +63,8 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
             item["name"],
             item.get("barcode") or "",
             float(item["qty"]),
-            round(float(item["unit_price"]), 2),
-            round(float(item["total"]), 2),
+            round_money(item["unit_price"]),
+            calc_line_total(item["unit_price"], item["qty"]),
         ]
         for col_idx, val in enumerate(values, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=val)
@@ -76,7 +77,7 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     # --- Total row ---
     total_row_idx = header_row + len(items) + 1
     items_qty = int(sum(float(item["qty"]) for item in items))
-    invoice_total = round(float(invoice["total"]), 2)
+    invoice_total = calc_document_total(items, "unit_price")
 
     total_lbl = ws.cell(row=total_row_idx, column=2, value="TOTAL")
     total_lbl.font = _TOTAL_FONT_ITALIC

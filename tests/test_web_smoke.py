@@ -18,6 +18,7 @@ from app.services.stock_xlsx import generate_stock_xlsx_bytes
 from app.services.invoice_xlsx import generate_invoice_xlsx_bytes
 from app.services.return_xlsx import generate_return_xlsx_bytes
 from app.services.receive_xlsx import generate_receive_xlsx_bytes
+from app.utils.money import calc_line_total
 
 
 @pytest.fixture(scope="module")
@@ -161,3 +162,88 @@ def test_generate_invoice_xlsx_bytes_missing_barcode_no_crash() -> None:
     ]
     result = generate_invoice_xlsx_bytes(invoice, items)
     assert result[:2] == b"PK", "Expected XLSX (ZIP) bytes"
+
+
+def test_calc_line_total_uses_displayed_unit_price() -> None:
+    assert calc_line_total(8.3033, 3) == pytest.approx(24.90)
+
+
+def test_generate_invoice_xlsx_bytes_rounds_like_display_price() -> None:
+    import io
+    import openpyxl
+
+    invoice = {"number": 3, "client": "Client C", "created_at": "2024-03-01T10:00:00", "total": 0}
+    items = [
+        {
+            "brand": "Nike",
+            "model": "Air",
+            "name": "Sneaker",
+            "barcode": "111",
+            "qty": 3,
+            "unit_price": 8.3033,
+            "total": 24.91,
+        }
+    ]
+    wb = openpyxl.load_workbook(io.BytesIO(generate_invoice_xlsx_bytes(invoice, items)))
+    ws = wb.active
+    assert ws.cell(row=6, column=6).value == pytest.approx(8.30)
+    assert ws.cell(row=6, column=7).value == pytest.approx(24.90)
+    assert ws.cell(row=7, column=7).value == pytest.approx(24.90)
+
+
+def test_generate_return_xlsx_bytes_rounds_like_display_price() -> None:
+    import io
+    import openpyxl
+
+    invoice = {
+        "number": 7,
+        "client": "Client D",
+        "created_at": "2024-03-01T10:00:00",
+        "warehouse_code": "1416_SHOP",
+        "total": 0,
+    }
+    items = [
+        {
+            "brand": "Puma",
+            "model": "X",
+            "name": "Pair",
+            "barcode": "222",
+            "qty": 3,
+            "unit_price": 8.3033,
+            "total": 24.91,
+        }
+    ]
+    wb = openpyxl.load_workbook(io.BytesIO(generate_return_xlsx_bytes(invoice, items)))
+    ws = wb.active
+    assert ws.cell(row=7, column=6).value == pytest.approx(8.30)
+    assert ws.cell(row=7, column=7).value == pytest.approx(24.90)
+    assert ws.cell(row=8, column=7).value == pytest.approx(24.90)
+
+
+def test_generate_receive_xlsx_bytes_rounds_like_display_price() -> None:
+    import io
+    import openpyxl
+
+    invoice = {
+        "number": 9,
+        "supplier": "Supplier X",
+        "created_at": "2024-03-01T10:00:00",
+        "destination_warehouse": "TM_DEPO",
+        "total": 0,
+    }
+    items = [
+        {
+            "brand": "Asics",
+            "model": "GEL",
+            "name": "Runner",
+            "barcode": "333",
+            "qty": 3,
+            "purchase_price": 8.3033,
+            "total": 24.91,
+        }
+    ]
+    wb = openpyxl.load_workbook(io.BytesIO(generate_receive_xlsx_bytes(invoice, items)))
+    ws = wb.active
+    assert ws.cell(row=7, column=6).value == pytest.approx(8.30)
+    assert ws.cell(row=7, column=7).value == pytest.approx(24.90)
+    assert ws.cell(row=8, column=7).value == pytest.approx(24.90)
