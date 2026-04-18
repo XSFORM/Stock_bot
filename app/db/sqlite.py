@@ -7,6 +7,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Optional
 
+from app.utils.money import calc_document_total, calc_line_total
+
 # ── DB path ───────────────────────────────────────────────────────────────────
 
 _ROOT = Path(__file__).resolve().parents[3]  # Stock_bot root
@@ -894,16 +896,17 @@ def get_client_balance(client_id: int) -> float:
     Positive balance means client owes money.
     """
     with _connect() as conn:
-        inv_row = conn.execute(
+        inv_items = conn.execute(
             """
-            SELECT COALESCE(SUM(i.total), 0) AS total
+            SELECT ci.unit_price, ci.qty
             FROM invoices i
             JOIN carts c ON c.id = i.cart_id
+            JOIN cart_items ci ON ci.cart_id = c.id
             WHERE c.client_id = ? AND c.status = 'CLOSED'
             """,
             (client_id,),
-        ).fetchone()
-        inv_total = float(inv_row["total"]) if inv_row else 0.0
+        ).fetchall()
+        inv_total = calc_document_total(list(inv_items), "unit_price")
 
         ledger_row = conn.execute(
             "SELECT COALESCE(SUM(amount), 0) AS paid FROM client_ledger WHERE client_id = ?",
@@ -911,7 +914,7 @@ def get_client_balance(client_id: int) -> float:
         ).fetchone()
         paid = float(ledger_row["paid"]) if ledger_row else 0.0
 
-        return round(inv_total - paid, 4)
+        return round(inv_total - paid, 2)
 
 
 def list_clients_with_balance(
@@ -928,7 +931,7 @@ def get_client_history(client_id: int) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
         rows = conn.execute(
             """
-            SELECT i.number, i.created_at, i.total, i.currency, 'SALE' AS event_type
+            SELECT i.number, i.created_at, i.currency, c.id AS cart_id
             FROM invoices i
             JOIN carts c ON c.id = i.cart_id
             WHERE c.client_id = ? AND c.status = 'CLOSED'
@@ -937,7 +940,15 @@ def get_client_history(client_id: int) -> list[dict[str, Any]]:
             (client_id,),
         ).fetchall()
         for r in rows:
-            events.append(_row_to_dict(r))
+            event = _row_to_dict(r)
+            items = conn.execute(
+                "SELECT unit_price, qty FROM cart_items WHERE cart_id = ?",
+                (r["cart_id"],),
+            ).fetchall()
+            event["total"] = calc_document_total(list(items), "unit_price")
+            event["event_type"] = "SALE"
+            event.pop("cart_id", None)
+            events.append(event)
         rows2 = conn.execute(
             "SELECT id, created_at, amount, note, 'LEDGER' AS event_type"
             " FROM client_ledger WHERE client_id = ? ORDER BY created_at DESC",
@@ -951,22 +962,23 @@ def get_client_history(client_id: int) -> list[dict[str, Any]]:
 
 def get_total_clients_debt() -> float:
     with _connect() as conn:
-        inv_row = conn.execute(
+        inv_items = conn.execute(
             """
-            SELECT COALESCE(SUM(i.total), 0) AS total
+            SELECT ci.unit_price, ci.qty
             FROM invoices i
             JOIN carts c ON c.id = i.cart_id
+            JOIN cart_items ci ON ci.cart_id = c.id
             WHERE c.status = 'CLOSED'
             """
-        ).fetchone()
-        inv_total = float(inv_row["total"]) if inv_row else 0.0
+        ).fetchall()
+        inv_total = calc_document_total(list(inv_items), "unit_price")
 
         ledger_row = conn.execute(
             "SELECT COALESCE(SUM(amount), 0) AS paid FROM client_ledger"
         ).fetchone()
         paid = float(ledger_row["paid"]) if ledger_row else 0.0
 
-        return round(max(0.0, inv_total - paid), 4)
+        return round(max(0.0, inv_total - paid), 2)
 
 
 def get_total_stock_value() -> float:
@@ -1080,16 +1092,18 @@ def cart_add(
 
             wh_price = float(prod_row["wh_price"])
             unit_price = _compute_unit_price(wh_price, price_mode, custom_price)
-            total = round(unit_price * qty, 4)
+            total = calc_line_total(unit_price, qty)
 
             existing = conn.execute(
-                "SELECT id FROM cart_items WHERE cart_id = ? AND product_id = ?",
+                "SELECT id, qty, unit_price FROM cart_items WHERE cart_id = ? AND product_id = ?",
                 (cart_id, prod_row["id"]),
             ).fetchone()
             if existing:
+                new_qty = float(existing["qty"]) + float(qty)
+                new_total = calc_line_total(existing["unit_price"], new_qty)
                 conn.execute(
-                    "UPDATE cart_items SET qty = qty + ?, total = total + ? WHERE id = ?",
-                    (qty, total, existing["id"]),
+                    "UPDATE cart_items SET qty = ?, total = ? WHERE id = ?",
+                    (new_qty, new_total, existing["id"]),
                 )
             else:
                 conn.execute(
@@ -1232,7 +1246,7 @@ def cart_finish_from_shop(
                     (shop_warehouse, item["product_id"], item["qty"]),
                 )
 
-            total = sum(float(i["total"]) for i in items)
+            total = calc_document_total(list(items), "unit_price")
             conn.execute(
                 "UPDATE carts SET status = 'CLOSED' WHERE id = ?", (cart_id,)
             )
@@ -1355,7 +1369,7 @@ def _cart_add_item(
             return False, f"product_not_found:{brand} {model}"
         wh_price = float(prod_row["wh_price"])
         unit_price = _compute_unit_price(wh_price, price_mode, custom_price)
-        total = round(unit_price * qty, 4)
+        total = calc_line_total(unit_price, qty)
         conn.execute(
             "INSERT INTO cart_items"
             " (cart_id, product_id, qty, price_mode, unit_price, total)"
@@ -1475,7 +1489,7 @@ def _finish_cart(
                 (warehouse_code, item["product_id"], item["qty"]),
             )
 
-        total = sum(float(i["total"]) for i in items)
+        total = calc_document_total(list(items), "unit_price")
         conn.execute("UPDATE carts SET status = 'CLOSED' WHERE id = ?", (cart_id,))
         next_num = conn.execute(
             "SELECT COALESCE(MAX(number), 0) + 1 AS n FROM invoices"
@@ -1528,7 +1542,12 @@ def get_cart_items_list(cart_id: int) -> tuple[Optional[dict], list[dict]]:
             """,
             (cart_id,),
         ).fetchall()
-        return _row_to_dict(cart_row), [_row_to_dict(i) for i in items]
+        items_list = []
+        for row in items:
+            item = _row_to_dict(row)
+            item["total"] = calc_line_total(item.get("unit_price"), item.get("qty"))
+            items_list.append(item)
+        return _row_to_dict(cart_row), items_list
 
 
 def cancel_cart(cart_id: int) -> tuple[bool, str]:
@@ -1550,7 +1569,7 @@ def update_cart_item(
 ) -> tuple[bool, str]:
     try:
         with _connect() as conn:
-            total = round(qty * unit_price, 4)
+            total = calc_line_total(unit_price, qty)
             conn.execute(
                 "UPDATE cart_items SET qty = ?, unit_price = ?, total = ? WHERE id = ?",
                 (qty, unit_price, total, item_id),
@@ -1617,7 +1636,12 @@ def get_invoice_items_by_number(number: int) -> list[dict[str, Any]]:
             """,
             (number,),
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        items = []
+        for row in rows:
+            item = _row_to_dict(row)
+            item["total"] = calc_line_total(item.get("unit_price"), item.get("qty"))
+            items.append(item)
+        return items
 
 
 def list_sale_invoices_done() -> list[dict[str, Any]]:
@@ -1708,13 +1732,11 @@ def update_sale_invoice(
             )
             conn.execute("DELETE FROM cart_items WHERE cart_id = ?", (cart_id,))
 
-            total = 0.0
             for item in new_items:
                 pid = item["product_id"]
                 qty = float(item["qty"])
                 unit_price = float(item["unit_price"])
-                item_total = round(qty * unit_price, 4)
-                total += item_total
+                item_total = calc_line_total(unit_price, qty)
                 conn.execute(
                     "INSERT INTO cart_items"
                     " (cart_id, product_id, qty, price_mode, unit_price, total)"
@@ -1727,6 +1749,7 @@ def update_sale_invoice(
                     (qty, warehouse_code, pid),
                 )
 
+            total = calc_document_total(new_items, "unit_price")
             conn.execute(
                 "UPDATE invoices SET total = ? WHERE cart_id = ?", (total, cart_id)
             )
@@ -1844,7 +1867,7 @@ def receive_item_add(
 ) -> tuple[bool, str]:
     try:
         with _connect() as conn:
-            total = round(qty * purchase_price, 4)
+            total = calc_line_total(purchase_price, qty)
             conn.execute(
                 "INSERT INTO receive_items"
                 " (invoice_id, product_id, qty, purchase_price, total)"
@@ -1868,7 +1891,7 @@ def receive_item_update(
 ) -> tuple[bool, str]:
     try:
         with _connect() as conn:
-            total = round(qty * purchase_price, 4)
+            total = calc_line_total(purchase_price, qty)
             conn.execute(
                 "UPDATE receive_items"
                 " SET qty = ?, purchase_price = ?, total = ? WHERE id = ?",
@@ -1921,17 +1944,15 @@ def receive_invoice_finish(invoice_id: int) -> tuple[bool, str]:
                     " VALUES ('RECEIVE', ?, ?, ?, ?)",
                     (inv["supplier"] or "RECEIVE", warehouse, item["product_id"], item["qty"]),
                 )
+            invoice_total = calc_document_total(list(items), "purchase_price")
             conn.execute(
                 """
                 UPDATE receive_invoices
                 SET status = 'DONE',
-                    total = COALESCE(
-                        (SELECT SUM(ri.total) FROM receive_items ri WHERE ri.invoice_id = ?),
-                        0
-                    )
+                    total = ?
                 WHERE id = ?
                 """,
-                (invoice_id, invoice_id),
+                (invoice_total, invoice_id),
             )
             conn.commit()
         return True, ""
@@ -1960,7 +1981,12 @@ def receive_invoice_get_items(invoice_id: int) -> list[dict[str, Any]]:
             """,
             (invoice_id,),
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        items = []
+        for row in rows:
+            item = _row_to_dict(row)
+            item["total"] = calc_line_total(item.get("purchase_price"), item.get("qty"))
+            items.append(item)
+        return items
 
 
 def list_receive_invoices_done() -> list[dict[str, Any]]:
@@ -2021,7 +2047,7 @@ def update_receive_invoice(
             for item in new_items:
                 qty = float(item["qty"])
                 pp = float(item["purchase_price"])
-                total = round(qty * pp, 4)
+                total = calc_line_total(pp, qty)
                 conn.execute(
                     "INSERT INTO receive_items"
                     " (invoice_id, product_id, qty, purchase_price, total)"
@@ -2039,6 +2065,11 @@ def update_receive_invoice(
                         (destination_warehouse, item["product_id"], qty),
                     )
 
+            invoice_total = calc_document_total(new_items, "purchase_price")
+            conn.execute(
+                "UPDATE receive_invoices SET total = ? WHERE id = ?",
+                (invoice_total, invoice_id),
+            )
             conn.commit()
         return True, ""
     except Exception as exc:
@@ -2107,7 +2138,7 @@ def return_item_add(
 ) -> tuple[bool, str]:
     try:
         with _connect() as conn:
-            total = round(qty * unit_price, 4)
+            total = calc_line_total(unit_price, qty)
             conn.execute(
                 "INSERT INTO return_items"
                 " (invoice_id, product_id, qty, unit_price, total)"
@@ -2132,7 +2163,7 @@ def return_item_update(
             old = conn.execute(
                 "SELECT total, invoice_id FROM return_items WHERE id = ?", (item_id,)
             ).fetchone()
-            new_total = round(qty * unit_price, 4)
+            new_total = calc_line_total(unit_price, qty)
             if old:
                 diff = new_total - float(old["total"])
                 conn.execute(
@@ -2201,7 +2232,7 @@ def return_invoice_finish(invoice_id: int) -> tuple[bool, str]:
             conn.execute(
                 "UPDATE return_invoices SET status = 'DONE' WHERE id = ?", (invoice_id,)
             )
-            return_total = round(float(inv["total"] or 0), 4)
+            return_total = round(float(inv["total"] or 0), 2)
             if return_total > 0:
                 number = int(inv["number"]) if inv["number"] is not None else 0
                 conn.execute(
@@ -2246,7 +2277,12 @@ def return_invoice_get_items(invoice_id: int) -> list[dict[str, Any]]:
             """,
             (invoice_id,),
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        items = []
+        for row in rows:
+            item = _row_to_dict(row)
+            item["total"] = calc_line_total(item.get("unit_price"), item.get("qty"))
+            items.append(item)
+        return items
 
 
 def list_return_invoices_done() -> list[dict[str, Any]]:
@@ -2293,7 +2329,6 @@ def update_return_invoice(
                         (oi["qty"], inv["warehouse_code"], oi["product_id"]),
                     )
 
-            total = 0.0
             conn.execute(
                 "UPDATE return_invoices"
                 " SET client_id = ?, warehouse_code = ?, total = 0 WHERE id = ?",
@@ -2304,8 +2339,7 @@ def update_return_invoice(
             for item in new_items:
                 qty = float(item["qty"])
                 up = float(item["unit_price"])
-                item_total = round(qty * up, 4)
-                total += item_total
+                item_total = calc_line_total(up, qty)
                 conn.execute(
                     "INSERT INTO return_items"
                     " (invoice_id, product_id, qty, unit_price, total)"
@@ -2323,6 +2357,7 @@ def update_return_invoice(
                         (warehouse_code, item["product_id"], qty),
                     )
 
+            total = calc_document_total(new_items, "unit_price")
             conn.execute(
                 "UPDATE return_invoices SET total = ? WHERE id = ?", (total, invoice_id)
             )
