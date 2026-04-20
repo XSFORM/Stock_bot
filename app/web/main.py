@@ -49,6 +49,17 @@ from app.db.sqlite import (
     get_client_balance,
     list_clients_with_balance,
     get_client_history,
+    # suppliers
+    list_suppliers,
+    add_supplier,
+    get_supplier,
+    update_supplier,
+    set_supplier_archived,
+    add_supplier_adjustment,
+    add_supplier_debt,
+    get_supplier_balance,
+    list_suppliers_with_balance,
+    get_supplier_history,
     # sale by id
     get_open_cart,
     cart_start_by_id,
@@ -81,8 +92,6 @@ from app.db.sqlite import (
     add_product_simple,
     update_product_wh_price,
     update_product_full,
-    # NEW: suppliers list for UI suggestions
-    list_receive_suppliers,
     # NEW: warehouse management
     list_warehouses,
     add_warehouse,
@@ -108,6 +117,7 @@ from app.db.sqlite import (
     list_return_invoices_done,
     get_last_sale_price,
     get_total_clients_debt,
+    get_total_suppliers_debt,
     get_total_stock_value,
     # invoice editing
     get_sale_invoice_full,
@@ -297,6 +307,7 @@ def _render(request: Request, name: str, ctx: dict[str, Any]) -> HTMLResponse:
         "bg_size": get_setting("bg_size", "cover"),
         "bg_overlay": get_setting("bg_overlay", "25"),
         "nav_total_debt_usd": get_total_clients_debt(),
+        "nav_total_suppliers_debt_usd": get_total_suppliers_debt(),
         "nav_stock_value_usd": get_total_stock_value(),
     }
     base.update(ctx)
@@ -588,7 +599,7 @@ def stock_xlsx(warehouse: str = "", q: str = "", show_archived: int = 0):
 @app.get("/receive", response_class=HTMLResponse)
 def receive_get(request: Request, msg: str = ""):
     open_inv = receive_invoice_get_open()
-    suppliers = list_receive_suppliers()
+    suppliers = list_suppliers()
 
     inv_items: list = []
     inv_total: float = 0.0
@@ -614,7 +625,7 @@ def receive_get(request: Request, msg: str = ""):
 
 @app.post("/receive/start")
 def receive_start(
-    supplier: str = Form(""),
+    supplier_id: int = Form(...),
     destination_warehouse: str = Form(...),
     destination_new_code: str = Form(""),
     destination_new_name: str = Form(""),
@@ -626,7 +637,12 @@ def receive_start(
         ok, err = add_warehouse(destination_new_code, destination_new_name)
         if not ok:
             return RedirectResponse(url=f"/receive?msg=destination_error:{err}", status_code=303)
-    ok, err, inv_id = receive_invoice_start(supplier, destination_warehouse, note)
+    ok, err, inv_id = receive_invoice_start(
+        "",
+        destination_warehouse,
+        note,
+        supplier_id=int(supplier_id),
+    )
     if not ok:
         return RedirectResponse(url=f"/receive?msg={err}", status_code=303)
     return RedirectResponse(url="/receive?msg=receive_started", status_code=303)
@@ -864,6 +880,99 @@ def client_history_get(request: Request, client_id: int):
     balance = get_client_balance(int(client_id))
     return _render(request, "client_history.html", {
         "client": c,
+        "events": events,
+        "balance": balance,
+    })
+
+
+@app.get("/suppliers", response_class=HTMLResponse)
+def suppliers_get(request: Request, msg: str = "", show_archived: int = 0):
+    suppliers = list_suppliers_with_balance(include_archived=bool(show_archived))
+    return _render(
+        request,
+        "suppliers.html",
+        {"suppliers": suppliers, "message": msg, "show_archived": show_archived},
+    )
+
+
+@app.post("/suppliers/add")
+def suppliers_add(
+    name: str = Form(...),
+    phone: str = Form(""),
+    note: str = Form(""),
+):
+    ok, err = add_supplier(name, phone, note)
+    msg = "OK" if ok else err
+    return RedirectResponse(url=f"/suppliers?msg={msg}", status_code=303)
+
+
+@app.post("/suppliers/{supplier_id}/archive")
+def supplier_archive(supplier_id: int, show_archived: int = Form(0)):
+    ok, err = set_supplier_archived(int(supplier_id), 1)
+    msg = "archived" if ok else f"archive_error:{err}"
+    return RedirectResponse(url=f"/suppliers?msg={msg}&show_archived={show_archived}", status_code=303)
+
+
+@app.post("/suppliers/{supplier_id}/unarchive")
+def supplier_unarchive(supplier_id: int, show_archived: int = Form(0)):
+    ok, err = set_supplier_archived(int(supplier_id), 0)
+    msg = "unarchived" if ok else f"unarchive_error:{err}"
+    return RedirectResponse(url=f"/suppliers?msg={msg}&show_archived={show_archived}", status_code=303)
+
+
+@app.get("/suppliers/{supplier_id}/edit", response_class=HTMLResponse)
+def supplier_edit_get(request: Request, supplier_id: int, msg: str = ""):
+    supplier = get_supplier(int(supplier_id))
+    if not supplier:
+        return RedirectResponse(url="/suppliers?msg=supplier_not_found", status_code=303)
+    return _render(request, "supplier_edit.html", {"supplier": supplier, "message": msg})
+
+
+@app.post("/suppliers/{supplier_id}/edit")
+def supplier_edit_post(
+    supplier_id: int,
+    name: str = Form(...),
+    phone: str = Form(""),
+    note: str = Form(""),
+):
+    ok, err = update_supplier(int(supplier_id), name, phone, note)
+    msg = "OK" if ok else err
+    return RedirectResponse(url=f"/suppliers/{int(supplier_id)}/edit?msg={msg}", status_code=303)
+
+
+@app.post("/suppliers/{supplier_id}/adjustment")
+def supplier_adjustment_post(
+    supplier_id: int,
+    amount: float = Form(...),
+    note: str = Form(""),
+    show_archived: int = Form(0),
+):
+    ok, err = add_supplier_adjustment(int(supplier_id), amount, note)
+    msg = f"adjustment_ok:{amount:.2f}" if ok else f"adjustment_error:{err}"
+    return RedirectResponse(url=f"/suppliers?msg={quote(msg)}&show_archived={show_archived}", status_code=303)
+
+
+@app.post("/suppliers/{supplier_id}/debt/add")
+def supplier_debt_add_post(
+    supplier_id: int,
+    amount: float = Form(...),
+    note: str = Form(...),
+    show_archived: int = Form(0),
+):
+    ok, err = add_supplier_debt(int(supplier_id), amount, note)
+    msg = f"debt_added:{amount:.2f}" if ok else f"debt_add_error:{err}"
+    return RedirectResponse(url=f"/suppliers?msg={quote(msg)}&show_archived={show_archived}", status_code=303)
+
+
+@app.get("/suppliers/{supplier_id}/history", response_class=HTMLResponse)
+def supplier_history_get(request: Request, supplier_id: int):
+    supplier = get_supplier(int(supplier_id))
+    if not supplier:
+        return RedirectResponse(url="/suppliers?msg=supplier_not_found", status_code=303)
+    events = get_supplier_history(int(supplier_id))
+    balance = get_supplier_balance(int(supplier_id))
+    return _render(request, "supplier_history.html", {
+        "supplier": supplier,
         "events": events,
         "balance": balance,
     })
@@ -1177,7 +1286,7 @@ def invoice_receive_edit_get(request: Request, invoice_id: int, msg: str = ""):
     if not invoice:
         return RedirectResponse(url="/invoices?tab=receive", status_code=303)
     items = get_receive_invoice_items_for_edit(int(invoice_id))
-    suppliers = list_receive_suppliers()
+    suppliers = list_suppliers(include_archived=True)
     return _render(
         request,
         "invoice_receive_edit.html",
@@ -1193,6 +1302,7 @@ def invoice_receive_edit_get(request: Request, invoice_id: int, msg: str = ""):
 @app.post("/invoices/receive/{invoice_id}/edit")
 def invoice_receive_edit_post(
     invoice_id: int,
+    supplier_id: Optional[int] = Form(None),
     supplier: str = Form(""),
     destination_warehouse: str = Form(...),
     product_id: List[int] = Form(...),
@@ -1203,7 +1313,13 @@ def invoice_receive_edit_post(
         {"product_id": pid, "qty": q, "purchase_price": pp}
         for pid, q, pp in zip(product_id, qty, purchase_price)
     ]
-    ok, err = update_receive_invoice(int(invoice_id), supplier, destination_warehouse, new_items)
+    ok, err = update_receive_invoice(
+        int(invoice_id),
+        supplier,
+        destination_warehouse,
+        new_items,
+        supplier_id=supplier_id,
+    )
     if not ok:
         return RedirectResponse(
             url=f"/invoices/receive/{invoice_id}/edit?msg={err}", status_code=303

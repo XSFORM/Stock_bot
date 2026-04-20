@@ -44,6 +44,7 @@
           <a class="nav-link" href="/return">{{ t.nav_return if t is defined else 'Return' }}</a>
 		  <a class="nav-link" href="/brands">{{ t.nav_brands if t is defined else 'Brands' }}</a>
 		  <a class="nav-link" href="/clients">{{ t.nav_clients if t is defined else 'Clients' }}</a>
+          <a class="nav-link" href="/suppliers">{{ t.nav_dealers if t is defined else 'Dealers' }}</a>
 		  <a class="nav-link" href="/invoices">{{ t.nav_invoices if t is defined else 'Invoices' }}</a>
 		  <a class="nav-link" href="/history">{{ t.nav_history if t is defined else 'History' }}</a>
           <a class="nav-link" href="/admin/settings">{{ t.nav_admin if t is defined else 'Admin' }}</a>
@@ -55,6 +56,10 @@
           <div class="small">
             <span class="fw-semibold text-warning" style="font-size:.82rem">DEB</span>
             <span class="text-warning fw-semibold" style="font-size:.82rem">{{ "%.2f"|format(nav_total_debt_usd) }} $</span>
+          </div>
+          <div class="small">
+            <span class="fw-semibold text-danger" style="font-size:.82rem">SUP</span>
+            <span class="text-danger fw-semibold" style="font-size:.82rem">{{ "%.2f"|format(nav_total_suppliers_debt_usd) }} $</span>
           </div>
           <div class="small">
             <span class="fw-semibold text-info" style="font-size:.82rem">STK</span>

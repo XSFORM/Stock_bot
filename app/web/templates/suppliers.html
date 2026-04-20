@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="bg-white p-3 rounded shadow-sm">
+      <h4>{{ t.suppliers_title }}</h4>
+
+      {% if request.query_params.get('msg') %}
+        {% set _msg = request.query_params.get('msg') %}
+        {% set _colon = _msg.find(':') %}
+        {% if _colon >= 0 %}
+          {% set _msg_key = _msg[:_colon] %}
+          {% set _msg_payload = _msg[_colon+1:] %}
+        {% else %}
+          {% set _msg_key = _msg %}
+          {% set _msg_payload = '' %}
+        {% endif %}
+        {% if _msg_key == 'debt_added' %}
+          <div class="alert alert-success">{{ t.msg_debt_added }} {{ _msg_payload }} USD</div>
+        {% elif _msg_key == 'debt_add_error' %}
+          <div class="alert alert-danger">{{ t.msg_debt_add_error }} {{ _msg_payload }}</div>
+        {% elif _msg_key == 'adjustment_ok' %}
+          <div class="alert alert-success">{{ t.msg_adjustment_ok }} {{ _msg_payload }} USD</div>
+        {% elif _msg_key == 'adjustment_error' %}
+          <div class="alert alert-danger">{{ t.msg_adjustment_error }} {{ _msg_payload }}</div>
+        {% else %}
+          <div class="alert alert-info">{{ _msg }}</div>
+        {% endif %}
+      {% endif %}
+
+      <div class="mb-2">
+        <form method="get" action="/suppliers" class="d-inline">
+          {% if show_archived %}
+            <input type="hidden" name="show_archived" value="0">
+            <button class="btn btn-sm btn-secondary">{{ t.hide_archived }}</button>
+          {% else %}
+            <input type="hidden" name="show_archived" value="1">
+            <button class="btn btn-sm btn-outline-secondary">{{ t.show_archived }}</button>
+          {% endif %}
+        </form>
+      </div>
+
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>{{ t.lbl_name }}</th>
+            <th>{{ t.lbl_phone }}</th>
+            <th>{{ t.lbl_note }}</th>
+            <th class="text-end">{{ t.suppliers_col_balance }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in suppliers %}
+          <tr{% if s.archived %} class="text-muted"{% endif %}>
+            <td>
+              {{ s.name }}
+              {% if s.archived %}<span class="badge bg-secondary ms-1">{{ t.badge_archived }}</span>{% endif %}
+            </td>
+            <td>{{ s.phone }}</td>
+            <td>{{ s.note }}</td>
+            <td class="text-end">
+              {% if s.balance > 0 %}
+                <span class="text-danger fw-semibold">{{ "%.2f"|format(s.balance) }} USD</span>
+              {% elif s.balance < 0 %}
+                <span class="text-success fw-semibold">{{ "%.2f"|format(s.balance) }} USD</span>
+              {% else %}
+                <span class="text-muted">0.00 USD</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <div class="dropdown">
+                <button class="btn btn-sm btn-outline-secondary" type="button"
+                        data-bs-toggle="dropdown" aria-expanded="false">⋯</button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  <li>
+                    <a class="dropdown-item" href="/suppliers/{{ s.id }}/history">{{ t.clients_history }}</a>
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="#"
+                       onclick="openAdjustment({{ s.id }}, '{{ s.name|e }}', {{ show_archived }}); return false;">
+                      {{ t.clients_debt_adjust }}
+                    </a>
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="#"
+                       onclick="openAddDebt({{ s.id }}, '{{ s.name|e }}', {{ show_archived }}); return false;">
+                      {{ t.clients_add_debt }}
+                    </a>
+                  </li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li>
+                    <a class="dropdown-item" href="/suppliers/{{ s.id }}/edit">{{ t.btn_edit }}</a>
+                  </li>
+                  <li>
+                    {% if s.archived %}
+                      <form method="post" action="/suppliers/{{ s.id }}/unarchive" class="d-inline">
+                        <input type="hidden" name="show_archived" value="{{ show_archived }}">
+                        <button class="dropdown-item" type="submit">{{ t.btn_unarchive }}</button>
+                      </form>
+                    {% else %}
+                      <form method="post" action="/suppliers/{{ s.id }}/archive" class="d-inline"
+                            onsubmit="return confirm('{{ t.confirm_archive_supplier }}')">
+                        <input type="hidden" name="show_archived" value="{{ show_archived }}">
+                        <button class="dropdown-item text-warning" type="submit">{{ t.btn_archive }}</button>
+                      </form>
+                    {% endif %}
+                  </li>
+                </ul>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="bg-white p-3 rounded shadow-sm">
+      <h4>{{ t.suppliers_add_title }}</h4>
+      <form method="post" action="/suppliers/add">
+        <div class="mb-2">
+          <label class="form-label">{{ t.lbl_name }}</label>
+          <input class="form-control" name="name" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">{{ t.lbl_phone }}</label>
+          <input class="form-control" name="phone" placeholder="+998 ...">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">{{ t.lbl_note }}</label>
+          <textarea class="form-control" name="note" rows="3"></textarea>
+        </div>
+        <button class="btn btn-primary">{{ t.btn_save }}</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="adjustmentModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" id="adjustmentForm">
+        <input type="hidden" name="show_archived" id="adj_show_archived">
+        <div class="modal-header">
+          <h5 class="modal-title">{{ t.suppliers_adjust_title }} <span id="adj_supplier_name"></span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">{{ t.clients_adj_amount }} <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" name="amount" id="adj_amount"
+                   min="0.01" step="0.01" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">{{ t.clients_adj_note }}</label>
+            <input type="text" class="form-control" name="note" id="adj_note">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ t.btn_cancel }}</button>
+          <button type="submit" class="btn btn-primary">{{ t.btn_save }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="addDebtModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" id="addDebtForm">
+        <input type="hidden" name="show_archived" id="debt_show_archived">
+        <div class="modal-header">
+          <h5 class="modal-title">{{ t.suppliers_add_debt_title }} <span id="debt_supplier_name"></span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">{{ t.clients_adj_amount }} <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" name="amount" id="debt_amount"
+                   min="0.01" step="0.01" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">{{ t.clients_add_debt_note }} <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" name="note" id="debt_note" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ t.btn_cancel }}</button>
+          <button type="submit" class="btn btn-danger">{{ t.btn_save }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function openAdjustment(supplierId, supplierName, showArchived) {
+  document.getElementById('adj_supplier_name').textContent = supplierName;
+  document.getElementById('adjustmentForm').action = '/suppliers/' + supplierId + '/adjustment';
+  document.getElementById('adj_show_archived').value = showArchived;
+  document.getElementById('adj_amount').value = '';
+  document.getElementById('adj_note').value = '';
+  new bootstrap.Modal(document.getElementById('adjustmentModal')).show();
+}
+function openAddDebt(supplierId, supplierName, showArchived) {
+  document.getElementById('debt_supplier_name').textContent = supplierName;
+  document.getElementById('addDebtForm').action = '/suppliers/' + supplierId + '/debt/add';
+  document.getElementById('debt_show_archived').value = showArchived;
+  document.getElementById('debt_amount').value = '';
+  document.getElementById('debt_note').value = '';
+  new bootstrap.Modal(document.getElementById('addDebtModal')).show();
+}
+</script>
+{% endblock %}

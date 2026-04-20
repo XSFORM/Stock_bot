@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm" style="max-width: 720px;">
+  <h4>{{ t.suppliers_edit_title }}</h4>
+
+  {% if request.query_params.get('msg') %}
+    <div class="alert alert-info">{{ request.query_params.get('msg') }}</div>
+  {% endif %}
+
+  <form method="post" action="/suppliers/{{ supplier.id }}/edit">
+    <div class="mb-2">
+      <label class="form-label">{{ t.lbl_name }}</label>
+      <input class="form-control" name="name" value="{{ supplier.name }}" required>
+    </div>
+    <div class="mb-2">
+      <label class="form-label">{{ t.lbl_phone }}</label>
+      <input class="form-control" name="phone" value="{{ supplier.phone }}">
+    </div>
+    <div class="mb-2">
+      <label class="form-label">{{ t.lbl_note }}</label>
+      <textarea class="form-control" name="note" rows="4">{{ supplier.note }}</textarea>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary">{{ t.btn_save }}</button>
+      <a class="btn btn-outline-secondary" href="/suppliers">{{ t.suppliers_back }}</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
