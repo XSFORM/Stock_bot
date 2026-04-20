@@ -56,21 +56,13 @@
             <form method="post" action="/receive/start" class="d-flex flex-wrap gap-2 align-items-end mt-1">
               <div>
                 <label class="form-label form-label-sm mb-1">{{ t.lbl_supplier }}</label>
-                {% if suppliers %}
-                  <select class="form-select form-select-sm" id="supplier-select" style="width:160px">
-                    <option value="">{{ t.receive_choose_supplier }}</option>
-                    {% for s in suppliers %}
-                      <option value="{{ s }}">{{ s }}</option>
-                    {% endfor %}
-                    <option value="__new__">{{ t.receive_new_supplier }}</option>
-                  </select>
-                  <input class="form-control form-control-sm mt-1" id="supplier-new-input"
-                         placeholder="{{ t.receive_new_supplier_placeholder }}" style="width:160px;display:none">
-                  <input type="hidden" name="supplier" id="supplier-hidden-value">
-                {% else %}
-                  <input class="form-control form-control-sm" name="supplier"
-                         placeholder="{{ t.lbl_supplier }}" style="width:160px">
-                {% endif %}
+                <select class="form-select form-select-sm" name="supplier_id" required style="width:220px">
+                  <option value="" selected disabled>{{ t.receive_choose_supplier }}</option>
+                  {% for s in suppliers %}
+                    <option value="{{ s.id }}">{{ s.name }}{% if s.phone %} ({{ s.phone }}){% endif %}</option>
+                  {% endfor %}
+                </select>
+                <a href="/suppliers" class="btn btn-sm btn-outline-secondary mt-1">+ {{ t.nav_dealers }}</a>
               </div>
               <div>
                 <label class="form-label form-label-sm mb-1">{{ t.lbl_destination }}</label>
@@ -390,40 +382,8 @@
     });
   })();
   </script>
-  {% endif %}
-</div>
-{% if not open_inv and suppliers %}
-<script>
-(function () {
-  var sel = document.getElementById('supplier-select');
-  var customIn = document.getElementById('supplier-new-input');
-  var hiddenVal = document.getElementById('supplier-hidden-value');
-  if (!sel) return;
-  function syncHidden() {
-    hiddenVal.value = (sel.value === '__new__') ? customIn.value.trim() : sel.value;
-  }
-  function onSelectChange() {
-    var isNew = sel.value === '__new__';
-    customIn.style.display = isNew ? '' : 'none';
-    customIn.required = isNew;
-    syncHidden();
-  }
-  sel.addEventListener('change', onSelectChange);
-  customIn.addEventListener('input', syncHidden);
-  // Validate before form submit: if __new__ chosen, require non-empty custom input
-  sel.closest('form').addEventListener('submit', function (e) {
-    if (sel.value === '__new__' && !customIn.value.trim()) {
-      customIn.setCustomValidity('Please enter a supplier name.');
-      customIn.reportValidity();
-      e.preventDefault();
-    } else {
-      customIn.setCustomValidity('');
-    }
-  });
-  onSelectChange();
-})();
-</script>
 {% endif %}
+</div>
 {% if not open_inv %}
 <script>
 (function () {

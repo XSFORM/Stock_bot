@@ -18,12 +18,19 @@
       <div class="card-body row g-3">
         <div class="col-md-6">
           <label class="form-label">{{ t.lbl_supplier }}</label>
-          <input type="text" class="form-control" name="supplier" value="{{ invoice.supplier }}" list="supplierList">
-          <datalist id="supplierList">
+          <select class="form-select" name="supplier_id">
+            {% if invoice.supplier and not invoice.supplier_id %}
+              <option value="" selected>{{ invoice.supplier }} (legacy)</option>
+            {% else %}
+              <option value="" {% if not invoice.supplier_id %}selected{% endif %}>{{ t.receive_choose_supplier }}</option>
+            {% endif %}
             {% for s in suppliers %}
-            <option value="{{ s }}">
+              <option value="{{ s.id }}" {% if invoice.supplier_id == s.id %}selected{% endif %}>
+                {{ s.name }}{% if s.phone %} ({{ s.phone }}){% endif %}
+              </option>
             {% endfor %}
-          </datalist>
+          </select>
+          <input type="hidden" name="supplier" value="{{ invoice.supplier or '' }}">
         </div>
         <div class="col-md-6">
           <label class="form-label">{{ t.lbl_destination }}</label>

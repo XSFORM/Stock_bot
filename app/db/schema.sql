@@ -13,6 +13,15 @@ CREATE TABLE IF NOT EXISTS clients (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS suppliers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  phone TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  archived INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS products (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   brand TEXT NOT NULL,
@@ -103,11 +112,13 @@ CREATE TABLE IF NOT EXISTS receive_invoices (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   number INTEGER NOT NULL UNIQUE,
   supplier TEXT NOT NULL DEFAULT '',
+  supplier_id INTEGER,
   destination_warehouse TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'OPEN',  -- OPEN / DONE / CANCELLED
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   note TEXT NOT NULL DEFAULT '',
-  FOREIGN KEY (destination_warehouse) REFERENCES warehouses(code)
+  FOREIGN KEY (destination_warehouse) REFERENCES warehouses(code),
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
 );
 
 CREATE TABLE IF NOT EXISTS receive_items (
@@ -122,6 +133,17 @@ CREATE TABLE IF NOT EXISTS receive_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_receive_items_invoice ON receive_items(invoice_id);
+
+CREATE TABLE IF NOT EXISTS supplier_ledger (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  supplier_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  amount REAL NOT NULL,  -- positive value reduces supplier debt
+  note TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_supplier_ledger_supplier ON supplier_ledger(supplier_id);
 
 -- Return invoices
 CREATE TABLE IF NOT EXISTS return_invoices (

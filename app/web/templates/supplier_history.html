@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center gap-3 mb-3">
+    <h4 class="mb-0">{{ t.history_title }} — {{ supplier.name }}</h4>
+    <a class="btn btn-sm btn-outline-secondary" href="/suppliers">{{ t.btn_back }}</a>
+  </div>
+
+  <div class="mb-3">
+    <strong>{{ t.suppliers_current_balance }}</strong>
+    {% if balance > 0 %}
+      <span class="text-danger fw-semibold">{{ "%.2f"|format(balance) }} USD</span>
+      <span class="text-muted">{{ t.suppliers_owes }}</span>
+    {% elif balance < 0 %}
+      <span class="text-success fw-semibold">{{ "%.2f"|format(balance) }} USD</span>
+      <span class="text-muted">{{ t.suppliers_advance }}</span>
+    {% else %}
+      <span class="text-muted">0.00 USD</span>
+    {% endif %}
+  </div>
+
+  <table class="table table-sm table-striped align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th>{{ t.lbl_date_time }}</th>
+        <th>{{ t.lbl_type }}</th>
+        <th>{{ t.lbl_ref }}</th>
+        <th class="text-end">{{ t.lbl_amount_usd }}</th>
+        <th class="text-end">{{ t.lbl_balance_after }}</th>
+        <th>{{ t.lbl_note }}</th>
+        <th>{{ t.lbl_actions }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ev in events %}
+      <tr>
+        <td>{{ ev.get('dt') or ev.get('created_at') or '—' }}</td>
+        <td>
+          {% if ev.get('kind') == 'RECEIVE' %}
+            <span class="badge bg-primary">{{ t.badge_receive }}</span>
+          {% elif ev.get('amount', 0) | float > 0 %}
+            <span class="badge bg-success">{{ t.badge_payment }}</span>
+          {% else %}
+            <span class="badge bg-warning text-dark">{{ t.badge_adjustment }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if ev.get('kind') == 'RECEIVE' %}#{{ ev.get('ref', '') }}{% else %}—{% endif %}
+        </td>
+        <td class="text-end">
+          {% set amount = ev.get('amount', 0) | float %}
+          {% if ev.get('kind') == 'RECEIVE' %}
+            <span class="text-danger">+{{ "%.2f"|format(amount) }}</span>
+          {% elif amount < 0 %}
+            <span class="text-danger">+{{ "%.2f"|format(amount|abs) }}</span>
+          {% elif amount > 0 %}
+            <span class="text-success">-{{ "%.2f"|format(amount) }}</span>
+          {% else %}
+            <span class="text-muted">0.00</span>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          {% set ba = ev.get('balance_after') %}
+          {% if ba is not none and ba > 0 %}
+            <span class="text-danger">{{ "%.2f"|format(ba) }}</span>
+          {% elif ba is not none and ba < 0 %}
+            <span class="text-success">{{ "%.2f"|format(ba) }}</span>
+          {% else %}
+            <span class="text-muted">0.00</span>
+          {% endif %}
+        </td>
+        <td>{{ ev.get('note') or '—' }}</td>
+        <td>
+          {% if ev.get('kind') == 'RECEIVE' and ev.get('view_url') and ev.get('download_url') %}
+            <a class="btn btn-sm btn-outline-primary" href="{{ ev.get('view_url') }}" target="_blank">{{ t.btn_view }}</a>
+            <a class="btn btn-sm btn-outline-success" href="{{ ev.get('download_url') }}">{{ t.btn_download }}</a>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" class="text-muted text-center">{{ t.supplier_history_no_events }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

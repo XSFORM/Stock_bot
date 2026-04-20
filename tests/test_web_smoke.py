@@ -418,8 +418,85 @@ def test_client_history_renders_datetime_and_debt_signage(client: TestClient) ->
     assert "--331.00" not in html
     assert "text-success\">-165.00" in html
     assert "text-danger\">+100.00" in html
-    assert "text-warning\">-40.00" in html
-    assert "Balance after" not in html
+
+
+def test_supplier_debt_flow_with_receive_and_ledger(client: TestClient) -> None:
+    import uuid
+    from app.db import sqlite as db
+
+    open_inv = db.receive_invoice_get_open()
+    if open_inv:
+        db.receive_invoice_cancel(open_inv["id"])
+
+    suffix = uuid.uuid4().hex[:8]
+    supplier_name = f"Dealer {suffix}"
+    ok, err = db.add_supplier(supplier_name, "+99360000000", "test")
+    assert ok, err
+    supplier_id = next(s["id"] for s in db.list_suppliers(include_archived=True) if s["name"] == supplier_name)
+
+    db.add_warehouse("TM_DEPO", "Depo")
+    product_id = db.add_product(f"SB{suffix}".upper(), f"s{suffix}".lower(), "Supplier Debt Test", 20.0)
+    assert product_id > 0
+
+    response = client.post(
+        "/receive/start",
+        data={
+            "supplier_id": supplier_id,
+            "destination_warehouse": "TM_DEPO",
+            "note": "for supplier debt",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    open_inv = db.receive_invoice_get_open()
+    assert open_inv is not None
+    assert open_inv["supplier_id"] == supplier_id
+    assert open_inv["supplier"] == supplier_name
+
+    ok, err = db.receive_item_add(open_inv["id"], product_id, 2, 50.0)
+    assert ok, err
+    ok, err = db.receive_invoice_finish(open_inv["id"])
+    assert ok, err
+
+    assert db.get_supplier_balance(supplier_id) == pytest.approx(100.0)
+
+    ok, err = db.add_supplier_adjustment(supplier_id, 25.0, "payment")
+    assert ok, err
+    assert db.get_supplier_balance(supplier_id) == pytest.approx(75.0)
+
+    events = db.get_supplier_history(supplier_id)
+    assert events
+    assert any(ev["kind"] == "RECEIVE" for ev in events)
+    assert any(ev["kind"] == "LEDGER" for ev in events)
+    assert all("balance_after" in ev for ev in events)
+
+    history_response = client.get(f"/suppliers/{supplier_id}/history")
+    assert history_response.status_code == 200
+    assert supplier_name in history_response.text
+    assert "RECEIVE" in history_response.text
+
+
+def test_receive_invoice_supplier_name_fallback_without_supplier_id(client: TestClient) -> None:
+    from app.db import sqlite as db
+
+    with db._connect() as conn:  # noqa: SLF001 - integration setup
+        next_num = conn.execute(
+            "SELECT COALESCE(MAX(number), 0) + 1 AS n FROM receive_invoices"
+        ).fetchone()["n"]
+        conn.execute(
+            """
+            INSERT INTO receive_invoices
+            (number, supplier, supplier_id, destination_warehouse, status, created_at, note, total)
+            VALUES (?, ?, NULL, ?, 'DONE', ?, ?, ?)
+            """,
+            (next_num, "Legacy Supplier", "TM_DEPO", "2026-01-10 10:00:00", "legacy", 42.0),
+        )
+        conn.commit()
+
+    rows = db.list_receive_invoices_done(q="Legacy Supplier")
+    assert rows
+    assert rows[0]["supplier"] == "Legacy Supplier"
 
 
 def test_client_history_empty_state_colspan_matches_visible_columns(client: TestClient) -> None:

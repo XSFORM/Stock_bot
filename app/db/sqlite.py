@@ -142,6 +142,45 @@ def _ensure_receive_invoices_total(conn: sqlite3.Connection) -> None:
         )
 
 
+def _ensure_suppliers_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS suppliers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            phone TEXT NOT NULL DEFAULT '',
+            note TEXT NOT NULL DEFAULT '',
+            archived INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+        """
+    )
+
+
+def _ensure_supplier_ledger_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS supplier_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            supplier_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            amount REAL NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_supplier_ledger_supplier ON supplier_ledger(supplier_id)"
+    )
+
+
+def _ensure_receive_invoices_supplier_id_column(conn: sqlite3.Connection) -> None:
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(receive_invoices)")}
+    if "supplier_id" not in cols:
+        conn.execute("ALTER TABLE receive_invoices ADD COLUMN supplier_id INTEGER")
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript(_SCHEMA_SQL.read_text())
@@ -156,6 +195,9 @@ def init_db() -> None:
         _ensure_price_tokens_show_buy_price_column(conn)
         _ensure_catalog_tokens_table(conn)
         _ensure_receive_invoices_total(conn)
+        _ensure_suppliers_table(conn)
+        _ensure_supplier_ledger_table(conn)
+        _ensure_receive_invoices_supplier_id_column(conn)
         conn.commit()
 
 
@@ -1024,6 +1066,204 @@ def get_total_clients_debt() -> float:
         return round(max(0.0, inv_total - paid), 2)
 
 
+def list_suppliers(include_archived: bool = False) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        if include_archived:
+            rows = conn.execute("SELECT * FROM suppliers ORDER BY name").fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM suppliers WHERE archived = 0 ORDER BY name"
+            ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
+def add_supplier(name: str, phone: str = "", note: str = "") -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "INSERT INTO suppliers (name, phone, note) VALUES (?, ?, ?)",
+                (name.strip(), phone.strip(), note.strip()),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def get_supplier(supplier_id: int) -> Optional[dict[str, Any]]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM suppliers WHERE id = ?", (supplier_id,)
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+
+
+def update_supplier(
+    supplier_id: int, name: str, phone: str, note: str
+) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE suppliers SET name = ?, phone = ?, note = ? WHERE id = ?",
+                (name.strip(), phone.strip(), note.strip(), supplier_id),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def set_supplier_archived(supplier_id: int, archived: int) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE suppliers SET archived = ? WHERE id = ?",
+                (archived, supplier_id),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def add_supplier_adjustment(
+    supplier_id: int, amount: float, note: str = ""
+) -> tuple[bool, str]:
+    """Record a payment/adjustment that reduces supplier debt (positive amount)."""
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "INSERT INTO supplier_ledger (supplier_id, amount, note) VALUES (?, ?, ?)",
+                (supplier_id, abs(amount), note.strip()),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def add_supplier_debt(
+    supplier_id: int, amount: float, note: str = ""
+) -> tuple[bool, str]:
+    """Record an explicit additional debt (stored as negative in ledger)."""
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "INSERT INTO supplier_ledger (supplier_id, amount, note) VALUES (?, ?, ?)",
+                (supplier_id, -abs(amount), note.strip()),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def get_supplier_balance(supplier_id: int) -> float:
+    """
+    Supplier debt = DONE receive invoices total - sum(supplier_ledger.amount).
+    Positive value means we owe supplier.
+    """
+    with _connect() as conn:
+        inv_row = conn.execute(
+            """
+            SELECT COALESCE(SUM(total), 0) AS inv_total
+            FROM receive_invoices
+            WHERE status = 'DONE' AND supplier_id = ?
+            """,
+            (supplier_id,),
+        ).fetchone()
+        inv_total = float(inv_row["inv_total"]) if inv_row else 0.0
+
+        ledger_row = conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS paid FROM supplier_ledger WHERE supplier_id = ?",
+            (supplier_id,),
+        ).fetchone()
+        paid = float(ledger_row["paid"]) if ledger_row else 0.0
+
+        return round(inv_total - paid, 2)
+
+
+def list_suppliers_with_balance(include_archived: bool = False) -> list[dict[str, Any]]:
+    suppliers = list_suppliers(include_archived=include_archived)
+    for supplier in suppliers:
+        supplier["balance"] = get_supplier_balance(supplier["id"])
+    return suppliers
+
+
+def get_supplier_history(supplier_id: int) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    with _connect() as conn:
+        inv_rows = conn.execute(
+            """
+            SELECT ri.id, ri.number, ri.created_at, ri.total, ri.note
+            FROM receive_invoices ri
+            WHERE ri.status = 'DONE' AND ri.supplier_id = ?
+            ORDER BY ri.created_at ASC, ri.id ASC
+            """,
+            (supplier_id,),
+        ).fetchall()
+        for r in inv_rows:
+            row = _row_to_dict(r)
+            events.append(
+                {
+                    "dt": row.get("created_at", ""),
+                    "created_at": row.get("created_at", ""),
+                    "kind": "RECEIVE",
+                    "ref": str(row.get("number", "")),
+                    "amount": float(row.get("total") or 0),
+                    "note": row.get("note", ""),
+                    "view_url": f"/receive/xlsx/view?n={row.get('id')}",
+                    "download_url": f"/receive/xlsx?n={row.get('id')}",
+                    "_delta": float(row.get("total") or 0),
+                }
+            )
+
+        ledger_rows = conn.execute(
+            """
+            SELECT id, created_at, amount, note
+            FROM supplier_ledger
+            WHERE supplier_id = ?
+            ORDER BY created_at ASC, id ASC
+            """,
+            (supplier_id,),
+        ).fetchall()
+        for r in ledger_rows:
+            row = _row_to_dict(r)
+            amt = float(row.get("amount") or 0)
+            events.append(
+                {
+                    "dt": row.get("created_at", ""),
+                    "created_at": row.get("created_at", ""),
+                    "kind": "LEDGER",
+                    "ref": str(row.get("id", "")),
+                    "amount": amt,
+                    "note": row.get("note", ""),
+                    "_delta": -amt,
+                }
+            )
+
+    events.sort(key=lambda x: (x.get("created_at", ""), x.get("kind", ""), x.get("ref", "")))
+    running = 0.0
+    for ev in events:
+        running = round(running + float(ev.get("_delta", 0) or 0), 2)
+        ev["balance_after"] = running
+        ev.pop("_delta", None)
+    return events
+
+
+def get_total_suppliers_debt() -> float:
+    with _connect() as conn:
+        inv_row = conn.execute(
+            "SELECT COALESCE(SUM(total), 0) AS inv_total FROM receive_invoices WHERE status = 'DONE' AND supplier_id IS NOT NULL"
+        ).fetchone()
+        inv_total = float(inv_row["inv_total"]) if inv_row else 0.0
+        ledger_row = conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS paid FROM supplier_ledger"
+        ).fetchone()
+        paid = float(ledger_row["paid"]) if ledger_row else 0.0
+        return round(max(0.0, inv_total - paid), 2)
+
+
 def get_total_stock_value() -> float:
     with _connect() as conn:
         row = conn.execute(
@@ -1876,14 +2116,23 @@ def delete_sale_invoice(number: int) -> tuple[bool, str]:
 def receive_invoice_get_open() -> Optional[dict[str, Any]]:
     with _connect() as conn:
         row = conn.execute(
-            "SELECT * FROM receive_invoices WHERE status = 'OPEN'"
-            " ORDER BY id DESC LIMIT 1"
+            """
+            SELECT ri.*, COALESCE(s.name, ri.supplier, '') AS supplier
+            FROM receive_invoices ri
+            LEFT JOIN suppliers s ON s.id = ri.supplier_id
+            WHERE ri.status = 'OPEN'
+            ORDER BY ri.id DESC
+            LIMIT 1
+            """
         ).fetchone()
         return _row_to_dict(row) if row else None
 
 
 def receive_invoice_start(
-    supplier: str, destination_warehouse: str, note: str = ""
+    supplier: str,
+    destination_warehouse: str,
+    note: str = "",
+    supplier_id: Optional[int] = None,
 ) -> tuple[bool, str, int]:
     try:
         with _connect() as conn:
@@ -1895,11 +2144,21 @@ def receive_invoice_start(
             next_num = conn.execute(
                 "SELECT COALESCE(MAX(number), 0) + 1 AS n FROM receive_invoices"
             ).fetchone()["n"]
+            supplier_name = supplier.strip()
+            supplier_fk: Optional[int] = int(supplier_id) if supplier_id else None
+            if supplier_fk:
+                sup_row = conn.execute(
+                    "SELECT name FROM suppliers WHERE id = ?",
+                    (supplier_fk,),
+                ).fetchone()
+                if not sup_row:
+                    return False, "supplier_not_found", 0
+                supplier_name = str(sup_row["name"] or "").strip()
             conn.execute(
                 "INSERT INTO receive_invoices"
-                " (number, supplier, destination_warehouse, note)"
-                " VALUES (?, ?, ?, ?)",
-                (next_num, supplier.strip(), destination_warehouse.strip(), note.strip()),
+                " (number, supplier, supplier_id, destination_warehouse, note)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (next_num, supplier_name, supplier_fk, destination_warehouse.strip(), note.strip()),
             )
             conn.commit()
             inv_id = conn.execute(
@@ -2027,7 +2286,13 @@ def receive_invoice_finish(invoice_id: int) -> tuple[bool, str]:
 def receive_invoice_get(invoice_id: int) -> Optional[dict[str, Any]]:
     with _connect() as conn:
         row = conn.execute(
-            "SELECT * FROM receive_invoices WHERE id = ?", (invoice_id,)
+            """
+            SELECT ri.*, COALESCE(s.name, ri.supplier, '') AS supplier
+            FROM receive_invoices ri
+            LEFT JOIN suppliers s ON s.id = ri.supplier_id
+            WHERE ri.id = ?
+            """,
+            (invoice_id,),
         ).fetchone()
         return _row_to_dict(row) if row else None
 
@@ -2060,23 +2325,29 @@ def list_receive_invoices_done(q: str = "") -> list[dict[str, Any]]:
             like = f"%{q}%"
             rows = conn.execute(
                 """
-                SELECT *
-                FROM receive_invoices
-                WHERE status = 'DONE'
+                SELECT ri.*, COALESCE(s.name, ri.supplier, '') AS supplier
+                FROM receive_invoices ri
+                LEFT JOIN suppliers s ON s.id = ri.supplier_id
+                WHERE ri.status = 'DONE'
                   AND (
-                      CAST(number AS TEXT) LIKE ?
-                      OR created_at LIKE ?
-                      OR supplier LIKE ?
-                      OR destination_warehouse LIKE ?
+                      CAST(ri.number AS TEXT) LIKE ?
+                      OR ri.created_at LIKE ?
+                      OR COALESCE(s.name, ri.supplier, '') LIKE ?
+                      OR ri.destination_warehouse LIKE ?
                   )
-                ORDER BY number DESC
+                ORDER BY ri.number DESC
                 """,
                 (like, like, like, like),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM receive_invoices WHERE status = 'DONE'"
-                " ORDER BY number DESC"
+                """
+                SELECT ri.*, COALESCE(s.name, ri.supplier, '') AS supplier
+                FROM receive_invoices ri
+                LEFT JOIN suppliers s ON s.id = ri.supplier_id
+                WHERE ri.status = 'DONE'
+                ORDER BY ri.number DESC
+                """
             ).fetchall()
         return [_row_to_dict(r) for r in rows]
 
@@ -2084,10 +2355,15 @@ def list_receive_invoices_done(q: str = "") -> list[dict[str, Any]]:
 def list_receive_suppliers() -> list[str]:
     with _connect() as conn:
         rows = conn.execute(
+            "SELECT name FROM suppliers WHERE archived = 0 ORDER BY name"
+        ).fetchall()
+        if rows:
+            return [r["name"] for r in rows]
+        legacy_rows = conn.execute(
             "SELECT DISTINCT supplier FROM receive_invoices"
             " WHERE supplier != '' ORDER BY supplier"
         ).fetchall()
-        return [r["supplier"] for r in rows]
+        return [r["supplier"] for r in legacy_rows]
 
 
 def get_receive_invoice_items_for_edit(invoice_id: int) -> list[dict[str, Any]]:
@@ -2099,6 +2375,7 @@ def update_receive_invoice(
     supplier: str,
     destination_warehouse: str,
     new_items: list[dict[str, Any]],
+    supplier_id: Optional[int] = None,
 ) -> tuple[bool, str]:
     try:
         with _connect() as conn:
@@ -2120,10 +2397,23 @@ def update_receive_invoice(
                         (oi["qty"], inv["destination_warehouse"], oi["product_id"]),
                     )
 
+            supplier_name = supplier.strip()
+            supplier_fk: Optional[int] = int(supplier_id) if supplier_id else None
+            if supplier_fk:
+                sup_row = conn.execute(
+                    "SELECT name FROM suppliers WHERE id = ?",
+                    (supplier_fk,),
+                ).fetchone()
+                if not sup_row:
+                    return False, "supplier_not_found"
+                supplier_name = str(sup_row["name"] or "").strip()
+            elif not supplier_name:
+                supplier_name = str(inv["supplier"] or "").strip()
+
             conn.execute(
-                "UPDATE receive_invoices SET supplier = ?, destination_warehouse = ?"
+                "UPDATE receive_invoices SET supplier = ?, supplier_id = ?, destination_warehouse = ?"
                 " WHERE id = ?",
-                (supplier.strip(), destination_warehouse.strip(), invoice_id),
+                (supplier_name, supplier_fk, destination_warehouse.strip(), invoice_id),
             )
             conn.execute("DELETE FROM receive_items WHERE invoice_id = ?", (invoice_id,))
 
