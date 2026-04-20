@@ -1688,18 +1688,36 @@ def get_invoice_items_by_number(number: int) -> list[dict[str, Any]]:
         return items
 
 
-def list_sale_invoices_done() -> list[dict[str, Any]]:
+def list_sale_invoices_done(q: str = "") -> list[dict[str, Any]]:
+    q = q.strip()
     with _connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT i.id, i.number, i.created_at, i.total, i.currency,
-                   cl.name AS client, c.warehouse_code
-            FROM invoices i
-            JOIN carts c ON c.id = i.cart_id
-            JOIN clients cl ON cl.id = c.client_id
-            ORDER BY i.number DESC
-            """
-        ).fetchall()
+        if q:
+            like = f"%{q}%"
+            rows = conn.execute(
+                """
+                SELECT i.id, i.number, i.created_at, i.total, i.currency,
+                       cl.name AS client, c.warehouse_code
+                FROM invoices i
+                JOIN carts c ON c.id = i.cart_id
+                JOIN clients cl ON cl.id = c.client_id
+                WHERE CAST(i.number AS TEXT) LIKE ?
+                   OR i.created_at LIKE ?
+                   OR cl.name LIKE ?
+                ORDER BY i.number DESC
+                """,
+                (like, like, like),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT i.id, i.number, i.created_at, i.total, i.currency,
+                       cl.name AS client, c.warehouse_code
+                FROM invoices i
+                JOIN carts c ON c.id = i.cart_id
+                JOIN clients cl ON cl.id = c.client_id
+                ORDER BY i.number DESC
+                """
+            ).fetchall()
         return [_row_to_dict(r) for r in rows]
 
 
@@ -2035,12 +2053,31 @@ def receive_invoice_get_items(invoice_id: int) -> list[dict[str, Any]]:
         return items
 
 
-def list_receive_invoices_done() -> list[dict[str, Any]]:
+def list_receive_invoices_done(q: str = "") -> list[dict[str, Any]]:
+    q = q.strip()
     with _connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM receive_invoices WHERE status = 'DONE'"
-            " ORDER BY number DESC"
-        ).fetchall()
+        if q:
+            like = f"%{q}%"
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM receive_invoices
+                WHERE status = 'DONE'
+                  AND (
+                      CAST(number AS TEXT) LIKE ?
+                      OR created_at LIKE ?
+                      OR supplier LIKE ?
+                      OR destination_warehouse LIKE ?
+                  )
+                ORDER BY number DESC
+                """,
+                (like, like, like, like),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM receive_invoices WHERE status = 'DONE'"
+                " ORDER BY number DESC"
+            ).fetchall()
         return [_row_to_dict(r) for r in rows]
 
 
@@ -2333,17 +2370,37 @@ def return_invoice_get_items(invoice_id: int) -> list[dict[str, Any]]:
         return items
 
 
-def list_return_invoices_done() -> list[dict[str, Any]]:
+def list_return_invoices_done(q: str = "") -> list[dict[str, Any]]:
+    q = q.strip()
     with _connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT ri.*, cl.name AS client_name
-            FROM return_invoices ri
-            JOIN clients cl ON cl.id = ri.client_id
-            WHERE ri.status = 'DONE'
-            ORDER BY ri.number DESC
-            """
-        ).fetchall()
+        if q:
+            like = f"%{q}%"
+            rows = conn.execute(
+                """
+                SELECT ri.*, cl.name AS client_name
+                FROM return_invoices ri
+                JOIN clients cl ON cl.id = ri.client_id
+                WHERE ri.status = 'DONE'
+                  AND (
+                      CAST(ri.number AS TEXT) LIKE ?
+                      OR ri.created_at LIKE ?
+                      OR cl.name LIKE ?
+                      OR ri.warehouse_code LIKE ?
+                  )
+                ORDER BY ri.number DESC
+                """,
+                (like, like, like, like),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT ri.*, cl.name AS client_name
+                FROM return_invoices ri
+                JOIN clients cl ON cl.id = ri.client_id
+                WHERE ri.status = 'DONE'
+                ORDER BY ri.number DESC
+                """
+            ).fetchall()
         return [_row_to_dict(r) for r in rows]
 
 

@@ -1081,10 +1081,10 @@ def brands_add(name: str = Form(...)):
 # ---------------- invoices ----------------
 
 @app.get("/invoices", response_class=HTMLResponse)
-def invoices_get(request: Request, tab: str = "sale"):
-    sale_invoices = list_sale_invoices_done()
-    receive_invoices = list_receive_invoices_done()
-    return_invoices = list_return_invoices_done()
+def invoices_get(request: Request, tab: str = "sale", q: str = ""):
+    sale_invoices = list_sale_invoices_done(q=q)
+    receive_invoices = list_receive_invoices_done(q=q)
+    return_invoices = list_return_invoices_done(q=q)
     return _render(
         request,
         "invoices.html",
@@ -1093,6 +1093,7 @@ def invoices_get(request: Request, tab: str = "sale"):
             "receive_invoices": receive_invoices,
             "return_invoices": return_invoices,
             "active_tab": tab,
+            "q": q,
         },
     )
 
