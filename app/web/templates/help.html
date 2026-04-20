@@ -25,6 +25,7 @@
       <li><a href="#ru-return">Возврат</a></li>
       <li><a href="#ru-brands">Бренды</a></li>
       <li><a href="#ru-clients">Клиенты</a></li>
+      <li><a href="#ru-suppliers">Поставщики</a></li>
       <li><a href="#ru-invoices">Накладные</a></li>
       <li><a href="#ru-history">История</a></li>
       <li><a href="#ru-admin">Настройки (Admin)</a></li>
@@ -163,8 +164,19 @@
     <li>Архивировать клиента — скрыть неактивного клиента, не удаляя историю.</li>
   </ul>
 
-  {# 11. Invoices #}
-  <h4 id="ru-invoices" class="mt-4">11. Накладные (Invoices)</h4>
+  {# 11. Suppliers #}
+  <h4 id="ru-suppliers" class="mt-4">11. Поставщики</h4>
+  <p>Справочник поставщиков доступен из меню <strong>«Поставщики»</strong>. Здесь хранится информация о поставщиках и текущий долг перед ними в USD.</p>
+  <ul>
+    <li>Добавить поставщика: имя, телефон и заметка.</li>
+    <li>Баланс поставщика (Debt USD) считается как сумма завершённых приходных накладных минус сумма оплат и корректировок в журнале поставщика.</li>
+    <li>Чтобы уменьшить долг, откройте карточку поставщика и добавьте оплату/корректировку; при необходимости можно добавить долг вручную.</li>
+    <li>Архив/разархив: неактивного поставщика можно архивировать и вернуть из архива позже без потери истории.</li>
+    <li>В истории поставщика видны приходы, оплаты и баланс после каждой операции.</li>
+  </ul>
+
+  {# 12. Invoices #}
+  <h4 id="ru-invoices" class="mt-4">12. Накладные (Invoices)</h4>
   <p>Список всех созданных документов: накладные продажи и возвраты.</p>
   <ul>
     <li>Просмотр: нажмите «Просмотреть» рядом с накладной — откроется страница с деталями.</li>
@@ -174,8 +186,8 @@
     <li>Фильтрация по клиенту или дате для быстрого поиска нужной накладной.</li>
   </ul>
 
-  {# 12. History #}
-  <h4 id="ru-history" class="mt-4">12. История (History)</h4>
+  {# 13. History #}
+  <h4 id="ru-history" class="mt-4">13. История (History)</h4>
   <p>Полный журнал всех движений товаров: приходы, продажи, возвраты. Позволяет отследить любую операцию.</p>
   <ul>
     <li>Поиск по ключевому слову (бренд, модель, номер накладной, клиент).</li>
@@ -183,8 +195,8 @@
     <li>Скачать XLSX или просмотреть документ прямо из истории.</li>
   </ul>
 
-  {# 13. Admin #}
-  <h4 id="ru-admin" class="mt-4">13. Настройки (Admin)</h4>
+  {# 14. Admin #}
+  <h4 id="ru-admin" class="mt-4">14. Настройки (Admin)</h4>
   <p>Системные настройки и управление ERP.</p>
   <ul>
     <li><strong>Блокировка сайта (Site Lock):</strong> включить пароль для входа. Рекомендуется, если сервер доступен из интернета.</li>
@@ -197,8 +209,8 @@
   <p><strong>Примечание:</strong> создание складов/магазинов в разделе Admin → Settings <em>не предусмотрено</em>.
   Склады/магазины добавляются в разделе <strong>Приход</strong>: при создании операции выберите склад. Если нужного склада нет — добавьте новый прямо там.</p>
 
-  {# 14. Pocket Price #}
-  <h4 id="ru-pocket-price" class="mt-4">14. Pocket Price — публичный прайс-лист</h4>
+  {# 15. Pocket Price #}
+  <h4 id="ru-pocket-price" class="mt-4">15. Pocket Price — публичный прайс-лист</h4>
   <p>
     Pocket Price — облегчённая страница просмотра актуальных цен и остатков. Она предназначена
     для клиентов или сотрудников, которым нужно быстро узнать цену без доступа к основному ERP.
@@ -219,8 +231,8 @@
   <p><strong>Безопасность:</strong> любой, у кого есть ссылка, может просматривать прайс — не передавайте
   токен посторонним. Отозвать или удалить токен можно в Admin → Токены Price.</p>
 
-  {# 15. Pocket Catalog #}
-  <h4 id="ru-pocket-catalog" class="mt-4">15. Pocket Catalog — мобильный каталог</h4>
+  {# 16. Pocket Catalog #}
+  <h4 id="ru-pocket-catalog" class="mt-4">16. Pocket Catalog — мобильный каталог</h4>
   <p>
     Pocket Catalog — PWA-приложение для работы с каталогом товаров прямо на складе.
     Сотрудник сканирует штрих-коды и обновляет цены закупки, не заходя в основной интерфейс ERP.
@@ -244,8 +256,8 @@
   <p><strong>Безопасность:</strong> токен привязан к конкретному устройству. Для смены устройства или
   отзыва доступа используйте Admin → Токены Catalog.</p>
 
-  {# 16. Tips #}
-  <h4 id="ru-tips" class="mt-4">16. Советы и частые ошибки</h4>
+  {# 17. Tips #}
+  <h4 id="ru-tips" class="mt-4">17. Советы и частые ошибки</h4>
   <ul>
     <li>✅ Всегда завершайте операцию кнопкой «Завершить» — незавершённый приход или продажа не влияет на остатки.</li>
     <li>✅ Перед продажей убедитесь, что товар есть на складе — система не позволит продать больше, чем есть в наличии.</li>
@@ -256,8 +268,8 @@
     <li>⚠️ Интернет обязателен. Если страница не загружается — проверьте соединение.</li>
   </ul>
 
-  {# 17. Authors #}
-  <h4 id="ru-authors" class="mt-4">17. Авторы</h4>
+  {# 18. Authors #}
+  <h4 id="ru-authors" class="mt-4">18. Авторы</h4>
   <p>
     <strong>Идея и разработка:</strong> <a href="mailto:berdyshka87@gmail.com">berdyshka87@gmail.com</a><br>
     <strong>Помощь ИИ:</strong> GitHub Copilot (AI-ассистент; не является официальной поддержкой GitHub)
@@ -290,6 +302,7 @@
       <li><a href="#tm-return">Yzyna gaýtarmak</a></li>
       <li><a href="#tm-brands">Brendler</a></li>
       <li><a href="#tm-clients">Müşderiler</a></li>
+      <li><a href="#tm-suppliers">Üpjün edijiler</a></li>
       <li><a href="#tm-invoices">Hasap-fakturalar</a></li>
       <li><a href="#tm-history">Taryh</a></li>
       <li><a href="#tm-admin">Sazlamalar (Admin)</a></li>
@@ -416,8 +429,19 @@
     <li>Müşderi arhiwlemek — taryhy pozmadan işjeň däl müşderini gizlemek.</li>
   </ul>
 
-  {# 11. Invoices #}
-  <h4 id="tm-invoices" class="mt-4">11. Hasap-fakturalar</h4>
+  {# 11. Suppliers #}
+  <h4 id="tm-suppliers" class="mt-4">11. Üpjün edijiler</h4>
+  <p><strong>Üpjün edijiler</strong> bölümi menýudan açylýar. Bu ýerde üpjün edijileriň maglumaty we olaryň öňündäki USD bergiňiz alnyp barylýar.</p>
+  <ul>
+    <li>Üpjün ediji goşmak: ady, telefon belgisi we bellik.</li>
+    <li>Bergi (Debt USD) = tamamlanan kabul ediş hasap-fakturalarynyň jemi − tölegler/korrektirowkalar žurnalynyň jemi.</li>
+    <li>Bergini azaltmak üçin üpjün edijiniň kartyna girip töleg ýa-da korrektirowka goşuň; gerek bolsa bergi hem aýratyn goşup bolýar.</li>
+    <li>Arhiwlemek/arhiwden çykarmak: işjeň däl üpjün edijileri gizläp, soňra taryhy ýitirmän yzyna gaýtaryp bolýar.</li>
+    <li>Taryh bölüminde kabul etmeler, tölegler we her amaldan soňky balans görünýär.</li>
+  </ul>
+
+  {# 12. Invoices #}
+  <h4 id="tm-invoices" class="mt-4">12. Hasap-fakturalar</h4>
   <p>Döredilen ähli resminamalaryň sanawy: satyş hasap-fakturaları we yzyna gaýtarmalar.</p>
   <ul>
     <li>Görmek: hasap-fakturayň ýanyndaky «Görmek» düwmesine basyň — jikme-jik sahypa açylar.</li>
@@ -426,8 +450,8 @@
         Haryt ammara gaýtýar, müşderiniň bergisi azalýar.</li>
   </ul>
 
-  {# 12. History #}
-  <h4 id="tm-history" class="mt-4">12. Taryh</h4>
+  {# 13. History #}
+  <h4 id="tm-history" class="mt-4">13. Taryh</h4>
   <p>Ähli haryt hereketleriniň doly žurnaly: kabul etmek, satyş, yzyna gaýtarmak.</p>
   <ul>
     <li>Açar söz boýunça gözleg (brend, model, hasap-faktura belgisi, müşderi).</li>
@@ -435,8 +459,8 @@
     <li>Tarypdan XLSX ýüklemek ýa-da resminamany görmek.</li>
   </ul>
 
-  {# 13. Admin #}
-  <h4 id="tm-admin" class="mt-4">13. Sazlamalar (Admin)</h4>
+  {# 14. Admin #}
+  <h4 id="tm-admin" class="mt-4">14. Sazlamalar (Admin)</h4>
   <ul>
     <li><strong>Sahypa gulpy (Site Lock):</strong> giriş parolyny açmak.</li>
     <li><strong>Deslapky interfeýs dili:</strong> EN / RU / TM.</li>
@@ -446,8 +470,8 @@
   <p><strong>Bellik:</strong> Admin → Settings bölümünde ammar döretmek <em>göz öňünde tutulmandyr</em>.
   Ammarlar/dükanlary <strong>Kabul etmek</strong> bölümünde goşulýar: amal döredilende ammary saýlaň. Gerekli ammar ýok bolsa — şol ýerde täze goşuň.</p>
 
-  {# 14. Pocket Price #}
-  <h4 id="tm-pocket-price" class="mt-4">14. Pocket Price — jemgyýetçilik bahalar sanawy</h4>
+  {# 15. Pocket Price #}
+  <h4 id="tm-pocket-price" class="mt-4">15. Pocket Price — jemgyýetçilik bahalar sanawy</h4>
   <p>
     Pocket Price — häzirki bahalary we galdyklary görmek üçin ýeňil sahypa. ERP-e girişsiz
     müşderilere ýa-da işgärlere harydyň bahasyny çalt öwrenmäge niýetlenendir.
@@ -468,8 +492,8 @@
   <p><strong>Howpsuzlyk:</strong> salgysy bolan islendik adam bahalary görmäge mümkin — tokeni daşary adamlara bermäň.
   Admin → Price Tokenleri bölümünde tokeni ýatyryp ýa-da pozup bolýar.</p>
 
-  {# 15. Pocket Catalog #}
-  <h4 id="tm-pocket-catalog" class="mt-4">15. Pocket Catalog — mobil katalog</h4>
+  {# 16. Pocket Catalog #}
+  <h4 id="tm-pocket-catalog" class="mt-4">16. Pocket Catalog — mobil katalog</h4>
   <p>
     Pocket Catalog — ammarda ştrik-kodlary skanirlemek we satyn alyş bahalaryny täzelemek üçin
     PWA-goşundy. Işgär esasy ERP interfeýsine girmezden katalog bilen işläp bilýär.
@@ -493,8 +517,8 @@
   <p><strong>Howpsuzlyk:</strong> token belli bir enjama baglanýar. Enjamlary çalyşmak ýa-da girişi ýatyrmak
   üçin Admin → Catalog Tokenleri bölümini ulanyň.</p>
 
-  {# 16. Tips #}
-  <h4 id="tm-tips" class="mt-4">16. Maslahatlar we ýalňyşlyklar</h4>
+  {# 17. Tips #}
+  <h4 id="tm-tips" class="mt-4">17. Maslahatlar we ýalňyşlyklar</h4>
   <ul>
     <li>✅ Amaly hemişe «Tamamlamak» düwmesi bilen tamamlaň — tamamlanmadyk kabul etmek ýa-da satyş galdyklara täsir etmeýär.</li>
     <li>✅ Satmazdan ozal harydyň ammarda bardygyna göz ýetiriň — ulgam mümkin bolan mukdardan köp satmaga rugsat bermeýär.</li>
@@ -504,8 +528,8 @@
     <li>⚠️ Internet hökmandyr. Sahypa ýüklenmese — baglanyşygy barlaň.</li>
   </ul>
 
-  {# 17. Authors #}
-  <h4 id="tm-authors" class="mt-4">17. Awtorlary</h4>
+  {# 18. Authors #}
+  <h4 id="tm-authors" class="mt-4">18. Awtorlary</h4>
   <p>
     <strong>Pikir we işläp düzmek:</strong> <a href="mailto:berdyshka87@gmail.com">berdyshka87@gmail.com</a><br>
     <strong>AI kömegi:</strong> GitHub Copilot (AI-kömekçi; GitHub-yň resmi goldawy däl)
@@ -538,6 +562,7 @@
       <li><a href="#en-return">Return</a></li>
       <li><a href="#en-brands">Brands</a></li>
       <li><a href="#en-clients">Clients</a></li>
+      <li><a href="#en-suppliers">Suppliers</a></li>
       <li><a href="#en-invoices">Invoices</a></li>
       <li><a href="#en-history">History</a></li>
       <li><a href="#en-admin">Admin settings</a></li>
@@ -677,8 +702,19 @@
     <li>Archive a client — hide an inactive client without deleting history.</li>
   </ul>
 
-  {# 11. Invoices #}
-  <h4 id="en-invoices" class="mt-4">11. Invoices</h4>
+  {# 11. Suppliers #}
+  <h4 id="en-suppliers" class="mt-4">11. Suppliers</h4>
+  <p>The <strong>Suppliers</strong> section is available from the top menu. It stores supplier details and tracks your outstanding supplier debt in USD.</p>
+  <ul>
+    <li>Add a supplier: name, phone number, and note.</li>
+    <li>Supplier debt (Debt USD) is calculated as total completed receive invoices minus total supplier payments/adjustments in the supplier ledger.</li>
+    <li>To reduce debt, open the supplier card and add a payment/adjustment; if needed you can also add debt manually.</li>
+    <li>Archive/unarchive: inactive suppliers can be archived and restored later without losing history.</li>
+    <li>Supplier history shows receives, payments, and balance-after for each operation.</li>
+  </ul>
+
+  {# 12. Invoices #}
+  <h4 id="en-invoices" class="mt-4">12. Invoices</h4>
   <p>A list of all created documents: sales invoices and returns.</p>
   <ul>
     <li>View: click «View» next to an invoice — a details page opens.</li>
@@ -688,8 +724,8 @@
     <li>Filter by client or date to find an invoice quickly.</li>
   </ul>
 
-  {# 12. History #}
-  <h4 id="en-history" class="mt-4">12. History</h4>
+  {# 13. History #}
+  <h4 id="en-history" class="mt-4">13. History</h4>
   <p>A complete log of all stock movements: receives, sales, returns. Use it to trace any operation.</p>
   <ul>
     <li>Search by keyword (brand, model, invoice number, client).</li>
@@ -697,8 +733,8 @@
     <li>Download XLSX or view the document directly from history.</li>
   </ul>
 
-  {# 13. Admin #}
-  <h4 id="en-admin" class="mt-4">13. Admin settings</h4>
+  {# 14. Admin #}
+  <h4 id="en-admin" class="mt-4">14. Admin settings</h4>
   <ul>
     <li><strong>Site Lock:</strong> enable a login password. Recommended when your server is accessible
         from the internet.</li>
@@ -713,8 +749,8 @@
   Warehouses/stores are added in the <strong>Receive</strong> section: when creating an operation, select a warehouse.
   If the required warehouse does not exist — add a new one right there.</p>
 
-  {# 14. Pocket Price #}
-  <h4 id="en-pocket-price" class="mt-4">14. Pocket Price — public price list</h4>
+  {# 15. Pocket Price #}
+  <h4 id="en-pocket-price" class="mt-4">15. Pocket Price — public price list</h4>
   <p>
     Pocket Price is a lightweight page for viewing current prices and stock levels. It is designed
     for clients or staff who need to quickly look up a price without accessing the main ERP.
@@ -735,8 +771,8 @@
   <p><strong>Security:</strong> anyone with the link can view the price list — do not share the token with
   unauthorised people. Tokens can be revoked or deleted in Admin → Price Tokens.</p>
 
-  {# 15. Pocket Catalog #}
-  <h4 id="en-pocket-catalog" class="mt-4">15. Pocket Catalog — mobile catalogue</h4>
+  {# 16. Pocket Catalog #}
+  <h4 id="en-pocket-catalog" class="mt-4">16. Pocket Catalog — mobile catalogue</h4>
   <p>
     Pocket Catalog is a PWA for working with the product catalogue on the warehouse floor.
     Staff can scan barcodes and update purchase prices without logging into the main ERP.
@@ -760,8 +796,8 @@
   <p><strong>Security:</strong> the token is bound to a specific device. To change devices or revoke
   access use Admin → Catalog Tokens.</p>
 
-  {# 16. Tips #}
-  <h4 id="en-tips" class="mt-4">16. Tips &amp; common mistakes</h4>
+  {# 17. Tips #}
+  <h4 id="en-tips" class="mt-4">17. Tips &amp; common mistakes</h4>
   <ul>
     <li>✅ Always finish an operation with the «Finish» button — an unfinished receive or sale does not
         affect stock balances.</li>
@@ -775,8 +811,8 @@
     <li>⚠️ Internet is required. If the page does not load — check your connection.</li>
   </ul>
 
-  {# 17. Authors #}
-  <h4 id="en-authors" class="mt-4">17. Authors</h4>
+  {# 18. Authors #}
+  <h4 id="en-authors" class="mt-4">18. Authors</h4>
   <p>
     <strong>Idea &amp; development:</strong> <a href="mailto:berdyshka87@gmail.com">berdyshka87@gmail.com</a><br>
     <strong>AI assistance:</strong> GitHub Copilot (AI assistant; not an official GitHub support offering)

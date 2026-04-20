@@ -55,6 +55,22 @@ def test_unlock_page_returns_200(client: TestClient) -> None:
     assert response.status_code == 200
 
 
+def test_help_page_includes_suppliers_section_ru(client: TestClient) -> None:
+    """GET /help in RU must include Suppliers TOC item and section anchor."""
+    response = client.get("/help", headers={"cookie": "ui_lang=ru"})
+    assert response.status_code == 200
+    assert 'href="#ru-suppliers"' in response.text
+    assert 'id="ru-suppliers"' in response.text
+
+
+def test_help_page_includes_suppliers_section_en(client: TestClient) -> None:
+    """GET /help in EN must include Suppliers TOC item and section anchor."""
+    response = client.get("/help", headers={"cookie": "ui_lang=en"})
+    assert response.status_code == 200
+    assert 'href="#en-suppliers"' in response.text
+    assert 'id="en-suppliers"' in response.text
+
+
 def test_stock_xlsx_returns_xlsx_bytes(client: TestClient) -> None:
     """GET /stock/xlsx must return an XLSX file (not 500) even with empty warehouse."""
     response = client.get("/stock/xlsx?warehouse=&q=&show_archived=0")
