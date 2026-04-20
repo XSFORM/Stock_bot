@@ -439,3 +439,117 @@ def test_client_history_empty_state_colspan_matches_visible_columns(client: Test
     assert "Balance after" not in html
     assert 'colspan="6"' in html
     assert 'colspan="7"' not in html
+
+
+def test_invoice_search_filters_all_done_invoice_lists(client: TestClient) -> None:
+    import uuid
+    from app.db import sqlite as db
+
+    suffix = uuid.uuid4().hex[:8]
+    sale_client_name = f"Invoice Search Client {suffix}"
+    other_client_name = f"Invoice Other Client {suffix}"
+    ok, err = db.add_client(sale_client_name)
+    assert ok, err
+    ok, err = db.add_client(other_client_name)
+    assert ok, err
+    db.add_warehouse("1416_SHOP", "Shop")
+    db.add_warehouse("TM_DEPO", "Depo")
+
+    clients = {c["name"]: c["id"] for c in db.list_clients(include_archived=True)}
+    sale_client_id = clients[sale_client_name]
+    other_client_id = clients[other_client_name]
+
+    with db._connect() as conn:  # noqa: SLF001 - integration setup for deterministic invoice rows
+        next_sale = conn.execute("SELECT COALESCE(MAX(number), 0) + 1 AS n FROM invoices").fetchone()["n"]
+        next_receive = conn.execute(
+            "SELECT COALESCE(MAX(number), 0) + 1 AS n FROM receive_invoices"
+        ).fetchone()["n"]
+        next_return = conn.execute(
+            "SELECT COALESCE(MAX(number), 0) + 1 AS n FROM return_invoices"
+        ).fetchone()["n"]
+        sale_number = next_sale + 1000
+        other_sale_number = sale_number + 1
+        receive_number = next_receive + 1000
+        other_receive_number = receive_number + 1
+        return_number = next_return + 1000
+        other_return_number = return_number + 1
+
+        conn.execute(
+            "INSERT INTO carts (client_id, warehouse_code, status, created_at) VALUES (?, ?, 'CLOSED', ?)",
+            (sale_client_id, "1416_SHOP", "2026-04-18 10:00:00"),
+        )
+        sale_cart_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        conn.execute(
+            "INSERT INTO invoices (cart_id, number, created_at, total) VALUES (?, ?, ?, ?)",
+            (sale_cart_id, sale_number, "2026-04-18 10:00:00", 10.0),
+        )
+        conn.execute(
+            "INSERT INTO carts (client_id, warehouse_code, status, created_at) VALUES (?, ?, 'CLOSED', ?)",
+            (other_client_id, "1416_SHOP", "2026-04-19 10:00:00"),
+        )
+        other_cart_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        conn.execute(
+            "INSERT INTO invoices (cart_id, number, created_at, total) VALUES (?, ?, ?, ?)",
+            (other_cart_id, other_sale_number, "2026-04-19 10:00:00", 11.0),
+        )
+
+        conn.execute(
+            "INSERT INTO receive_invoices"
+            " (number, supplier, destination_warehouse, status, created_at, total, note)"
+            " VALUES (?, ?, ?, 'DONE', ?, ?, ?)",
+            (receive_number, f"Search Supplier {suffix}", "TM_DEPO", "2026-04-18 11:00:00", 20.0, ""),
+        )
+        conn.execute(
+            "INSERT INTO receive_invoices"
+            " (number, supplier, destination_warehouse, status, created_at, total, note)"
+            " VALUES (?, ?, ?, 'DONE', ?, ?, ?)",
+            (other_receive_number, f"Other Supplier {suffix}", "1416_SHOP", "2026-04-20 11:00:00", 21.0, ""),
+        )
+
+        conn.execute(
+            "INSERT INTO return_invoices"
+            " (number, client_id, warehouse_code, status, created_at, total, note)"
+            " VALUES (?, ?, ?, 'DONE', ?, ?, ?)",
+            (return_number, sale_client_id, "1416_SHOP", "2026-04-18 12:00:00", 30.0, ""),
+        )
+        conn.execute(
+            "INSERT INTO return_invoices"
+            " (number, client_id, warehouse_code, status, created_at, total, note)"
+            " VALUES (?, ?, ?, 'DONE', ?, ?, ?)",
+            (other_return_number, other_client_id, "TM_DEPO", "2026-04-21 12:00:00", 31.0, ""),
+        )
+        conn.commit()
+
+    sale_by_date = db.list_sale_invoices_done(q="2026-04-18")
+    assert any(inv["number"] == sale_number for inv in sale_by_date)
+    assert all(inv["number"] != other_sale_number for inv in sale_by_date)
+
+    sale_by_number = db.list_sale_invoices_done(q=str(sale_number))
+    assert any(inv["number"] == sale_number for inv in sale_by_number)
+    assert all(inv["number"] != other_sale_number for inv in sale_by_number)
+
+    sale_by_client = db.list_sale_invoices_done(q=sale_client_name)
+    assert any(inv["number"] == sale_number for inv in sale_by_client)
+    assert all(inv["number"] != other_sale_number for inv in sale_by_client)
+
+    receive_by_supplier = db.list_receive_invoices_done(q=f"Search Supplier {suffix}")
+    assert any(inv["number"] == receive_number for inv in receive_by_supplier)
+    assert all(inv["number"] != other_receive_number for inv in receive_by_supplier)
+
+    return_by_client = db.list_return_invoices_done(q=sale_client_name)
+    assert any(inv["number"] == return_number for inv in return_by_client)
+    assert all(inv["number"] != other_return_number for inv in return_by_client)
+
+
+def test_invoices_page_search_ui_preserves_query_and_tab(client: TestClient) -> None:
+    response = client.get("/invoices?tab=sale&q=abc123")
+    assert response.status_code == 200
+    html = response.text
+
+    assert 'name="q"' in html
+    assert 'value="abc123"' in html
+    assert 'name="tab" value="sale"' in html
+    assert "/invoices?tab=sale&amp;q=abc123" in html
+    assert "/invoices?tab=receive&amp;q=abc123" in html
+    assert "/invoices?tab=return&amp;q=abc123" in html
+    assert '/invoices?tab=sale">Reset</a>' in html

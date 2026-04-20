@@ -19,17 +19,36 @@
   <ul class="nav nav-tabs mb-3" id="invoiceTabs">
     <li class="nav-item">
       <a class="nav-link {% if active_tab == 'sale' %}active{% endif %}"
-         href="/invoices?tab=sale">{{ t.invoices_tab_sale }}</a>
+         href="/invoices?tab=sale&amp;q={{ q|urlencode }}">{{ t.invoices_tab_sale }}</a>
     </li>
     <li class="nav-item">
       <a class="nav-link {% if active_tab == 'receive' %}active{% endif %}"
-         href="/invoices?tab=receive">{{ t.invoices_tab_receive }}</a>
+         href="/invoices?tab=receive&amp;q={{ q|urlencode }}">{{ t.invoices_tab_receive }}</a>
     </li>
     <li class="nav-item">
       <a class="nav-link {% if active_tab == 'return' %}active{% endif %}"
-         href="/invoices?tab=return">{{ t.invoices_tab_return }}</a>
+         href="/invoices?tab=return&amp;q={{ q|urlencode }}">{{ t.invoices_tab_return }}</a>
     </li>
   </ul>
+
+  <form method="get" class="row g-2 mb-3">
+    <input type="hidden" name="tab" value="{{ active_tab }}">
+    <div class="col-sm-8 col-md-6">
+      <input
+        type="text"
+        class="form-control"
+        name="q"
+        value="{{ q }}"
+        placeholder="Search by number, date, client/supplier"
+      >
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-outline-primary">Search</button>
+    </div>
+    <div class="col-auto">
+      <a class="btn btn-outline-secondary" href="/invoices?tab={{ active_tab }}">Reset</a>
+    </div>
+  </form>
 
   {% if active_tab == 'sale' %}
   {# ---- Sale tab ---- #}
