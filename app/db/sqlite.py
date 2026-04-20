@@ -181,6 +181,35 @@ def _ensure_receive_invoices_supplier_id_column(conn: sqlite3.Connection) -> Non
         conn.execute("ALTER TABLE receive_invoices ADD COLUMN supplier_id INTEGER")
 
 
+def _backfill_suppliers_from_receive_invoices(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO suppliers (name)
+        SELECT DISTINCT TRIM(supplier)
+        FROM receive_invoices
+        WHERE TRIM(COALESCE(supplier, '')) != ''
+        """
+    )
+    conn.execute(
+        """
+        UPDATE receive_invoices
+        SET supplier_id = (
+            SELECT s.id
+            FROM suppliers s
+            WHERE s.name = TRIM(receive_invoices.supplier)
+            LIMIT 1
+        )
+        WHERE supplier_id IS NULL
+          AND TRIM(COALESCE(supplier, '')) != ''
+          AND EXISTS (
+              SELECT 1
+              FROM suppliers s
+              WHERE s.name = TRIM(receive_invoices.supplier)
+          )
+        """
+    )
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript(_SCHEMA_SQL.read_text())
@@ -198,6 +227,7 @@ def init_db() -> None:
         _ensure_suppliers_table(conn)
         _ensure_supplier_ledger_table(conn)
         _ensure_receive_invoices_supplier_id_column(conn)
+        _backfill_suppliers_from_receive_invoices(conn)
         conn.commit()
 
 

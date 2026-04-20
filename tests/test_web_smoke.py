@@ -499,6 +499,77 @@ def test_receive_invoice_supplier_name_fallback_without_supplier_id(client: Test
     assert rows[0]["supplier"] == "Legacy Supplier"
 
 
+def test_init_db_backfills_suppliers_from_receive_invoices(client: TestClient) -> None:
+    from app.db import sqlite as db
+
+    db.add_warehouse("TM_DEPO", "Depo")
+    with db._connect() as conn:  # noqa: SLF001 - integration setup
+        next_num = conn.execute(
+            "SELECT COALESCE(MAX(number), 0) + 1 AS n FROM receive_invoices"
+        ).fetchone()["n"]
+        conn.execute(
+            """
+            INSERT INTO receive_invoices
+            (number, supplier, supplier_id, destination_warehouse, status, created_at, note, total)
+            VALUES (?, ?, NULL, ?, 'DONE', ?, ?, ?)
+            """,
+            (next_num, "  Gulzar  ", "TM_DEPO", "2026-01-11 10:00:00", "legacy", 10.0),
+        )
+        conn.execute(
+            """
+            INSERT INTO receive_invoices
+            (number, supplier, supplier_id, destination_warehouse, status, created_at, note, total)
+            VALUES (?, ?, NULL, ?, 'DONE', ?, ?, ?)
+            """,
+            (next_num + 1, "Yiwu SONIFER", "TM_DEPO", "2026-01-11 11:00:00", "legacy", 20.0),
+        )
+        conn.commit()
+
+    db.init_db()
+    db.init_db()
+
+    with db._connect() as conn:  # noqa: SLF001 - integration assertions
+        gulzar_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM suppliers WHERE name = 'Gulzar'"
+        ).fetchone()["c"]
+        yiwu_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM suppliers WHERE name = 'Yiwu SONIFER'"
+        ).fetchone()["c"]
+        assert gulzar_count == 1
+        assert yiwu_count == 1
+
+        rows = conn.execute(
+            """
+            SELECT ri.supplier, ri.supplier_id, s.name AS supplier_name
+            FROM receive_invoices ri
+            LEFT JOIN suppliers s ON s.id = ri.supplier_id
+            WHERE ri.number IN (?, ?)
+            ORDER BY ri.number
+            """,
+            (next_num, next_num + 1),
+        ).fetchall()
+        assert rows[0]["supplier_id"] is not None
+        assert rows[0]["supplier_name"] == "Gulzar"
+        assert rows[1]["supplier_id"] is not None
+        assert rows[1]["supplier_name"] == "Yiwu SONIFER"
+
+
+def test_suppliers_nav_label_is_translated(client: TestClient) -> None:
+    lang_set = client.post("/set-lang", data={"lang": "ru", "next": "/"}, follow_redirects=False)
+    assert lang_set.status_code == 303
+
+    ru_response = client.get("/")
+    assert ru_response.status_code == 200
+    assert 'href="/suppliers">Поставщики<' in ru_response.text
+
+    lang_set = client.post("/set-lang", data={"lang": "en", "next": "/"}, follow_redirects=False)
+    assert lang_set.status_code == 303
+
+    en_response = client.get("/")
+    assert en_response.status_code == 200
+    assert 'href="/suppliers">Suppliers<' in en_response.text
+
+
 def test_client_history_empty_state_colspan_matches_visible_columns(client: TestClient) -> None:
     import uuid
     from app.db import sqlite as db
