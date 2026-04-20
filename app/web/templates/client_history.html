@@ -27,7 +27,6 @@
         <th>{{ t.lbl_ref }}</th>
         <th class="text-end">{{ t.lbl_amount_usd }}</th>
         <th>{{ t.lbl_note }}</th>
-        <th class="text-end">{{ t.lbl_balance_after }}</th>
         <th>{{ t.lbl_actions }}</th>
       </tr>
     </thead>
@@ -66,16 +65,6 @@
           {% endif %}
         </td>
         <td>{{ ev.get('note') or '—' }}</td>
-        <td class="text-end">
-          {% set ba = ev.get('balance_after') %}
-          {% if ba is not none and ba > 0 %}
-            <span class="text-danger">{{ "%.2f"|format(ba) }}</span>
-          {% elif ba is not none and ba < 0 %}
-            <span class="text-success">{{ "%.2f"|format(ba) }}</span>
-          {% else %}
-            <span class="text-muted">0.00</span>
-          {% endif %}
-        </td>
         <td>
           {% if ev.get('kind') == 'INVOICE' and ev.get('view_url') and ev.get('download_url') %}
             <a class="btn btn-sm btn-outline-primary" href="{{ ev.get('view_url') }}" target="_blank">{{ t.btn_view }}</a>
@@ -90,7 +79,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="7" class="text-muted text-center">{{ t.client_history_no_events }}</td>
+        <td colspan="6" class="text-muted text-center">{{ t.client_history_no_events }}</td>
       </tr>
       {% endfor %}
     </tbody>

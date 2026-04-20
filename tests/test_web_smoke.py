@@ -419,3 +419,23 @@ def test_client_history_renders_datetime_and_debt_signage(client: TestClient) ->
     assert "text-success\">-165.00" in html
     assert "text-danger\">+100.00" in html
     assert "text-warning\">-40.00" in html
+    assert "Balance after" not in html
+
+
+def test_client_history_empty_state_colspan_matches_visible_columns(client: TestClient) -> None:
+    import uuid
+    from app.db import sqlite as db
+
+    suffix = uuid.uuid4().hex[:8]
+    client_name = f"History Empty {suffix}"
+    ok, err = db.add_client(client_name)
+    assert ok, err
+    client_id = next(c["id"] for c in db.list_clients(include_archived=True) if c["name"] == client_name)
+
+    response = client.get(f"/clients/{client_id}/history")
+    assert response.status_code == 200
+    html = response.text
+
+    assert "Balance after" not in html
+    assert 'colspan="6"' in html
+    assert 'colspan="7"' not in html
