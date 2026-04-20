@@ -34,31 +34,38 @@
     <tbody>
       {% for ev in events %}
       <tr>
-        <td>{{ ev.dt }}</td>
+        <td>{{ ev.get('dt') or ev.get('created_at') or '—' }}</td>
         <td>
-          {% if ev.kind == 'INVOICE' %}
+          {% if ev.get('kind') == 'INVOICE' %}
             <span class="badge bg-primary">{{ t.badge_invoice }}</span>
-          {% elif ev.kind == 'RETURN' %}
+          {% elif ev.get('kind') == 'RETURN' %}
             <span class="badge bg-warning text-dark">{{ t.badge_return }}</span>
           {% else %}
             <span class="badge bg-success">{{ t.badge_adjustment }}</span>
           {% endif %}
         </td>
         <td>
-          {% if ev.kind == 'INVOICE' %}#{{ ev.ref }}
-          {% elif ev.kind == 'RETURN' %}RET-{{ ev.ref }}
+          {% if ev.get('kind') == 'INVOICE' %}#{{ ev.get('ref', '') }}
+          {% elif ev.get('kind') == 'RETURN' %}RET-{{ ev.get('ref', '') }}
           {% else %}—{% endif %}
         </td>
         <td class="text-end">
-          {% if ev.kind == 'INVOICE' %}
-            <span class="text-danger">+{{ "%.2f"|format(ev.get('amount', 0)) }}</span>
-          {% elif ev.kind == 'RETURN' %}
-            <span class="text-warning">-{{ "%.2f"|format(ev.get('amount', 0)) }}</span>
+          {% set amount = ev.get('amount', 0) | float %}
+          {% if ev.get('kind') == 'INVOICE' %}
+            <span class="text-danger">+{{ "%.2f"|format(amount) }}</span>
+          {% elif ev.get('kind') == 'RETURN' %}
+            <span class="text-warning">-{{ "%.2f"|format(amount) }}</span>
+          {% elif ev.get('kind') == 'LEDGER' and amount < 0 %}
+            <span class="text-danger">+{{ "%.2f"|format(amount|abs) }}</span>
+          {% elif ev.get('kind') == 'LEDGER' and amount > 0 %}
+            <span class="text-success">-{{ "%.2f"|format(amount) }}</span>
+          {% elif amount == 0 %}
+            <span class="text-muted">0.00</span>
           {% else %}
-            <span class="text-success">-{{ "%.2f"|format(ev.get('amount', 0)) }}</span>
+            <span class="text-muted">{{ "%.2f"|format(amount) }}</span>
           {% endif %}
         </td>
-        <td>{{ ev.note or '—' }}</td>
+        <td>{{ ev.get('note') or '—' }}</td>
         <td class="text-end">
           {% set ba = ev.get('balance_after') %}
           {% if ba is not none and ba > 0 %}
@@ -70,12 +77,12 @@
           {% endif %}
         </td>
         <td>
-          {% if ev.kind == 'INVOICE' %}
-            <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank">{{ t.btn_view }}</a>
-            <a class="btn btn-sm btn-outline-success" href="{{ ev.download_url }}">{{ t.btn_download }}</a>
-          {% elif ev.kind == 'RETURN' %}
-            <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank">{{ t.btn_view }}</a>
-            <a class="btn btn-sm btn-outline-warning" href="{{ ev.download_url }}">{{ t.btn_download }}</a>
+          {% if ev.get('kind') == 'INVOICE' and ev.get('view_url') and ev.get('download_url') %}
+            <a class="btn btn-sm btn-outline-primary" href="{{ ev.get('view_url') }}" target="_blank">{{ t.btn_view }}</a>
+            <a class="btn btn-sm btn-outline-success" href="{{ ev.get('download_url') }}">{{ t.btn_download }}</a>
+          {% elif ev.get('kind') == 'RETURN' and ev.get('view_url') and ev.get('download_url') %}
+            <a class="btn btn-sm btn-outline-primary" href="{{ ev.get('view_url') }}" target="_blank">{{ t.btn_view }}</a>
+            <a class="btn btn-sm btn-outline-warning" href="{{ ev.get('download_url') }}">{{ t.btn_download }}</a>
           {% else %}
             —
           {% endif %}
