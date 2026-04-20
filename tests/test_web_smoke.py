@@ -356,3 +356,66 @@ def test_return_line_item_price_is_rounded_on_save_add_and_update(client: TestCl
     assert updated["total"] == pytest.approx(24.90)
 
     db.return_invoice_cancel(invoice_id)
+
+
+def test_client_history_renders_datetime_and_debt_signage(client: TestClient) -> None:
+    import uuid
+    from app.db import sqlite as db
+
+    suffix = uuid.uuid4().hex[:8]
+    client_name = f"History Client {suffix}"
+    ok, err = db.add_client(client_name)
+    assert ok, err
+    db.add_warehouse("1416_SHOP", "Shop")
+    product_id = db.add_product(f"HB{suffix}".upper(), f"h{suffix}".lower(), "History Product", 10.0)
+    assert product_id > 0
+
+    client_id = next(c["id"] for c in db.list_clients(include_archived=True) if c["name"] == client_name)
+
+    with db._connect() as conn:  # noqa: SLF001 - integration setup for deterministic history rows
+        next_invoice = conn.execute("SELECT COALESCE(MAX(number), 0) + 1 AS n FROM invoices").fetchone()["n"]
+        next_return = conn.execute("SELECT COALESCE(MAX(number), 0) + 1 AS n FROM return_invoices").fetchone()["n"]
+
+        conn.execute(
+            "INSERT INTO carts (client_id, warehouse_code, status, created_at) VALUES (?, ?, 'CLOSED', ?)",
+            (client_id, "1416_SHOP", "2026-01-01 10:00:00"),
+        )
+        cart_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        conn.execute(
+            "INSERT INTO cart_items (cart_id, product_id, qty, price_mode, unit_price, total)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (cart_id, product_id, 1, "custom", 100.0, 100.0),
+        )
+        conn.execute(
+            "INSERT INTO invoices (cart_id, number, created_at, total) VALUES (?, ?, ?, ?)",
+            (cart_id, next_invoice, "2026-01-01 10:00:00", 100.0),
+        )
+        conn.execute(
+            "INSERT INTO return_invoices (number, client_id, warehouse_code, status, created_at, total, note)"
+            " VALUES (?, ?, ?, 'DONE', ?, ?, ?)",
+            (next_return, client_id, "1416_SHOP", "2026-01-02 10:00:00", 40.0, "Return note"),
+        )
+        conn.execute(
+            "INSERT INTO client_ledger (client_id, created_at, amount, note) VALUES (?, ?, ?, ?)",
+            (client_id, "2026-01-03 10:00:00", -331.0, "Debt add"),
+        )
+        conn.execute(
+            "INSERT INTO client_ledger (client_id, created_at, amount, note) VALUES (?, ?, ?, ?)",
+            (client_id, "2026-01-04 10:00:00", 165.0, "Debt payment"),
+        )
+        conn.commit()
+
+    response = client.get(f"/clients/{client_id}/history")
+    assert response.status_code == 200
+    html = response.text
+
+    assert "2026-01-01 10:00:00" in html
+    assert "2026-01-02 10:00:00" in html
+    assert "2026-01-03 10:00:00" in html
+    assert "2026-01-04 10:00:00" in html
+
+    assert "text-danger\">+331.00" in html
+    assert "--331.00" not in html
+    assert "text-success\">-165.00" in html
+    assert "text-danger\">+100.00" in html
+    assert "text-warning\">-40.00" in html

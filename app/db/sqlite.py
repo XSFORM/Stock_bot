@@ -946,22 +946,59 @@ def get_client_history(client_id: int) -> list[dict[str, Any]]:
             (client_id,),
         ).fetchall()
         for r in rows:
-            event = _row_to_dict(r)
+            row = _row_to_dict(r)
             items = conn.execute(
                 "SELECT unit_price, qty FROM cart_items WHERE cart_id = ?",
                 (r["cart_id"],),
             ).fetchall()
-            event["total"] = calc_document_total(list(items), "unit_price")
-            event["event_type"] = "SALE"
-            event.pop("cart_id", None)
-            events.append(event)
+            events.append({
+                "kind": "INVOICE",
+                "dt": row.get("created_at", ""),
+                "created_at": row.get("created_at", ""),
+                "ref": str(row.get("number", "")),
+                "amount": calc_document_total(list(items), "unit_price"),
+                "note": "",
+                "view_url": f"/sale/xlsx/view?n={row.get('number')}",
+                "download_url": f"/sale/xlsx?n={row.get('number')}",
+            })
+
+        rows_return = conn.execute(
+            """
+            SELECT id, number, created_at, total, note
+            FROM return_invoices
+            WHERE client_id = ? AND status = 'DONE'
+            ORDER BY created_at DESC
+            """,
+            (client_id,),
+        ).fetchall()
+        for r in rows_return:
+            row = _row_to_dict(r)
+            events.append({
+                "kind": "RETURN",
+                "dt": row.get("created_at", ""),
+                "created_at": row.get("created_at", ""),
+                "ref": str(row.get("number", "")),
+                "amount": float(row.get("total") or 0),
+                "note": row.get("note", ""),
+                "view_url": f"/return/xlsx/view?n={row.get('id')}",
+                "download_url": f"/return/xlsx?n={row.get('id')}",
+            })
+
         rows2 = conn.execute(
-            "SELECT id, created_at, amount, note, 'LEDGER' AS event_type"
+            "SELECT id, created_at, amount, note"
             " FROM client_ledger WHERE client_id = ? ORDER BY created_at DESC",
             (client_id,),
         ).fetchall()
         for r in rows2:
-            events.append(_row_to_dict(r))
+            row = _row_to_dict(r)
+            events.append({
+                "kind": "LEDGER",
+                "dt": row.get("created_at", ""),
+                "created_at": row.get("created_at", ""),
+                "ref": str(row.get("id", "")),
+                "amount": float(row.get("amount") or 0),
+                "note": row.get("note", ""),
+            })
         events.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return events
 
