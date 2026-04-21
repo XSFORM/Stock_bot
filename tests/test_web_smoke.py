@@ -44,6 +44,7 @@ def test_index_returns_200(client: TestClient) -> None:
         "possible TemplateResponse API mismatch with current Starlette version"
     )
     assert "text/html" in response.headers["content-type"]
+    assert "Hasapcy" in response.text
 
 
 def test_products_page_returns_200(client: TestClient) -> None:
@@ -56,6 +57,7 @@ def test_unlock_page_returns_200(client: TestClient) -> None:
     """GET /unlock must render without error."""
     response = client.get("/unlock")
     assert response.status_code == 200
+    assert "Hasapcy" in response.text
 
 
 def test_help_page_includes_suppliers_section_ru(client: TestClient) -> None:

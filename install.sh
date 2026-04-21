@@ -85,7 +85,7 @@ server {
     listen 80;
     server_name $DOMAIN;
 
-    auth_basic "Stock Bot";
+    auth_basic "Hasapcy";
     auth_basic_user_file /etc/nginx/.htpasswd;
 
     # Pocket Price PWA — token-based access, no Basic Auth prompt.

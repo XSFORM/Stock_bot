@@ -1,5 +1,5 @@
 [Unit]
-Description=Stock Bot (Telegram)
+Description=Hasapcy (Telegram)
 After=network.target
 
 [Service]

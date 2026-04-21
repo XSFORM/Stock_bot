@@ -179,7 +179,7 @@ STATIC_DIR = BASE_DIR / "static"
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Stock Bot Web")
+app = FastAPI(title="Hasapcy")
 
 # Disable Jinja2 template caching (cache_size=0) to avoid
 # "TypeError: unhashable type: 'dict'" errors that occur when Starlette

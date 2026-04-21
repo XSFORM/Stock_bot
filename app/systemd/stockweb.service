@@ -1,5 +1,5 @@
 [Unit]
-Description=Stock Web (FastAPI)
+Description=Hasapcy (FastAPI)
 After=network.target
 
 [Service]
