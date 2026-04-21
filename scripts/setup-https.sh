@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup-https.sh — configure nginx + Basic Auth + HTTPS (Let's Encrypt) for Stock Bot.
+# setup-https.sh — configure nginx + Basic Auth + HTTPS (Let's Encrypt) for Hasapcy.
 #
 # Run this script if HTTPS setup was skipped during install (e.g. non-interactive install),
 # or to re-configure the domain / credentials on an existing server.
@@ -46,7 +46,7 @@ server {
     listen 80;
     server_name $DOMAIN;
 
-    auth_basic "Stock Bot";
+    auth_basic "Hasapcy";
     auth_basic_user_file /etc/nginx/.htpasswd;
 
     # Pocket Price PWA — token-based access, no Basic Auth prompt.

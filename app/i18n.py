@@ -1,4 +1,4 @@
-"""Minimal i18n helper for the Stock Bot web UI.
+"""Minimal i18n helper for the Hasapcy web UI.
 
 Supported languages: EN (English), RU (Russian), TM (Turkmen).
 Add new keys here as the UI grows.  The *en* dict is the authoritative
@@ -275,7 +275,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "xlsx_lbl_client": "Client:",
         "xlsx_lbl_warehouse": "Warehouse:",
         # Unlock screen
-        "unlock_title": "Stock Bot — Locked",
+        "unlock_title": "Hasapcy — Locked",
         "unlock_heading": "Site is locked",
         "unlock_prompt": "Enter the shared password to continue:",
         "unlock_password_placeholder": "Password",
@@ -728,7 +728,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "xlsx_lbl_client": "Клиент:",
         "xlsx_lbl_warehouse": "Склад:",
         # Unlock screen
-        "unlock_title": "Stock Bot — Заблокировано",
+        "unlock_title": "Hasapcy — Заблокировано",
         "unlock_heading": "Сайт заблокирован",
         "unlock_prompt": "Введите общий пароль для продолжения:",
         "unlock_password_placeholder": "Пароль",
@@ -1181,7 +1181,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "xlsx_lbl_date": "Sene:",
         "xlsx_lbl_client": "Müşderi:",
         "xlsx_lbl_warehouse": "Ammar:",
-        "unlock_title": "Stock Bot — Gulplandi",
+        "unlock_title": "Hasapcy — Gulplandi",
         "unlock_heading": "Saýt gulplanan",
         "unlock_prompt": "Dowam etmek üçin umumy paroly giriziň:",
         "unlock_password_placeholder": "Parol",

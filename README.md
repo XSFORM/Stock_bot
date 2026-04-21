@@ -77,7 +77,7 @@ server {
     listen 80;
     server_name YOUR_DOMAIN_OR_IP;
 
-    auth_basic "Stock Bot";
+    auth_basic "Hasapcy";
     auth_basic_user_file /etc/nginx/.htpasswd;
 
     location / {
