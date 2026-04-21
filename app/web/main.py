@@ -134,7 +134,7 @@ from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xl
 from app.services.receive_xlsx import generate_receive_xlsx_bytes
 from app.services.return_xlsx import generate_return_xlsx_bytes
 from app.services.stock_xlsx import generate_stock_xlsx_bytes
-from app.services.backup import make_backup, INVOICES_DIR
+from app.services.backup import make_backup, INVOICES_DIR, BACKUPS_DIR
 from app.i18n import get_translations, SUPPORTED_LANGS
 from app.utils.money import calc_document_total
 from app.db.sqlite import (
@@ -202,6 +202,10 @@ if STATIC_DIR.exists():
 # ──────────────────────────────────────────────────────────────────────────────
 
 _HASH_ITERS = 260_000  # PBKDF2 iteration count
+_DOWNLOAD_ALLOWED_DIRS = {
+    "invoices": INVOICES_DIR,
+    "backups": BACKUPS_DIR,
+}
 
 
 def _hash_password(password: str) -> str:
@@ -234,6 +238,65 @@ def _set_session_cookie(response: Response, token: str) -> None:
         httponly=True,
         samesite="lax",
     )
+
+
+def _require_admin_session(request: Request):
+    if get_setting("admin_lock_enabled", "1") != "1":
+        return None
+    # Reuse site-lock session as the minimal admin check.
+    if not get_setting("site_lock_hash", ""):
+        return None
+    token = request.cookies.get("site_session", "")
+    if token and is_valid_session(token):
+        return None
+    next_url = quote(request.url.path, safe="")
+    return RedirectResponse(url=f"/unlock?next={next_url}", status_code=303)
+
+
+def _download_error(request: Request, status_code: int, error: str):
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse({"error": error}, status_code=status_code)
+    return RedirectResponse(url=f"/invoices?msg={quote(error, safe='')}", status_code=303)
+
+
+def _resolve_download_path(raw_path: str) -> tuple[Optional[Path], Optional[str]]:
+    candidate_raw = (raw_path or "").strip()
+    if not candidate_raw:
+        return None, "download_not_found"
+    candidate = Path(candidate_raw)
+    if candidate.is_absolute():
+        return None, "download_forbidden"
+    if ".." in candidate.parts:
+        return None, "download_forbidden"
+    parts = candidate.parts
+    if not parts:
+        return None, "download_not_found"
+    root = _DOWNLOAD_ALLOWED_DIRS.get(parts[0])
+    if root is None:
+        return None, "download_forbidden"
+    target = (root / Path(*parts[1:])).resolve()
+    root_resolved = root.resolve()
+    if target != root_resolved and root_resolved not in target.parents:
+        return None, "download_forbidden"
+    if not target.exists() or not target.is_file():
+        return None, "download_not_found"
+    return target, None
+
+
+def _to_download_ref(file_path: str) -> str:
+    candidate_raw = (file_path or "").strip()
+    if not candidate_raw:
+        return ""
+    try:
+        resolved = Path(candidate_raw).resolve()
+    except OSError:
+        return ""
+    for prefix, root in _DOWNLOAD_ALLOWED_DIRS.items():
+        root_resolved = root.resolve()
+        if resolved == root_resolved or root_resolved in resolved.parents:
+            rel = resolved.relative_to(root_resolved).as_posix()
+            return f"{prefix}/{rel}" if rel else prefix
+    return ""
 
 
 def _get_ui_lang(request: Request) -> str:
@@ -1052,8 +1115,11 @@ def sale_finish(cart_id: int = Form(...)):
         logger.exception("Failed to create backup after finishing invoice #%s", invoice.get("number"))
         backup_path = ""
 
+    pdf_ref = _to_download_ref(pdf_path)
+    backup_ref = _to_download_ref(backup_path)
+
     return RedirectResponse(
-        url=f"/sale/done?pdf={pdf_path}&backup={backup_path}&n={invoice['number']}",
+        url=f"/sale/done?pdf={quote(pdf_ref, safe='')}&backup={quote(backup_ref, safe='')}&n={invoice['number']}",
         status_code=303,
     )
 
@@ -1132,9 +1198,10 @@ def sale_done(request: Request, pdf: str, backup: str, n: str = ""):
 
 
 @app.get("/download", response_class=FileResponse)
-def download(path: str):
-    # MVP: доверяем path. Потом обязательно ограничим директории!
-    p = Path(path)
+def download(request: Request, path: str):
+    p, err = _resolve_download_path(path)
+    if err or not p:
+        return _download_error(request, 403 if err == "download_forbidden" else 404, err or "download_not_found")
     return FileResponse(str(p), filename=p.name)
 
 
@@ -1265,7 +1332,10 @@ def invoice_sale_edit_post(
 
 
 @app.post("/invoices/sale/{number}/delete")
-def invoice_sale_delete(number: int):
+def invoice_sale_delete(request: Request, number: int):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     ok, err = delete_sale_invoice(number)
     if not ok:
         return RedirectResponse(
@@ -1675,7 +1745,10 @@ async def admin_settings_background(
 # ──────────────────────────────────────────────────────────────────────────────
 
 @app.post("/admin/backup/create")
-def admin_backup_create():
+def admin_backup_create(request: Request):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     zip_path = make_backup()
     p = Path(zip_path)
     return FileResponse(str(p), filename=p.name, media_type="application/zip")
@@ -1683,9 +1756,13 @@ def admin_backup_create():
 
 @app.post("/admin/backup/restore")
 async def admin_backup_restore(
+    request: Request,
     backup_file: UploadFile = File(...),
     confirm: str = Form(""),
 ):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     if confirm != "1":
         return RedirectResponse(
             url="/admin/settings?msg=restore_error:confirmation+required",
@@ -1847,6 +1924,9 @@ def api_price_token_info(request: Request):
 
 @app.get("/admin/price-tokens", response_class=HTMLResponse)
 def admin_price_tokens_get(request: Request, msg: str = "", new_token: str = ""):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     tokens = list_price_tokens()
     return _render(
         request,
@@ -1856,7 +1936,10 @@ def admin_price_tokens_get(request: Request, msg: str = "", new_token: str = "")
 
 
 @app.post("/admin/price-tokens/create")
-def admin_price_tokens_create(label: str = Form(""), mode: str = Form("SIMPLE")):
+def admin_price_tokens_create(request: Request, label: str = Form(""), mode: str = Form("SIMPLE")):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     try:
         plain, _row = create_price_token(label, mode)
         return RedirectResponse(
@@ -1871,32 +1954,51 @@ def admin_price_tokens_create(label: str = Form(""), mode: str = Form("SIMPLE"))
 
 
 @app.post("/admin/price-tokens/set-mode")
-def admin_price_tokens_set_mode(token_id: int = Form(...), mode: str = Form("SIMPLE")):
+def admin_price_tokens_set_mode(request: Request, token_id: int = Form(...), mode: str = Form("SIMPLE")):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     set_price_token_mode(int(token_id), mode)
     return RedirectResponse(url="/admin/price-tokens", status_code=303)
 
 
 @app.post("/admin/price-tokens/toggle-qty")
-def admin_price_tokens_toggle_qty(token_id: int = Form(...), show_qty: int = Form(0)):
+def admin_price_tokens_toggle_qty(request: Request, token_id: int = Form(...), show_qty: int = Form(0)):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     set_price_token_show_qty(int(token_id), bool(show_qty))
     return RedirectResponse(url="/admin/price-tokens", status_code=303)
 
 
 @app.post("/admin/price-tokens/toggle-buy-price")
-def admin_price_tokens_toggle_buy_price(token_id: int = Form(...), show_buy_price: int = Form(0)):
+def admin_price_tokens_toggle_buy_price(
+    request: Request,
+    token_id: int = Form(...),
+    show_buy_price: int = Form(0),
+):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     set_price_token_show_buy_price(int(token_id), bool(show_buy_price))
     return RedirectResponse(url="/admin/price-tokens", status_code=303)
 
 
 @app.post("/admin/price-tokens/revoke")
-def admin_price_tokens_revoke(token_id: int = Form(...)):
+def admin_price_tokens_revoke(request: Request, token_id: int = Form(...)):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     ok, err = revoke_price_token(int(token_id))
     msg = "revoked" if ok else f"error:{quote(err, safe='')}"
     return RedirectResponse(url=f"/admin/price-tokens?msg={msg}", status_code=303)
 
 
 @app.post("/admin/price-tokens/delete")
-def admin_price_tokens_delete(token_id: int = Form(...)):
+def admin_price_tokens_delete(request: Request, token_id: int = Form(...)):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     ok, err = delete_price_token(int(token_id))
     msg = "deleted" if ok else f"error:{quote(err, safe='')}"
     return RedirectResponse(url=f"/admin/price-tokens?msg={msg}", status_code=303)
@@ -2052,6 +2154,9 @@ async def api_catalog_update_price(request: Request):
 
 @app.get("/admin/catalog-tokens", response_class=HTMLResponse)
 def admin_catalog_tokens_get(request: Request, msg: str = "", new_token: str = ""):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     tokens = list_catalog_tokens()
     return _render(
         request,
@@ -2061,7 +2166,10 @@ def admin_catalog_tokens_get(request: Request, msg: str = "", new_token: str = "
 
 
 @app.post("/admin/catalog-tokens/create")
-def admin_catalog_tokens_create(label: str = Form("")):
+def admin_catalog_tokens_create(request: Request, label: str = Form("")):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     try:
         plain, _row = create_catalog_token(label)
         return RedirectResponse(
@@ -2076,14 +2184,20 @@ def admin_catalog_tokens_create(label: str = Form("")):
 
 
 @app.post("/admin/catalog-tokens/revoke")
-def admin_catalog_tokens_revoke(token_id: int = Form(...)):
+def admin_catalog_tokens_revoke(request: Request, token_id: int = Form(...)):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     ok, err = revoke_catalog_token(int(token_id))
     msg = "revoked" if ok else f"error:{quote(err, safe='')}"
     return RedirectResponse(url=f"/admin/catalog-tokens?msg={msg}", status_code=303)
 
 
 @app.post("/admin/catalog-tokens/delete")
-def admin_catalog_tokens_delete(token_id: int = Form(...)):
+def admin_catalog_tokens_delete(request: Request, token_id: int = Form(...)):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
     ok, err = delete_catalog_token(int(token_id))
     msg = "deleted" if ok else f"error:{quote(err, safe='')}"
     return RedirectResponse(url=f"/admin/catalog-tokens?msg={msg}", status_code=303)

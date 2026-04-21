@@ -23,8 +23,11 @@ from app.utils.money import calc_line_total
 
 @pytest.fixture(scope="module")
 def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
-    db_path = tmp_path_factory.mktemp("data") / "stock.db"
+    data_dir = tmp_path_factory.mktemp("data")
+    db_path = data_dir / "stock.db"
     os.environ["DB_PATH"] = str(db_path)
+    os.environ["BACKUP_DIR"] = str(data_dir / "backups")
+    os.environ["INVOICES_DIR"] = str(data_dir / "invoices")
 
     # Import *after* setting DB_PATH so the module picks up the correct path.
     from app.web.main import app  # noqa: PLC0415
@@ -717,3 +720,69 @@ def test_invoices_page_search_ui_preserves_query_and_tab(client: TestClient) -> 
     assert "/invoices?tab=receive&amp;q=abc123" in html
     assert "/invoices?tab=return&amp;q=abc123" in html
     assert '/invoices?tab=sale">Reset</a>' in html
+
+
+def test_download_allows_invoice_and_backup_files(client: TestClient) -> None:
+    from app.services.backup import INVOICES_DIR, BACKUPS_DIR
+
+    INVOICES_DIR.mkdir(parents=True, exist_ok=True)
+    BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+
+    invoice_name = "invoice_999999.pdf"
+    backup_name = "backup_999999.zip"
+    (INVOICES_DIR / invoice_name).write_bytes(b"%PDF-1.4\n")
+    (BACKUPS_DIR / backup_name).write_bytes(b"PK\x03\x04")
+
+    invoice_resp = client.get(f"/download?path=invoices/{invoice_name}")
+    assert invoice_resp.status_code == 200
+    assert invoice_resp.headers.get("content-disposition", "").endswith(f'filename="{invoice_name}"')
+
+    backup_resp = client.get(f"/download?path=backups/{backup_name}")
+    assert backup_resp.status_code == 200
+    assert backup_resp.headers.get("content-disposition", "").endswith(f'filename="{backup_name}"')
+
+
+def test_download_rejects_absolute_path_and_traversal(client: TestClient) -> None:
+    abs_resp = client.get("/download", params={"path": "/etc/passwd"}, headers={"accept": "application/json"})
+    assert abs_resp.status_code == 403
+    assert abs_resp.json() == {"error": "download_forbidden"}
+
+    traversal_resp = client.get(
+        "/download",
+        params={"path": "invoices/../../README.md"},
+        headers={"accept": "application/json"},
+    )
+    assert traversal_resp.status_code == 403
+    assert traversal_resp.json() == {"error": "download_forbidden"}
+
+    missing_resp = client.get(
+        "/download",
+        params={"path": "invoices/does_not_exist.pdf"},
+        headers={"accept": "application/json"},
+    )
+    assert missing_resp.status_code == 404
+    assert missing_resp.json() == {"error": "download_not_found"}
+
+
+def test_admin_backup_create_requires_unlocked_session(client: TestClient) -> None:
+    from app.db import sqlite as db
+    from app.web.main import _hash_password
+
+    db.set_setting("admin_lock_enabled", "1")
+    db.set_setting("site_lock_hash", _hash_password("secret123"))
+    db.delete_all_sessions()
+    client.cookies.clear()
+
+    locked = client.post("/admin/backup/create", follow_redirects=False)
+    assert locked.status_code == 303
+    assert locked.headers["location"].startswith("/unlock?next=%2Fadmin%2Fbackup%2Fcreate")
+
+    unlocked = client.post(
+        "/unlock",
+        data={"password": "secret123", "next": "/admin/backup/create"},
+        follow_redirects=False,
+    )
+    assert unlocked.status_code == 303
+
+    allowed = client.post("/admin/backup/create", follow_redirects=False)
+    assert allowed.status_code == 200
