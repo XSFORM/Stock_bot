@@ -142,6 +142,26 @@ bash <(curl -fsSL https://raw.githubusercontent.com/XSFORM/Stock_bot/main/instal
 sudo systemctl status stockbot stockweb --no-pager
 ```
 
+## Дежурные команды
+
+Для ежедневного обслуживания:
+
+```bash
+cd /opt/stock_bot && git pull
+```
+
+```bash
+sudo systemctl restart stockweb stockbot
+```
+
+```bash
+sudo journalctl -u stockweb -n 120 --no-pager
+```
+
+```bash
+sudo journalctl -u stockbot -n 120 --no-pager
+```
+
 ---
 
 ## Автоматическая настройка HTTPS + Basic Auth
