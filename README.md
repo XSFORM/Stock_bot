@@ -181,6 +181,86 @@ sudo journalctl -u stockbot -n 120 --no-pager
 | Basic Auth логин | `admin` |
 | Basic Auth пароль | *(обязательно ввести)* |
 
+### Смена домена после установки (nginx + certbot)
+
+Пример: переезд с `admin.sonifer.net.ru` на `new.example.com`.
+
+#### 1) Предусловия (обязательно)
+
+1. Для нового домена настроен DNS:
+   - `A` (и `AAAA`, если используете IPv6) указывает на IP сервера.
+2. На сервере открыты порты `80` и `443`.
+3. Домен реально резолвится:
+
+```bash
+dig +short new.example.com
+# или
+nslookup new.example.com
+```
+
+#### 2) Обновите `server_name` в nginx
+
+Конфиг сайта: `/etc/nginx/sites-available/stockweb`  
+(обычно уже подключён симлинком в `/etc/nginx/sites-enabled/stockweb`).
+
+Откройте файл и замените старый домен на новый в `server_name`:
+
+```nginx
+server_name new.example.com;
+```
+
+#### 3) Безопасно примените конфиг nginx
+
+Сначала проверка, затем reload:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Если `nginx -t` вернул ошибку, не выполняйте reload, исправьте конфиг.
+
+#### 4) Выпустите/подключите сертификат для нового домена
+
+```bash
+sudo certbot --nginx -d new.example.com
+```
+
+Посмотреть все сертификаты:
+
+```bash
+sudo certbot certificates
+```
+
+Старый сертификат можно оставить (это нормально).  
+При желании его можно удалить позже через `sudo certbot delete` после проверки, что новый домен полностью работает.
+
+#### 5) Что НЕ нужно менять
+
+- systemd-сервисы `stockweb` и `stockbot` переименовывать не нужно.
+- Basic Auth realm `Hasapcy` менять не нужно.
+
+#### 6) Проверка после смены домена
+
+```bash
+curl -I http://new.example.com/
+curl -I https://new.example.com/
+```
+
+Откройте `https://new.example.com` в браузере и убедитесь, что:
+- сайт доступен;
+- сертификат валиден и выписан на новый домен.
+
+#### 7) Быстрый откат (если nginx не поднялся)
+
+1. Верните старый `server_name` в `/etc/nginx/sites-available/stockweb`.
+2. Выполните:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
 ### Неинтерактивная установка (например, CI/CD)
 
 Если `stdin` не является TTY, шаг 8 пропускается. Для последующей настройки HTTPS запустите:
