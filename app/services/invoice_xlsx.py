@@ -12,6 +12,8 @@ from app.utils.money import calc_document_total, calc_line_total, round_money
 
 OUT_DIR = Path("/opt/stock_bot/invoices")
 STAMP_PATH = Path("/opt/stock_bot/stamp.png")  # Optional PNG stamp/logo for sales invoices
+STAMP_WIDTH = 220
+STAMP_HEIGHT = 80
 
 _HEADER_FILL = PatternFill("solid", fgColor="4472C4")
 _HEADER_FONT = Font(bold=True, color="FFFFFF")
@@ -48,8 +50,8 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     # Place optional stamp/logo PNG at /opt/stock_bot/stamp.png (if present).
     if STAMP_PATH.exists():
         stamp = XLImage(str(STAMP_PATH))
-        stamp.width = 220
-        stamp.height = 80
+        stamp.width = STAMP_WIDTH
+        stamp.height = STAMP_HEIGHT
         ws.add_image(stamp, "E1")
 
     # --- Header row ---
