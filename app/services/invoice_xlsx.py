@@ -117,6 +117,26 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     ws.cell(row=total_row_idx, column=6, value="").fill = _TOTAL_FILL
     ws.cell(row=total_row_idx, column=6).border = _BORDER
 
+    # --- Print setup: A4, fit to 1 page wide, multi-page tall ---
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.page_setup.fitToPage = True
+    ws.page_setup.scale = None
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    # Excel "Narrow"-like margins
+    ws.page_margins.left = 0.25
+    ws.page_margins.right = 0.25
+    ws.page_margins.top = 0.75
+    ws.page_margins.bottom = 0.75
+    ws.page_margins.header = 0.3
+    ws.page_margins.footer = 0.3
+
+    ws.print_area = f"A1:G{total_row_idx}"
+    ws.print_title_rows = f"{header_row}:{header_row}"
+
     return wb
 
 
