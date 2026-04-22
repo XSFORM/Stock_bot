@@ -246,6 +246,75 @@ def test_generate_invoice_xlsx_bytes_sets_print_setup_for_a4_width_fit() -> None
     assert ws.print_title_rows == "$5:$5"
 
 
+def test_generate_invoice_xlsx_bytes_uses_left_title_merges_for_stamp_space(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    import io
+    import openpyxl
+    from app.services import invoice_xlsx
+
+    monkeypatch.setattr(invoice_xlsx, "STAMP_PATH", tmp_path / "missing-stamp.png")
+
+    invoice = {"number": 5, "client": "Client E", "created_at": "2024-03-01T10:00:00", "total": 0}
+    items = [
+        {
+            "brand": "Nike",
+            "model": "Air",
+            "name": "Sneaker",
+            "barcode": "111",
+            "qty": 1,
+            "unit_price": 10.0,
+            "total": 10.0,
+        }
+    ]
+    wb = openpyxl.load_workbook(io.BytesIO(generate_invoice_xlsx_bytes(invoice, items)))
+    ws = wb.active
+    merged = {str(rng) for rng in ws.merged_cells.ranges}
+
+    assert "A1:D1" in merged
+    assert "A2:D2" in merged
+    assert "A3:D3" in merged
+    assert "A1:G1" not in merged
+    assert "A2:G2" not in merged
+    assert "A3:G3" not in merged
+    assert len(ws._images) == 0
+
+
+def test_generate_invoice_xlsx_bytes_inserts_stamp_image_when_png_exists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    import base64
+    import io
+    import openpyxl
+    from app.services import invoice_xlsx
+
+    stamp_png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+K7sAAAAASUVORK5CYII="
+    )
+    stamp_path = tmp_path / "stamp.png"
+    stamp_path.write_bytes(stamp_png)
+    monkeypatch.setattr(invoice_xlsx, "STAMP_PATH", stamp_path)
+
+    invoice = {"number": 6, "client": "Client F", "created_at": "2024-03-01T10:00:00", "total": 0}
+    items = [
+        {
+            "brand": "Nike",
+            "model": "Air",
+            "name": "Sneaker",
+            "barcode": "111",
+            "qty": 1,
+            "unit_price": 10.0,
+            "total": 10.0,
+        }
+    ]
+    wb = openpyxl.load_workbook(io.BytesIO(generate_invoice_xlsx_bytes(invoice, items)))
+    ws = wb.active
+
+    assert len(ws._images) == 1
+    assert ws._images[0].anchor._from.col == 4  # E
+    assert ws._images[0].anchor._from.row == 0  # 1
+
+
 def test_generate_return_xlsx_bytes_rounds_like_display_price() -> None:
     import io
     import openpyxl

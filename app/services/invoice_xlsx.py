@@ -5,11 +5,13 @@ from pathlib import Path
 from typing import Any
 
 import openpyxl
+from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Alignment, Font, PatternFill, Side, Border
 from app.utils.money import calc_document_total, calc_line_total, round_money
 
 
 OUT_DIR = Path("/opt/stock_bot/invoices")
+STAMP_PATH = Path("/opt/stock_bot/stamp.png")  # Optional PNG stamp/logo for sales invoices
 
 _HEADER_FILL = PatternFill("solid", fgColor="4472C4")
 _HEADER_FONT = Font(bold=True, color="FFFFFF")
@@ -30,18 +32,25 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     ws.title = f"Invoice {invoice['number']:06d}"
 
     # --- Title block ---
-    ws.merge_cells("A1:G1")
+    ws.merge_cells("A1:D1")
     title_cell = ws["A1"]
     title_cell.value = f"INVOICE #{invoice['number']:06d}"
     title_cell.font = Font(bold=True, size=14)
     title_cell.alignment = _CENTER
 
-    ws.merge_cells("A2:G2")
+    ws.merge_cells("A2:D2")
     ws["A2"].value = f"Client: {invoice['client']}"
-    ws.merge_cells("A3:G3")
+    ws.merge_cells("A3:D3")
     date_val = str(invoice.get("created_at", invoice.get("date", "")))[:16].replace("T", " ")
     ws["A3"].value = f"Date: {date_val}"
     ws["A4"].value = ""
+
+    # Place optional stamp/logo PNG at /opt/stock_bot/stamp.png (if present).
+    if STAMP_PATH.exists():
+        stamp = XLImage(str(STAMP_PATH))
+        stamp.width = 220
+        stamp.height = 80
+        ws.add_image(stamp, "E1")
 
     # --- Header row ---
     headers = ["#", "Model", "Name", "Barcode", "Qty", "Unit Price", "Total"]
