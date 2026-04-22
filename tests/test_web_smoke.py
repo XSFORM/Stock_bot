@@ -212,6 +212,40 @@ def test_generate_invoice_xlsx_bytes_rounds_like_display_price() -> None:
     assert ws.cell(row=7, column=7).value == pytest.approx(24.90)
 
 
+def test_generate_invoice_xlsx_bytes_sets_print_setup_for_a4_width_fit() -> None:
+    import io
+    import openpyxl
+
+    invoice = {"number": 4, "client": "Client D", "created_at": "2024-03-01T10:00:00", "total": 0}
+    items = [
+        {
+            "brand": "Nike",
+            "model": "Air",
+            "name": "Sneaker",
+            "barcode": "111",
+            "qty": 3,
+            "unit_price": 8.3033,
+            "total": 24.91,
+        }
+    ]
+    wb = openpyxl.load_workbook(io.BytesIO(generate_invoice_xlsx_bytes(invoice, items)))
+    ws = wb.active
+
+    assert str(ws.page_setup.paperSize) == ws.PAPERSIZE_A4
+    assert ws.page_setup.orientation == ws.ORIENTATION_PORTRAIT
+    assert ws.page_setup.fitToWidth == 1
+    assert ws.page_setup.fitToHeight == 0
+    assert ws.sheet_properties.pageSetUpPr.fitToPage is True
+
+    assert ws.page_margins.left == pytest.approx(0.25)
+    assert ws.page_margins.right == pytest.approx(0.25)
+    assert ws.page_margins.top == pytest.approx(0.75)
+    assert ws.page_margins.bottom == pytest.approx(0.75)
+
+    assert "$A$1:$G$7" in ws.print_area
+    assert ws.print_title_rows == "$5:$5"
+
+
 def test_generate_return_xlsx_bytes_rounds_like_display_price() -> None:
     import io
     import openpyxl
