@@ -205,9 +205,35 @@
     <li><strong>Фон:</strong> включить/выключить фоновое изображение, настроить затемнение.</li>
     <li><strong>Резервная копия:</strong> создать или восстановить резервную копию базы данных.</li>
     <li><strong>Токены (Price / Catalog):</strong> для доступа к публичному прайс-листу без пароля (для клиентов).</li>
+    <li><strong>Проценты продажи:</strong> настраиваемый набор кнопок наценки, отображаемых на странице продажи.</li>
   </ul>
   <p><strong>Примечание:</strong> создание складов/магазинов в разделе Admin → Settings <em>не предусмотрено</em>.
   Склады/магазины добавляются в разделе <strong>Приход</strong>: при создании операции выберите склад. Если нужного склада нет — добавьте новый прямо там.</p>
+
+  {# 14a. Sale markup presets #}
+  <h5 id="ru-sale-markup" class="mt-3">Проценты продажи — настройка наценок</h5>
+  <p>
+    В разделе <strong>Admin → Проценты продажи</strong> можно выбрать, какие кнопки процентов
+    отображаются на странице <strong>/sale</strong>, и задать процент по умолчанию.
+  </p>
+  <p><strong>Что настраивается:</strong></p>
+  <ul>
+    <li><strong>Активные проценты:</strong> отметьте нужные из вариантов 5%, 10%, 15%, 20%, 25%, 30% —
+        отмеченные кнопки будут показаны на странице продажи.</li>
+    <li><strong>Процент по умолчанию:</strong> тот процент, который автоматически выбран при открытии
+        новой продажи. Должен быть в числе активных.</li>
+  </ul>
+  <p><strong>Как это работает на странице продажи:</strong></p>
+  <ul>
+    <li>Отображаются только включённые проценты.</li>
+    <li>Процент по умолчанию уже активен при открытии страницы.</li>
+    <li>Кнопка <strong>Вручную</strong> доступна всегда — позволяет ввести любую цену вручную.</li>
+  </ul>
+  <div class="alert alert-warning mt-2">
+    <strong>⚠️ Важно:</strong> изменение активных процентов и процента по умолчанию
+    <em>не пересчитывает</em> старые накладные и уже сохранённые цены.
+    Новый процент применяется только при добавлении <em>новой позиции</em> в продажу.
+  </div>
 
   {# 15. Pocket Price #}
   <h4 id="ru-pocket-price" class="mt-4">15. Pocket Price — публичный прайс-лист</h4>
@@ -467,9 +493,35 @@
     <li><strong>Deslapky interfeýs dili:</strong> EN / RU / TM.</li>
     <li><strong>Tema:</strong> ýagty, garaňky ýa-da ulgam teması.</li>
     <li><strong>Ätiýaçlyk nusgasy:</strong> maglumat bazasyny döretmek ýa-da dikeltmek.</li>
+    <li><strong>Satyş göterimi:</strong> satyş sahypasynda görünjek nacentka göterim düwmeleriniň sazlamasy.</li>
   </ul>
   <p><strong>Bellik:</strong> Admin → Settings bölümünde ammar döretmek <em>göz öňünde tutulmandyr</em>.
   Ammarlar/dükanlary <strong>Kabul etmek</strong> bölümünde goşulýar: amal döredilende ammary saýlaň. Gerekli ammar ýok bolsa — şol ýerde täze goşuň.</p>
+
+  {# 14a. Sale markup presets #}
+  <h5 id="tm-sale-markup" class="mt-3">Satyş göterimi — bahanyň ýokarlanmagy sazlamasy</h5>
+  <p>
+    <strong>Admin → Satyş göterimi</strong> bölümünde <strong>/sale</strong> sahypasynda görünjek
+    göterim düwmelerini saýlap, deslapky göterimi belläp bolýar.
+  </p>
+  <p><strong>Näme düzülýär:</strong></p>
+  <ul>
+    <li><strong>Işjeň göterimler:</strong> 5%, 10%, 15%, 20%, 25%, 30% göterimlerden gerekli
+        bellikleri goýuň — bellenilen düwmeler satyş sahypasynda görüner.</li>
+    <li><strong>Deslapky göterim:</strong> täze satyş açylanda awtomatik saýlanýan göterim.
+        Işjeňleriň arasynda bolmalydyr.</li>
+  </ul>
+  <p><strong>Satyş sahypasynda nähili işleýär:</strong></p>
+  <ul>
+    <li>Diňe işjeň göterimler görünýär.</li>
+    <li>Sahypa açylanda deslapky göterim eýýäm saýlanan bolýar.</li>
+    <li><strong>El bilen</strong> düwmesi hemişe elýeterlidir — islendik bahany el bilen girizmäge mümkinçilik berýär.</li>
+  </ul>
+  <div class="alert alert-warning mt-2">
+    <strong>⚠️ Möhüm:</strong> işjeň göterimi ýa-da deslapky göterimi üýtgetmek
+    <em>öňki hasap-fakturaları we eýýäm ýazylan bahalary täzeden hasaplamaýar</em>.
+    Täze göterim diňe satyşa <em>täze pozisiýa</em> goşulanda ulanylýar.
+  </div>
 
   {# 15. Pocket Price #}
   <h4 id="tm-pocket-price" class="mt-4">15. Pocket Price — jemgyýetçilik bahalar sanawy</h4>
@@ -746,10 +798,37 @@
     <li><strong>Backup:</strong> create or restore a database backup.</li>
     <li><strong>Tokens (Price / Catalog):</strong> for public price-list access without a password
         (for clients).</li>
+    <li><strong>Sale markup presets:</strong> a configurable set of markup percentage buttons shown on the
+        sale page.</li>
   </ul>
   <p><strong>Note:</strong> warehouse/store creation is <em>not available</em> in Admin → Settings.
   Warehouses/stores are added in the <strong>Receive</strong> section: when creating an operation, select a warehouse.
   If the required warehouse does not exist — add a new one right there.</p>
+
+  {# 14a. Sale markup presets #}
+  <h5 id="en-sale-markup" class="mt-3">Sale markup presets</h5>
+  <p>
+    In <strong>Admin → Sale markup presets</strong> you can choose which percentage buttons appear on the
+    <strong>/sale</strong> page and set a default markup.
+  </p>
+  <p><strong>What you can configure:</strong></p>
+  <ul>
+    <li><strong>Active percentages:</strong> tick the ones you need from 5%, 10%, 15%, 20%, 25%, 30% —
+        only ticked buttons will be shown on the sale page.</li>
+    <li><strong>Default percentage:</strong> the markup that is automatically selected when a new sale is
+        opened. It must be one of the active percentages.</li>
+  </ul>
+  <p><strong>How it works on the sale page:</strong></p>
+  <ul>
+    <li>Only enabled percentages are displayed.</li>
+    <li>The default percentage is already selected when the page opens.</li>
+    <li>The <strong>Manual</strong> button is always available — lets you enter any price by hand.</li>
+  </ul>
+  <div class="alert alert-warning mt-2">
+    <strong>⚠️ Important:</strong> changing the active percentages or the default does
+    <em>not recalculate</em> old invoices or already-saved prices.
+    The new markup applies only when <em>adding a new line item</em> to a sale.
+  </div>
 
   {# 15. Pocket Price #}
   <h4 id="en-pocket-price" class="mt-4">15. Pocket Price — public price list</h4>
