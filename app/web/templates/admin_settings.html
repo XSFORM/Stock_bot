@@ -9,6 +9,10 @@
 
   {% if msg == "restored_ok" %}
   <div class="alert alert-success py-2 small">{{ t.settings_backup_restored_ok }}</div>
+  {% elif msg == "markup_error_empty" %}
+  <div class="alert alert-danger py-2 small">{{ t.settings_markup_error_empty }}</div>
+  {% elif msg == "markup_error_default" %}
+  <div class="alert alert-danger py-2 small">{{ t.settings_markup_error_default }}</div>
   {% elif msg.startswith("restore_error:") %}
   <div class="alert alert-danger py-2 small">{{ t.settings_backup_restore_error }}{{ msg[14:] }}</div>
   {% endif %}
@@ -92,6 +96,30 @@
              accept=".jpg,.jpeg,.png,.webp,.gif" style="max-width:360px">
     </div>
     <button type="submit" class="btn btn-sm btn-primary">{{ t.settings_bg_save }}</button>
+  </form>
+
+  <!-- ── Sale Markup Presets ───────────────────────────────────────── -->
+  <h5 class="mt-4 mb-3 border-bottom pb-2">💰 {{ t.settings_markup_heading }}</h5>
+  <form method="post" action="/admin/settings/markup" class="mb-4">
+    <p class="small text-muted mb-2">{{ t.settings_markup_hint }}</p>
+    <div class="mb-3">
+      {% for pct in allowed_markups %}
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" name="markup_{{ pct }}" value="1"
+               id="markup_{{ pct }}" {% if pct in markup_presets %}checked{% endif %}>
+        <label class="form-check-label" for="markup_{{ pct }}">{{ pct }}%</label>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="mb-3">
+      <label class="form-label small">{{ t.settings_markup_default }}</label>
+      <select name="default_markup" class="form-select form-select-sm" style="max-width:120px">
+        {% for pct in allowed_markups %}
+        <option value="{{ pct }}" {% if pct == default_markup %}selected{% endif %}>{{ pct }}%</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-sm btn-primary">{{ t.settings_markup_save }}</button>
   </form>
 
   <!-- ── Backup / Restore ───────────────────────────────────────────── -->

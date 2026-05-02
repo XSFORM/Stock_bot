@@ -311,6 +311,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_bg_overlay": "Overlay opacity (0 – 100, 0 = no overlay)",
         "settings_bg_upload": "Upload new background image (JPG/PNG)",
         "settings_bg_save": "Save background settings",
+        # Sale markup presets
+        "settings_markup_heading": "Sale Markup Presets",
+        "settings_markup_hint": "Choose which markup % buttons appear on the Sale page. At least one must be active; the default must be among the active presets.",
+        "settings_markup_default": "Default markup",
+        "settings_markup_save": "Save markup settings",
+        "settings_markup_error_empty": "At least one markup % must be active.",
+        "settings_markup_error_default": "Default markup must be among the active presets.",
         # Backup / Restore section
         "settings_backup_heading": "Backup / Restore",
         "settings_backup_create_btn": "Create backup",
@@ -764,6 +771,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_bg_overlay": "Прозрачность наложения (0 – 100, 0 = без наложения)",
         "settings_bg_upload": "Загрузить фон (JPG/PNG)",
         "settings_bg_save": "Сохранить настройки фона",
+        # Sale markup presets
+        "settings_markup_heading": "Наценки продажи",
+        "settings_markup_hint": "Выберите, какие кнопки % наценки отображаются на странице продажи. Хотя бы одна должна быть активна; стандартная должна быть среди активных.",
+        "settings_markup_default": "Наценка по умолчанию",
+        "settings_markup_save": "Сохранить настройки наценки",
+        "settings_markup_error_empty": "Хотя бы одна наценка должна быть активна.",
+        "settings_markup_error_default": "Наценка по умолчанию должна быть среди активных.",
         # Backup / Restore section
         "settings_backup_heading": "Резервная копия / Восстановление",
         "settings_backup_create_btn": "Создать резервную копию",
@@ -1217,6 +1231,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_bg_overlay": "Üstüni örtme aýdyňlygy (0 – 100, 0 = örtmesiz)",
         "settings_bg_upload": "Täze fon ýükläň (JPG/PNG)",
         "settings_bg_save": "Fon sazlamalaryny saklamak",
+        # Sale markup presets
+        "settings_markup_heading": "Satuw nasenkalary",
+        "settings_markup_hint": "Satuw sahypasynda haýsy % düwmeleri görkezmeli boljakdygyny saýlaň. Azyndan biri işjeň bolmaly; deslapky aktiwleriň arasynda bolmaly.",
+        "settings_markup_default": "Deslapky nasenkasy",
+        "settings_markup_save": "Nasenkany saklamak",
+        "settings_markup_error_empty": "Azyndan bir nasenkasy işjeň bolmaly.",
+        "settings_markup_error_default": "Deslapky nasenkasy işjeň nasenkalar arasynda bolmaly.",
         # Backup / Restore section
         "settings_backup_heading": "Ätiýaç nusgasy / Dikeltmek",
         "settings_backup_create_btn": "Ätiýaç nusgasyny döret",

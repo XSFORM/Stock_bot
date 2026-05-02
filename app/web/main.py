@@ -141,6 +141,9 @@ from app.db.sqlite import (
     DB_PATH,
     get_setting,
     set_setting,
+    get_sale_markup_presets,
+    get_sale_default_markup,
+    _ALLOWED_MARKUPS,
     create_session,
     is_valid_session,
     delete_session,
@@ -1063,6 +1066,8 @@ def sale_get(request: Request, msg: str = ""):
             "cart_items": cart_items,
             "cart_total": cart_total,
             "cart_qty": cart_qty,
+            "markup_presets": get_sale_markup_presets(),
+            "default_markup": get_sale_default_markup(),
         },
     )
 
@@ -1675,6 +1680,9 @@ def admin_settings_get(request: Request, saved: str = "", msg: str = ""):
             "bg_enabled": get_setting("bg_enabled", "1") == "1",
             "bg_size": get_setting("bg_size", "cover"),
             "bg_overlay": get_setting("bg_overlay", "25"),
+            "markup_presets": get_sale_markup_presets(),
+            "default_markup": get_sale_default_markup(),
+            "allowed_markups": _ALLOWED_MARKUPS,
         },
     )
 
@@ -1712,6 +1720,29 @@ def admin_settings_theme(default_theme: str = Form("system")):
     if default_theme not in ("light", "dark", "system"):
         default_theme = "system"
     set_setting("default_theme", default_theme)
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
+@app.post("/admin/settings/markup")
+async def admin_settings_markup(request: Request):
+    form = await request.form()
+    active = sorted(
+        {p for p in _ALLOWED_MARKUPS if form.get(f"markup_{p}") == "1"}
+    )
+    if not active:
+        return RedirectResponse(
+            url="/admin/settings?msg=markup_error_empty", status_code=303
+        )
+    try:
+        default = int(form.get("default_markup", "0"))
+    except (ValueError, TypeError):
+        default = 0
+    if default not in active:
+        return RedirectResponse(
+            url="/admin/settings?msg=markup_error_default", status_code=303
+        )
+    set_setting("sale_markup_presets", ",".join(str(p) for p in active))
+    set_setting("sale_default_markup", str(default))
     return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
 
 

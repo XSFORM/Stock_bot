@@ -1337,10 +1337,11 @@ def _compute_unit_price(
 ) -> float:
     if price_mode == "wh":
         return wh_price
-    elif price_mode == "wh10":
-        return round(wh_price * 1.10, 4)
     elif price_mode == "custom" and custom_price is not None:
         return custom_price
+    elif price_mode.startswith("wh") and price_mode[2:].isdigit():
+        pct = int(price_mode[2:])
+        return round(wh_price * (1 + pct / 100), 4)
     else:
         return round(wh_price * 1.10, 4)
 
@@ -3000,6 +3001,10 @@ def list_history_by_product(product_id: int) -> list[dict[str, Any]]:
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 
+_ALLOWED_MARKUPS: list[int] = [5, 10, 15, 20, 25, 30]
+_FALLBACK_MARKUP_PRESETS: list[int] = [10, 15, 25]
+_FALLBACK_DEFAULT_MARKUP: int = 15
+
 
 def get_setting(key: str, default: str = "") -> str:
     with _connect() as conn:
@@ -3017,6 +3022,44 @@ def set_setting(key: str, value: str) -> None:
             (key, value),
         )
         conn.commit()
+
+
+def get_sale_markup_presets() -> list[int]:
+    """Return the list of active sale markup percentages from settings.
+
+    Falls back to [10, 15, 25] when the setting is missing or invalid.
+    Always returns a non-empty sorted list of values from _ALLOWED_MARKUPS.
+    """
+    raw = get_setting("sale_markup_presets", "")
+    if raw:
+        try:
+            parsed = [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
+            valid = sorted({p for p in parsed if p in _ALLOWED_MARKUPS})
+            if valid:
+                return valid
+        except (ValueError, TypeError):
+            pass
+    return list(_FALLBACK_MARKUP_PRESETS)
+
+
+def get_sale_default_markup() -> int:
+    """Return the default sale markup percentage from settings.
+
+    Falls back to 15 (or the first active preset) when the setting is missing
+    or the stored value is not among the active presets.
+    """
+    presets = get_sale_markup_presets()
+    raw = get_setting("sale_default_markup", "")
+    if raw:
+        try:
+            val = int(raw)
+            if val in presets:
+                return val
+        except (ValueError, TypeError):
+            pass
+    if _FALLBACK_DEFAULT_MARKUP in presets:
+        return _FALLBACK_DEFAULT_MARKUP
+    return presets[0]
 
 
 # ── Sessions ──────────────────────────────────────────────────────────────────
