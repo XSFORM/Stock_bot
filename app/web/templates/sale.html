@@ -120,7 +120,7 @@
                 <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
                 <input type="hidden" name="brand" id="add-brand">
                 <input type="hidden" name="model" id="add-model">
-                <input type="hidden" name="price_mode" id="add-price-mode" value="wh10">
+                <input type="hidden" name="price_mode" id="add-price-mode" value="wh{{ default_markup }}">
                 <div class="search-wrap" style="flex:1;min-width:220px">
                   <label class="form-label form-label-sm mb-1">{{ t.sale_search_label }}</label>
                   <input type="text" class="form-control form-control-sm" id="product-search" autocomplete="off"
@@ -134,10 +134,10 @@
                 <div>
                   <label class="form-label form-label-sm mb-1">{{ t.sale_lbl_price_mode }}</label>
                   <div class="btn-group btn-group-sm" role="group" id="price-mode-group">
-                    <input type="radio" class="btn-check" name="price_mode_radio" id="pm-wh10" value="wh10" autocomplete="off" checked>
-                    <label class="btn btn-outline-secondary" for="pm-wh10">+10%</label>
-                    <input type="radio" class="btn-check" name="price_mode_radio" id="pm-wh25" value="wh25" autocomplete="off">
-                    <label class="btn btn-outline-secondary" for="pm-wh25">+25%</label>
+                    {% for pct in markup_presets %}
+                    <input type="radio" class="btn-check" name="price_mode_radio" id="pm-wh{{ pct }}" value="wh{{ pct }}" autocomplete="off" {% if pct == default_markup %}checked{% endif %}>
+                    <label class="btn btn-outline-secondary" for="pm-wh{{ pct }}">+{{ pct }}%</label>
+                    {% endfor %}
                     <input type="radio" class="btn-check" name="price_mode_radio" id="pm-custom" value="custom" autocomplete="off">
                     <label class="btn btn-outline-secondary" for="pm-custom">{{ t.sale_price_mode_manual }}</label>
                   </div>
@@ -237,7 +237,7 @@
 
     let selectedProduct = null;
     let debounceTimer;
-    const DEFAULT_MODE = 'wh10';
+    const DEFAULT_MODE = {{ ('wh' ~ default_markup) | tojson }};
 
     function getSelectedRadio() {
       for (const r of pmRadios) { if (r.checked) return r.value; }
@@ -252,8 +252,16 @@
     function autoFillPrice(mode) {
       if (!selectedProduct) return;
       var price = NaN;
-      if (mode === 'wh10') price = parseFloat(selectedProduct.wh10_price);
-      else if (mode === 'wh25') price = parseFloat(selectedProduct.wh25_price);
+      if (mode !== 'custom' && mode.startsWith('wh')) {
+        var pctStr = mode.slice(2);
+        if (/^\d+$/.test(pctStr)) {
+          var pct = parseInt(pctStr, 10);
+          var wh = parseFloat(selectedProduct.wh_price);
+          if (!isNaN(wh) && wh > 0) {
+            price = Math.round(wh * (1 + pct / 100) * 10000) / 10000;
+          }
+        }
+      }
       if (!isNaN(price) && price > 0) {
         customPrice.value = price.toFixed(2);
         customPrice.placeholder = '';
@@ -330,8 +338,16 @@
       if (mode === 'custom') return;
       if (isNaN(entered)) { setRadio('custom'); return; }
       let autoPrice = NaN;
-      if (mode === 'wh10') autoPrice = parseFloat(selectedProduct.wh10_price);
-      else if (mode === 'wh25') autoPrice = parseFloat(selectedProduct.wh25_price);
+      if (mode.startsWith('wh')) {
+        var pctStr = mode.slice(2);
+        if (/^\d+$/.test(pctStr)) {
+          var pct = parseInt(pctStr, 10);
+          var wh = parseFloat(selectedProduct.wh_price);
+          if (!isNaN(wh) && wh > 0) {
+            autoPrice = Math.round(wh * (1 + pct / 100) * 10000) / 10000;
+          }
+        }
+      }
       if (isNaN(autoPrice) || Math.abs(entered - autoPrice) >= 0.001) {
         setRadio('custom');
       }
