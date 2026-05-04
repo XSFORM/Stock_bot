@@ -51,15 +51,25 @@
           </thead>
           <tbody id="itemsBody">
             {% for item in items %}
-            <tr class="item-row">
+            <tr class="item-row{% if item.free_line %} table-warning{% endif %}">
               <td style="position:relative">
-                <div class="input-group input-group-sm">
-                  <input type="text" class="form-control product-search" placeholder="{{ t.lbl_product }}"
-                         value="{{ item.brand }} {{ item.model }} — {{ item.name }}"
-                         data-product-id="{{ item.product_id }}">
-                  <input type="hidden" class="product-id-field" name="product_id" value="{{ item.product_id }}">
-                </div>
-                <div class="search-results list-group mt-1" style="display:none;position:absolute;z-index:100;min-width:300px"></div>
+                {% if item.free_line %}
+                  <div class="d-flex align-items-center gap-1">
+                    <input type="text" class="form-control form-control-sm free-name-field" name="free_name"
+                           value="{{ item.free_name }}">
+                    <input type="hidden" class="product-id-field" name="product_id" value="">
+                    <span class="badge bg-warning text-dark text-nowrap">{{ t.invoice_edit_free_item_badge }}</span>
+                  </div>
+                {% else %}
+                  <div class="input-group input-group-sm">
+                    <input type="text" class="form-control product-search" placeholder="{{ t.lbl_product }}"
+                           value="{{ item.brand }} {{ item.model }} — {{ item.name }}"
+                           data-product-id="{{ item.product_id }}">
+                    <input type="hidden" class="product-id-field" name="product_id" value="{{ item.product_id }}">
+                  </div>
+                  <input type="hidden" name="free_name" value="">
+                  <div class="search-results list-group mt-1" style="display:none;position:absolute;z-index:100;min-width:300px"></div>
+                {% endif %}
               </td>
               <td>
                  <input type="number" class="form-control form-control-sm qty-field" name="qty"
@@ -80,7 +90,10 @@
         </table>
       </div>
       <div class="card-footer d-flex justify-content-between align-items-center">
-        <button type="button" class="btn btn-outline-secondary btn-sm" id="addRowBtn">+ {{ t.invoice_edit_add_item }}</button>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="addRowBtn">+ {{ t.invoice_edit_add_item }}</button>
+          <button type="button" class="btn btn-outline-warning btn-sm" id="addFreeRowBtn">+ {{ t.sale_free_item_btn }}</button>
+        </div>
         <strong>{{ t.lbl_total }}: <span id="grandTotal">{{ "%.2f"|format(items | sum(attribute='total')) }}</span> {{ invoice.currency }}</strong>
       </div>
     </div>
@@ -90,7 +103,7 @@
 </div>
 
 <script>
-// Row template for adding new items
+// Row template for adding new stock items
 function addRow() {
   const tbody = document.getElementById('itemsBody');
   const tr = document.createElement('tr');
@@ -101,7 +114,31 @@ function addRow() {
         <input type="text" class="form-control product-search" placeholder="{{ t.lbl_product }}">
         <input type="hidden" class="product-id-field" name="product_id" value="">
       </div>
+      <input type="hidden" name="free_name" value="">
       <div class="search-results list-group mt-1" style="display:none;position:absolute;z-index:100;min-width:300px"></div>
+    </td>
+    <td><input type="number" class="form-control form-control-sm qty-field" name="qty" value="1" min="0.001" step="any" required></td>
+    <td><input type="number" class="form-control form-control-sm price-field" name="unit_price" value="0.00" min="0" step="0.01" required></td>
+    <td class="text-end align-middle item-total">0.00</td>
+    <td class="text-center align-middle">
+      <button type="button" class="btn btn-sm btn-outline-danger remove-row" onclick="removeRow(this)" title="{{ t.btn_remove }}">✕</button>
+    </td>`;
+  tbody.appendChild(tr);
+  attachRowListeners(tr);
+}
+
+// Row template for adding new off-stock (free) items
+function addFreeRow() {
+  const tbody = document.getElementById('itemsBody');
+  const tr = document.createElement('tr');
+  tr.className = 'item-row table-warning';
+  tr.innerHTML = `
+    <td style="position:relative">
+      <div class="d-flex align-items-center gap-1">
+        <input type="text" class="form-control form-control-sm free-name-field" name="free_name" placeholder="{{ t.sale_free_item_placeholder | e }}">
+        <input type="hidden" class="product-id-field" name="product_id" value="">
+        <span class="badge bg-warning text-dark text-nowrap">{{ t.invoice_edit_free_item_badge }}</span>
+      </div>
     </td>
     <td><input type="number" class="form-control form-control-sm qty-field" name="qty" value="1" min="0.001" step="any" required></td>
     <td><input type="number" class="form-control form-control-sm price-field" name="unit_price" value="0.00" min="0" step="0.01" required></td>
@@ -186,21 +223,38 @@ function attachRowListeners(row) {
 }
 
 document.getElementById('addRowBtn').addEventListener('click', addRow);
+document.getElementById('addFreeRowBtn').addEventListener('click', addFreeRow);
 
 // Attach listeners to existing rows
 document.querySelectorAll('#itemsBody .item-row').forEach(attachRowListeners);
 
-// Form validation: ensure all rows have a product selected
+// Form validation: ensure stock rows have a product selected; free rows have a name
 document.getElementById('editForm').addEventListener('submit', function(e) {
   let valid = true;
   document.querySelectorAll('#itemsBody .item-row').forEach(row => {
-    if (!row.querySelector('.product-id-field').value) {
-      valid = false;
+    const pidField = row.querySelector('.product-id-field');
+    const freeNameField = row.querySelector('.free-name-field');
+    const isFree = !!freeNameField;
+    if (isFree) {
+      if (!freeNameField.value.trim()) {
+        valid = false;
+        freeNameField.setCustomValidity('{{ t.sale_free_item_label | e }} required.');
+        freeNameField.reportValidity();
+      } else {
+        freeNameField.setCustomValidity('');
+      }
+    } else {
+      if (!pidField.value) {
+        valid = false;
+      }
     }
   });
   if (!valid) {
     e.preventDefault();
-    alert('{{ t.invoice_edit_select_product | e }}');
+    const missingProduct = [...document.querySelectorAll('#itemsBody .item-row')].some(row => {
+      return !row.querySelector('.free-name-field') && !row.querySelector('.product-id-field').value;
+    });
+    if (missingProduct) alert('{{ t.invoice_edit_select_product | e }}');
   }
 });
 </script>

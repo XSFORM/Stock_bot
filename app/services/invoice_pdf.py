@@ -39,7 +39,11 @@ def generate_invoice_pdf(invoice: dict[str, Any], items: list[dict[str, Any]]) -
 
     c.setFont("Helvetica", 10)
     for it in items:
-        line = f"{it['brand']} {it['model']} — {it['qty']} x {float(it['unit_price']):.2f}$ = {float(it['total']):.2f}$"
+        if it.get("free_line"):
+            label = str(it.get("free_name") or it.get("name") or "")
+        else:
+            label = f"{it['brand']} {it['model']} — "
+        line = f"{label}{it['qty']} x {float(it['unit_price']):.2f}$ = {float(it['total']):.2f}$"
         c.drawString(50, y, line)
         y -= 14
         if y < 80:

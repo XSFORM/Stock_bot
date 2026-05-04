@@ -35,8 +35,15 @@
       {% for item in items %}
       <tr>
         <td class="text-center">{{ loop.index }}</td>
-        <td>{{ item.brand }} {{ item.model }}</td>
-        <td>{{ item.name }}</td>
+        <td>
+          {% if item.free_line %}
+            {{ item.free_name }}
+            <span class="badge bg-warning text-dark ms-1" style="font-size:0.7em">{{ t.sale_free_item_badge }}</span>
+          {% else %}
+            {{ item.brand }} {{ item.model }}
+          {% endif %}
+        </td>
+        <td>{% if not item.free_line %}{{ item.name }}{% endif %}</td>
         <td>{{ item.barcode or '' }}</td>
         <td class="text-center">{{ item.qty | int }}</td>
         <td class="text-end">{{ "%.2f"|format(item.unit_price) }}</td>

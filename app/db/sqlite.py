@@ -181,6 +181,38 @@ def _ensure_receive_invoices_supplier_id_column(conn: sqlite3.Connection) -> Non
         conn.execute("ALTER TABLE receive_invoices ADD COLUMN supplier_id INTEGER")
 
 
+def _ensure_cart_items_free_columns(conn: sqlite3.Connection) -> None:
+    """Migrate cart_items to support free/manual line items (product_id nullable)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(cart_items)")}
+    if "free_line" in cols:
+        return  # already migrated
+
+    # Recreate table with nullable product_id + free_line + free_name
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cart_items_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cart_id INTEGER NOT NULL,
+            product_id INTEGER,
+            free_line INTEGER NOT NULL DEFAULT 0,
+            free_name TEXT NOT NULL DEFAULT '',
+            qty REAL NOT NULL,
+            price_mode TEXT NOT NULL DEFAULT 'custom',
+            unit_price REAL NOT NULL,
+            total REAL NOT NULL,
+            FOREIGN KEY (cart_id) REFERENCES carts(id) ON DELETE CASCADE,
+            FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+        )
+    """)
+    conn.execute("""
+        INSERT INTO cart_items_new (id, cart_id, product_id, free_line, free_name,
+                                    qty, price_mode, unit_price, total)
+        SELECT id, cart_id, product_id, 0, '', qty, price_mode, unit_price, total
+        FROM cart_items
+    """)
+    conn.execute("DROP TABLE cart_items")
+    conn.execute("ALTER TABLE cart_items_new RENAME TO cart_items")
+
+
 def _backfill_suppliers_from_receive_invoices(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -228,6 +260,7 @@ def init_db() -> None:
         _ensure_supplier_ledger_table(conn)
         _ensure_receive_invoices_supplier_id_column(conn)
         _backfill_suppliers_from_receive_invoices(conn)
+        _ensure_cart_items_free_columns(conn)
         conn.commit()
 
 
@@ -1665,6 +1698,36 @@ def cart_add_by_cart_id(
         return _cart_add_item(conn, cart_id, brand, model, qty, price_mode, custom_price)
 
 
+def cart_add_free_item(
+    cart_id: int,
+    free_name: str,
+    qty: float,
+    unit_price: float,
+) -> tuple[bool, str]:
+    """Add a free/manual line item (not linked to any stock product)."""
+    try:
+        free_name = free_name.strip()
+        if not free_name:
+            return False, "free_name_required"
+        if qty <= 0:
+            return False, "qty_must_be_positive"
+        if unit_price < 0:
+            return False, "price_must_be_non_negative"
+        unit_price = _normalize_unit_price(unit_price)
+        total = calc_line_total(unit_price, qty)
+        with _connect() as conn:
+            conn.execute(
+                "INSERT INTO cart_items"
+                " (cart_id, product_id, free_line, free_name, qty, price_mode, unit_price, total)"
+                " VALUES (?, NULL, 1, ?, ?, 'custom', ?, ?)",
+                (cart_id, free_name, qty, unit_price, total),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
 def _cart_add_item(
     conn: sqlite3.Connection,
     cart_id: int,
@@ -1716,8 +1779,11 @@ def cart_show_by_cart_id(cart_id: int) -> tuple[bool, str]:
 def _cart_show_text(conn: sqlite3.Connection, cart_id: int) -> tuple[bool, str]:
     items = conn.execute(
         """
-        SELECT p.brand, p.model, ci.qty, ci.unit_price, ci.total
-        FROM cart_items ci JOIN products p ON p.id = ci.product_id
+        SELECT ci.free_line, ci.free_name,
+               COALESCE(p.brand, '') AS brand, COALESCE(p.model, '') AS model,
+               ci.qty, ci.unit_price, ci.total
+        FROM cart_items ci
+        LEFT JOIN products p ON p.id = ci.product_id
         WHERE ci.cart_id = ?
         """,
         (cart_id,),
@@ -1727,8 +1793,12 @@ def _cart_show_text(conn: sqlite3.Connection, cart_id: int) -> tuple[bool, str]:
     lines = []
     total = 0.0
     for i in items:
+        if i["free_line"]:
+            label = i["free_name"]
+        else:
+            label = f"{i['brand']} {i['model']}"
         lines.append(
-            f"{i['brand']} {i['model']} x{float(i['qty']):.2f}"
+            f"{label} x{float(i['qty']):.2f}"
             f" @ {float(i['unit_price']):.2f} = {float(i['total']):.2f}"
         )
         total += float(i["total"])
@@ -1765,10 +1835,13 @@ def _finish_cart(
     try:
         items = conn.execute(
             """
-            SELECT ci.id, ci.product_id, ci.qty, ci.price_mode, ci.unit_price, ci.total,
-                   p.brand, p.model, p.name
+            SELECT ci.id, ci.product_id, ci.free_line, ci.free_name,
+                   ci.qty, ci.price_mode, ci.unit_price, ci.total,
+                   COALESCE(p.brand, '') AS brand,
+                   COALESCE(p.model, '') AS model,
+                   COALESCE(p.name, ci.free_name) AS name
             FROM cart_items ci
-            JOIN products p ON p.id = ci.product_id
+            LEFT JOIN products p ON p.id = ci.product_id
             WHERE ci.cart_id = ?
             """,
             (cart_id,),
@@ -1777,6 +1850,8 @@ def _finish_cart(
             return False, "cart_empty", {}, []
 
         for item in items:
+            if item["free_line"]:
+                continue  # free items have no stock to check
             qty_row = conn.execute(
                 "SELECT qty FROM stock WHERE warehouse_code = ? AND product_id = ?",
                 (warehouse_code, item["product_id"]),
@@ -1791,6 +1866,8 @@ def _finish_cart(
                 )
 
         for item in items:
+            if item["free_line"]:
+                continue  # free items don't affect stock
             conn.execute(
                 "UPDATE stock SET qty = qty - ?"
                 " WHERE warehouse_code = ? AND product_id = ?",
@@ -1847,10 +1924,14 @@ def get_cart_items_list(cart_id: int) -> tuple[Optional[dict], list[dict]]:
             return None, []
         items = conn.execute(
             """
-            SELECT ci.id, ci.product_id, ci.qty, ci.price_mode, ci.unit_price, ci.total,
-                   p.brand, p.model, p.name, p.wh_price
+            SELECT ci.id, ci.product_id, ci.free_line, ci.free_name,
+                   ci.qty, ci.price_mode, ci.unit_price, ci.total,
+                   COALESCE(p.brand, '') AS brand,
+                   COALESCE(p.model, '') AS model,
+                   COALESCE(p.name, ci.free_name) AS name,
+                   COALESCE(p.wh_price, 0) AS wh_price
             FROM cart_items ci
-            JOIN products p ON p.id = ci.product_id
+            LEFT JOIN products p ON p.id = ci.product_id
             WHERE ci.cart_id = ?
             ORDER BY ci.id
             """,
@@ -1941,11 +2022,16 @@ def get_invoice_items_by_number(number: int) -> list[dict[str, Any]]:
         rows = conn.execute(
             """
             SELECT ci.id, ci.qty, ci.price_mode, ci.unit_price, ci.total,
-                   p.brand, p.model, p.name, p.barcode, p.id AS product_id
+                   ci.free_line, ci.free_name,
+                   COALESCE(p.brand, '') AS brand,
+                   COALESCE(p.model, '') AS model,
+                   COALESCE(p.name, ci.free_name) AS name,
+                   COALESCE(p.barcode, '') AS barcode,
+                   p.id AS product_id
             FROM invoices i
             JOIN carts c ON c.id = i.cart_id
             JOIN cart_items ci ON ci.cart_id = c.id
-            JOIN products p ON p.id = ci.product_id
+            LEFT JOIN products p ON p.id = ci.product_id
             WHERE i.number = ?
             ORDER BY ci.id
             """,
@@ -2046,13 +2132,15 @@ def update_sale_invoice(
             cart_id = inv_row["cart_id"]
 
             old_items = conn.execute(
-                "SELECT product_id, qty FROM cart_items WHERE cart_id = ?",
+                "SELECT product_id, free_line, qty FROM cart_items WHERE cart_id = ?",
                 (cart_id,),
             ).fetchall()
             cart_wh = conn.execute(
                 "SELECT warehouse_code FROM carts WHERE id = ?", (cart_id,)
             ).fetchone()["warehouse_code"]
             for oi in old_items:
+                if oi["free_line"] or not oi["product_id"]:
+                    continue  # free items don't affect stock
                 conn.execute(
                     "UPDATE stock SET qty = qty + ?"
                     " WHERE warehouse_code = ? AND product_id = ?",
@@ -2066,21 +2154,24 @@ def update_sale_invoice(
             conn.execute("DELETE FROM cart_items WHERE cart_id = ?", (cart_id,))
 
             for item in new_items:
-                pid = item["product_id"]
+                pid = item.get("product_id") or None
+                free_line = 1 if not pid else 0
+                free_name = item.get("free_name", "") if free_line else ""
                 qty = float(item["qty"])
                 unit_price = _normalize_unit_price(float(item["unit_price"]))
                 item_total = calc_line_total(unit_price, qty)
                 conn.execute(
                     "INSERT INTO cart_items"
-                    " (cart_id, product_id, qty, price_mode, unit_price, total)"
-                    " VALUES (?, ?, ?, 'custom', ?, ?)",
-                    (cart_id, pid, qty, unit_price, item_total),
+                    " (cart_id, product_id, free_line, free_name, qty, price_mode, unit_price, total)"
+                    " VALUES (?, ?, ?, ?, ?, 'custom', ?, ?)",
+                    (cart_id, pid, free_line, free_name, qty, unit_price, item_total),
                 )
-                conn.execute(
-                    "UPDATE stock SET qty = qty - ?"
-                    " WHERE warehouse_code = ? AND product_id = ?",
-                    (qty, warehouse_code, pid),
-                )
+                if pid and not free_line:
+                    conn.execute(
+                        "UPDATE stock SET qty = qty - ?"
+                        " WHERE warehouse_code = ? AND product_id = ?",
+                        (qty, warehouse_code, pid),
+                    )
 
             total = calc_document_total(new_items, "unit_price")
             conn.execute(
@@ -2113,11 +2204,13 @@ def delete_sale_invoice(number: int) -> tuple[bool, str]:
             warehouse_code = cart_row["warehouse_code"]
 
             items = conn.execute(
-                "SELECT product_id, qty FROM cart_items WHERE cart_id = ?",
+                "SELECT product_id, free_line, qty FROM cart_items WHERE cart_id = ?",
                 (cart_id,),
             ).fetchall()
 
             for item in items:
+                if item["free_line"] or not item["product_id"]:
+                    continue  # free items don't affect stock
                 conn.execute(
                     "UPDATE stock SET qty = qty + ?"
                     " WHERE warehouse_code = ? AND product_id = ?",
@@ -2852,24 +2945,30 @@ def list_history(q: str = "", limit: int = 500) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
 
         # ── SALE events ──────────────────────────────────────────────────────
-        sale_clauses: list[str] = []
+        sale_clauses: list[str] = ["c.status = 'CLOSED'"]
         sale_params: list[Any] = []
         if like:
             sale_clauses.append(
-                "(p.brand LIKE ? OR p.model LIKE ? OR p.name LIKE ?"
+                "(COALESCE(p.brand, '') LIKE ? OR COALESCE(p.model, '') LIKE ?"
+                " OR COALESCE(p.name, ci.free_name) LIKE ?"
+                " OR ci.free_name LIKE ?"
                 " OR cl.name LIKE ? OR c.warehouse_code LIKE ?)"
             )
-            sale_params = [like, like, like, like, like]
-        sale_where = ("WHERE " + " AND ".join(sale_clauses)) if sale_clauses else ""
+            sale_params = [like, like, like, like, like, like]
+        sale_where = "WHERE " + " AND ".join(sale_clauses)
         for r in conn.execute(
             f"""
             SELECT i.number, i.created_at, ci.qty, ci.unit_price, ci.total,
-                   p.brand, p.model, p.name, p.id AS product_id,
+                   ci.free_line, ci.free_name,
+                   COALESCE(p.brand, '') AS brand,
+                   COALESCE(p.model, '') AS model,
+                   COALESCE(p.name, ci.free_name) AS name,
+                   p.id AS product_id,
                    cl.name AS client_name, c.warehouse_code
             FROM cart_items ci
             JOIN carts c ON c.id = ci.cart_id
             JOIN invoices i ON i.cart_id = c.id
-            JOIN products p ON p.id = ci.product_id
+            LEFT JOIN products p ON p.id = ci.product_id
             LEFT JOIN clients cl ON cl.id = c.client_id
             {sale_where}
             ORDER BY i.created_at DESC

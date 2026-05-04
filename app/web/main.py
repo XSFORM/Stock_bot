@@ -69,6 +69,7 @@ from app.db.sqlite import (
     cart_add_by_cart_id,
     cart_show_by_cart_id,
     cart_finish_by_cart_id_shop1416,
+    cart_add_free_item,
     # new
     search_products,
     search_stock,
@@ -1095,6 +1096,18 @@ def sale_add(
     return RedirectResponse(url=f"/sale?msg=add:{msg}", status_code=303)
 
 
+@app.post("/sale/add-free")
+def sale_add_free(
+    cart_id: int = Form(...),
+    free_name: str = Form(...),
+    qty: float = Form(...),
+    unit_price: float = Form(...),
+):
+    ok, err = cart_add_free_item(int(cart_id), free_name.strip(), float(qty), float(unit_price))
+    msg = "OK" if ok else err
+    return RedirectResponse(url=f"/sale?msg=add:{msg}", status_code=303)
+
+
 @app.post("/sale/show")
 def sale_show(cart_id: int = Form(...)):
     ok, text = cart_show_by_cart_id(int(cart_id))
@@ -1306,14 +1319,20 @@ def invoice_sale_edit_post(
     number: int,
     client_id: int = Form(...),
     warehouse_code: str = Form(...),
-    product_id: List[int] = Form(...),
+    product_id: List[Optional[int]] = Form(...),
     qty: List[float] = Form(...),
     unit_price: List[float] = Form(...),
+    free_name: List[str] = Form(default=[]),
 ):
-    new_items = [
-        {"product_id": pid, "qty": q, "unit_price": up}
-        for pid, q, up in zip(product_id, qty, unit_price)
-    ]
+    new_items = []
+    for i, (pid, q, up) in enumerate(zip(product_id, qty, unit_price)):
+        fname = free_name[i] if i < len(free_name) else ""
+        new_items.append({
+            "product_id": pid if pid else None,
+            "free_name": fname,
+            "qty": q,
+            "unit_price": up,
+        })
     ok, err = update_sale_invoice(int(number), int(client_id), warehouse_code, new_items)
     if not ok:
         return RedirectResponse(
