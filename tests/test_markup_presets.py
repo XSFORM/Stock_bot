@@ -211,3 +211,86 @@ class TestSalePageMarkupButtons:
         assert resp.status_code == 200
         # The dropdown option for 10 should be selected
         assert 'value="10"' in resp.text
+
+
+class TestProductsAndStockMarkupColumns:
+    """/products and /stock show dynamic markup columns from admin presets."""
+
+    def _set_presets(self, presets: list[int]) -> None:
+        from app.db.sqlite import set_setting
+        set_setting("sale_markup_presets", ",".join(str(p) for p in presets))
+        set_setting("sale_default_markup", str(presets[0]))
+
+    def teardown_method(self) -> None:
+        from app.db.sqlite import set_setting
+        set_setting("sale_markup_presets", "")
+        set_setting("sale_default_markup", "")
+
+    def test_products_page_renders_without_error(self, web_client: TestClient) -> None:
+        """/products must return 200 with any active presets."""
+        self._set_presets([10, 15, 25])
+        resp = web_client.get("/products")
+        assert resp.status_code == 200
+
+    def test_products_page_shows_active_preset_columns(self, web_client: TestClient) -> None:
+        """/products shows header columns for each active preset."""
+        self._set_presets([5, 20, 30])
+        resp = web_client.get("/products")
+        assert resp.status_code == 200
+        assert "+5%" in resp.text
+        assert "+20%" in resp.text
+        assert "+30%" in resp.text
+
+    def test_products_page_does_not_show_inactive_preset_columns(self, web_client: TestClient) -> None:
+        """/products must not show header columns for inactive presets."""
+        self._set_presets([10, 15])
+        resp = web_client.get("/products")
+        assert resp.status_code == 200
+        assert "+10%" in resp.text
+        assert "+15%" in resp.text
+        # 25 is not active — should not appear as a column header
+        assert "+25%" not in resp.text
+
+    def test_products_page_fallback_columns_when_no_setting(self, web_client: TestClient) -> None:
+        """/products uses fallback [10,15,25] when no preset is stored."""
+        from app.db.sqlite import set_setting
+        set_setting("sale_markup_presets", "")
+        resp = web_client.get("/products")
+        assert resp.status_code == 200
+        assert "+10%" in resp.text
+        assert "+15%" in resp.text
+        assert "+25%" in resp.text
+
+    def test_stock_page_renders_without_error(self, web_client: TestClient) -> None:
+        """/stock must return 200 with any active presets."""
+        self._set_presets([10, 15, 25])
+        resp = web_client.get("/stock")
+        assert resp.status_code == 200
+
+    def test_stock_page_shows_active_preset_columns(self, web_client: TestClient) -> None:
+        """/stock shows header columns for each active preset."""
+        self._set_presets([5, 20, 30])
+        resp = web_client.get("/stock")
+        assert resp.status_code == 200
+        assert "+5%" in resp.text
+        assert "+20%" in resp.text
+        assert "+30%" in resp.text
+
+    def test_stock_page_does_not_show_inactive_preset_columns(self, web_client: TestClient) -> None:
+        """/stock must not show header columns for inactive presets."""
+        self._set_presets([10, 15])
+        resp = web_client.get("/stock")
+        assert resp.status_code == 200
+        assert "+10%" in resp.text
+        assert "+15%" in resp.text
+        assert "+25%" not in resp.text
+
+    def test_stock_page_fallback_columns_when_no_setting(self, web_client: TestClient) -> None:
+        """/stock uses fallback [10,15,25] when no preset is stored."""
+        from app.db.sqlite import set_setting
+        set_setting("sale_markup_presets", "")
+        resp = web_client.get("/stock")
+        assert resp.status_code == 200
+        assert "+10%" in resp.text
+        assert "+15%" in resp.text
+        assert "+25%" in resp.text
