@@ -2945,7 +2945,7 @@ def list_history(q: str = "", limit: int = 500) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
 
         # ── SALE events ──────────────────────────────────────────────────────
-        sale_clauses: list[str] = ["c.status = 'CLOSED'"]
+        sale_clauses: list[str] = []
         sale_params: list[Any] = []
         if like:
             sale_clauses.append(
@@ -2955,7 +2955,7 @@ def list_history(q: str = "", limit: int = 500) -> list[dict[str, Any]]:
                 " OR cl.name LIKE ? OR c.warehouse_code LIKE ?)"
             )
             sale_params = [like, like, like, like, like, like]
-        sale_where = "WHERE " + " AND ".join(sale_clauses)
+        sale_where = ("WHERE " + " AND ".join(sale_clauses)) if sale_clauses else ""
         for r in conn.execute(
             f"""
             SELECT i.number, i.created_at, ci.qty, ci.unit_price, ci.total,

@@ -173,8 +173,10 @@ function attachRowListeners(row) {
   row.querySelector('.qty-field').addEventListener('input', updateTotal);
   row.querySelector('.price-field').addEventListener('input', updateTotal);
 
-  // Product search
+  // Product search (only for stock rows, not free rows)
   const searchInput = row.querySelector('.product-search');
+  if (!searchInput) return;  // free-item rows have no search input
+
   const resultsDiv = row.querySelector('.search-results');
   const pidField = row.querySelector('.product-id-field');
 
@@ -252,7 +254,8 @@ document.getElementById('editForm').addEventListener('submit', function(e) {
   if (!valid) {
     e.preventDefault();
     const missingProduct = [...document.querySelectorAll('#itemsBody .item-row')].some(row => {
-      return !row.querySelector('.free-name-field') && !row.querySelector('.product-id-field').value;
+      const pidField = row.querySelector('.product-id-field');
+      return !row.querySelector('.free-name-field') && pidField && !pidField.value;
     });
     if (missingProduct) alert('{{ t.invoice_edit_select_product | e }}');
   }
