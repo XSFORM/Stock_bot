@@ -909,3 +909,58 @@ def test_admin_backup_create_requires_unlocked_session(client: TestClient) -> No
 
     allowed = client.post("/admin/backup/create", follow_redirects=False)
     assert allowed.status_code == 200
+
+
+def test_get_invoice_by_number_includes_client_id(client: TestClient) -> None:
+    """get_invoice_by_number must return client_id so the edit form pre-selects the correct client.
+
+    Previously the SQL query omitted c.client_id from the SELECT, causing
+    invoice.client_id to be None and the edit form to default to the first
+    client in the list instead of the actual invoice owner.
+    """
+    import uuid
+    from app.db import sqlite as db
+
+    suffix = uuid.uuid4().hex[:8]
+    client_name = f"Edit Form Client {suffix}"
+    ok, err = db.add_client(client_name)
+    assert ok, err
+    db.add_warehouse("1416_SHOP", "Shop")
+    product_id = db.add_product(f"EB{suffix}".upper(), f"e{suffix}".lower(), "Edit Test Product", 10.0)
+    assert product_id > 0
+
+    clients_list = {c["name"]: c["id"] for c in db.list_clients(include_archived=True)}
+    the_client_id = clients_list[client_name]
+
+    with db._connect() as conn:  # noqa: SLF001 - integration setup
+        next_num = conn.execute("SELECT COALESCE(MAX(number), 0) + 1 AS n FROM invoices").fetchone()["n"]
+        conn.execute(
+            "INSERT INTO carts (client_id, warehouse_code, status) VALUES (?, ?, 'CLOSED')",
+            (the_client_id, "1416_SHOP"),
+        )
+        cart_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        conn.execute(
+            "INSERT INTO invoices (cart_id, number, total) VALUES (?, ?, ?)",
+            (cart_id, next_num, 0.0),
+        )
+        conn.commit()
+
+    invoice = db.get_invoice_by_number(next_num)
+    assert invoice is not None, "Invoice not found"
+    assert "client_id" in invoice, (
+        "get_invoice_by_number must include client_id in the returned dict "
+        "so that the edit form pre-selects the correct client"
+    )
+    assert invoice["client_id"] == the_client_id, (
+        f"Expected client_id={the_client_id}, got {invoice.get('client_id')}"
+    )
+    assert invoice["warehouse_code"] == "1416_SHOP"
+
+    # Verify the edit page renders and contains the correct client selected
+    response = client.get(f"/invoices/sale/{next_num}/edit")
+    assert response.status_code == 200
+    html = response.text
+    # The option for our client must have `selected` attribute
+    assert f'value="{the_client_id}" selected' in html or f"value=\"{the_client_id}\" selected" in html, (
+        f"Client {client_name} (id={the_client_id}) must be pre-selected in the edit form"
+    )

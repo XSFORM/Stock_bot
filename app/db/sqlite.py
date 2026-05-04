@@ -1925,7 +1925,7 @@ def get_invoice_by_number(number: int) -> Optional[dict[str, Any]]:
     with _connect() as conn:
         row = conn.execute(
             """
-            SELECT i.*, cl.name AS client, c.warehouse_code
+            SELECT i.*, cl.name AS client, c.client_id, c.warehouse_code
             FROM invoices i
             JOIN carts c ON c.id = i.cart_id
             JOIN clients cl ON cl.id = c.client_id
