@@ -69,10 +69,16 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     # --- Data rows ---
     for row_num, item in enumerate(items, start=1):
         row_idx = header_row + row_num
+        if item.get("free_line"):
+            model_val = item.get("free_name") or item.get("name") or ""
+            name_val = ""
+        else:
+            model_val = f"{item['brand']} {item['model']}"
+            name_val = item["name"]
         values = [
             row_num,
-            f"{item['brand']} {item['model']}",
-            item["name"],
+            model_val,
+            name_val,
             item.get("barcode") or "",
             float(item["qty"]),
             round_money(item["unit_price"]),
