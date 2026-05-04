@@ -21,7 +21,9 @@
       <li><a href="#ru-stock">Склад</a></li>
       <li><a href="#ru-receive">Приход</a></li>
       <li><a href="#ru-move">Перемещение</a></li>
-      <li><a href="#ru-sale">Продажа</a></li>
+      <li><a href="#ru-sale">Продажа</a>
+        <ul class="mt-1"><li><a href="#ru-free-item">Свободная позиция вне склада</a></li></ul>
+      </li>
       <li><a href="#ru-return">Возврат</a></li>
       <li><a href="#ru-brands">Бренды</a></li>
       <li><a href="#ru-clients">Клиенты</a></li>
@@ -133,6 +135,38 @@
   </ol>
   <p>После завершения продажи можно скачать накладную в XLSX или просмотреть в браузере.</p>
   <p><strong>DEB</strong> в правом верхнем углу навигации — суммарный долг всех клиентов по всем продажам.</p>
+
+  {# 7a. Free (non-stock) position #}
+  <h5 id="ru-free-item" class="mt-3">Свободная позиция вне склада</h5>
+  <p>
+    Используется, когда товар физически есть в магазине, но он <strong>не заведён в ERP/склад</strong>
+    (например, штучные или редкие товары, которые не нужно оформлять через приход).
+  </p>
+  <p><strong>Как добавить:</strong></p>
+  <ol>
+    <li>На странице продажи введите название позиции вручную в поле поиска товара.</li>
+    <li>Укажите количество.</li>
+    <li>Укажите цену за единицу.</li>
+    <li>Нажмите кнопку <strong>«Добавить вне склада»</strong> (или аналогичную кнопку добавления свободной позиции).</li>
+  </ol>
+  <p><strong>Что произойдёт:</strong></p>
+  <ul>
+    <li>Позиция появится в накладной.</li>
+    <li>Позиция будет включена в PDF и XLSX.</li>
+    <li>Сумма позиции добавится в долг клиента и общий <strong>DEB</strong>.</li>
+  </ul>
+  <p><strong>Что НЕ произойдёт:</strong></p>
+  <ul>
+    <li>Товар <em>не</em> будет списан со склада.</li>
+    <li><strong>STK</strong> не изменится.</li>
+    <li>Товар <em>не</em> будет автоматически создан в справочнике товаров.</li>
+    <li>Приход <em>не</em> будет создан автоматически.</li>
+  </ul>
+  <p class="text-warning-emphasis">
+    ⚠️ <strong>Предупреждение:</strong> используйте свободную позицию только для товаров, которые действительно
+    не ведутся в складском учёте. Для обычных складских товаров выбирайте товар из выпадающего списка —
+    это обеспечивает правильное списание остатков.
+  </p>
 
   {# 8. Return #}
   <h4 id="ru-return" class="mt-4">8. Возврат (Return)</h4>
@@ -325,7 +359,9 @@
       <li><a href="#tm-stock">Ammar</a></li>
       <li><a href="#tm-receive">Kabul etmek</a></li>
       <li><a href="#tm-move">Geçirmek</a></li>
-      <li><a href="#tm-sale">Satyş</a></li>
+      <li><a href="#tm-sale">Satyş</a>
+        <ul class="mt-1"><li><a href="#tm-free-item">Ammardan daşary erkin pozisiýa</a></li></ul>
+      </li>
       <li><a href="#tm-return">Yzyna gaýtarmak</a></li>
       <li><a href="#tm-brands">Brendler</a></li>
       <li><a href="#tm-clients">Müşderiler</a></li>
@@ -426,6 +462,37 @@
     <li>Ähli pozisiýalar üçin gaýtalaň.</li>
     <li>«Tamamlamak» düwmesine basyň — hasap-faktura döredildi. Galdyklar azaldy, müşderiniň bergisi satyş möçberinde artar.</li>
   </ol>
+
+  {# 7a. Free (non-stock) position #}
+  <h5 id="tm-free-item" class="mt-3">Ammardan daşary erkin pozisiýa</h5>
+  <p>
+    Dükanda fiziki taýdan bar bolan, ýöne <strong>ERP/ammarda hasaba alynmadyk</strong> haryt üçin
+    ulanylýar (meselem, seýrek ýa-da az mukdardaky harytlar).
+  </p>
+  <p><strong>Nädip goşmaly:</strong></p>
+  <ol>
+    <li>Satyş sahypasynda haryt gözleg meýdanyna pozisiýanyň adyny el bilen ýazyň.</li>
+    <li>Mukdary görkeziň.</li>
+    <li>Birlik bahasyny görkeziň.</li>
+    <li><strong>«Ammarsyz goş»</strong> düwmesine basyň (erkin pozisiýa goşmak düwmesi).</li>
+  </ol>
+  <p><strong>Näme bolar:</strong></p>
+  <ul>
+    <li>Pozisiýa hasap-fakturada görner.</li>
+    <li>PDF we XLSX-e goşular.</li>
+    <li>Pozisiýanyň jemi müşderiniň bergisine we umumy <strong>DEB</strong>-e goşular.</li>
+  </ul>
+  <p><strong>Näme bolmaz:</strong></p>
+  <ul>
+    <li>Haryt ammardan <em>öçürilmez</em>.</li>
+    <li><strong>STK</strong> üýtgemez.</li>
+    <li>Haryt harytlar sanawuna <em>awtomatiki goşulmaz</em>.</li>
+    <li>Kabul etmek awtomatiki <em>döredilmez</em>.</li>
+  </ul>
+  <p class="text-warning-emphasis">
+    ⚠️ <strong>Duýduryş:</strong> erkin pozisiýany diňe ammar hasabyna alynmaýan harytlar üçin ulanyň.
+    Adaty ammar harytlary üçin açylýan sanawdan haryt saýlaň.
+  </p>
 
   {# 8. Return #}
   <h4 id="tm-return" class="mt-4">8. Yzyna gaýtarmak</h4>
@@ -612,7 +679,9 @@
       <li><a href="#en-stock">Stock</a></li>
       <li><a href="#en-receive">Receive</a></li>
       <li><a href="#en-move">Move</a></li>
-      <li><a href="#en-sale">Sale</a></li>
+      <li><a href="#en-sale">Sale</a>
+        <ul class="mt-1"><li><a href="#en-free-item">Free position (non-stock item)</a></li></ul>
+      </li>
       <li><a href="#en-return">Return</a></li>
       <li><a href="#en-brands">Brands</a></li>
       <li><a href="#en-clients">Clients</a></li>
@@ -725,6 +794,38 @@
   </ol>
   <p>After finishing you can download the invoice as XLSX or view it in the browser.</p>
   <p><strong>DEB</strong> in the top-right navigation bar is the total outstanding debt of all clients.</p>
+
+  {# 7a. Free (non-stock) position #}
+  <h5 id="en-free-item" class="mt-3">Free position (non-stock item)</h5>
+  <p>
+    Use this when a product is physically available in the shop but is <strong>not registered in the ERP/warehouse</strong>
+    (e.g. one-off or rare items that do not need to be processed through a receive operation).
+  </p>
+  <p><strong>How to add:</strong></p>
+  <ol>
+    <li>On the sale page, type the item name manually in the product search field.</li>
+    <li>Enter the quantity.</li>
+    <li>Enter the unit price.</li>
+    <li>Click the <strong>«Add outside warehouse»</strong> button (or the equivalent free-position button).</li>
+  </ol>
+  <p><strong>What will happen:</strong></p>
+  <ul>
+    <li>The line item will appear in the invoice.</li>
+    <li>It will be included in the PDF and XLSX.</li>
+    <li>The amount will be added to the client's debt and the total <strong>DEB</strong>.</li>
+  </ul>
+  <p><strong>What will NOT happen:</strong></p>
+  <ul>
+    <li>The product will <em>not</em> be deducted from any warehouse stock.</li>
+    <li><strong>STK</strong> will not change.</li>
+    <li>The product will <em>not</em> be automatically created in the product directory.</li>
+    <li>No receive operation will be created automatically.</li>
+  </ul>
+  <p class="text-warning-emphasis">
+    ⚠️ <strong>Warning:</strong> use a free position only for items that are genuinely not tracked in the
+    warehouse. For regular warehouse products, always select the item from the drop-down list to ensure
+    correct stock deduction.
+  </p>
 
   {# 8. Return #}
   <h4 id="en-return" class="mt-4">8. Return</h4>
