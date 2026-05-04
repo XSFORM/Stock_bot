@@ -160,6 +160,7 @@
 </div>
 
 <script>
+<script>
 // Persist selected warehouse across navigation using localStorage
 (function () {
   var KEY = 'stock_warehouse';
@@ -169,8 +170,16 @@
   } else {
     var saved = localStorage.getItem(KEY);
     if (saved !== null) {
-      params.set('warehouse', saved);
-      window.location.replace(window.location.pathname + '?' + params.toString());
+      // Validate against the actual list of valid options to prevent open-redirect
+      // via a tampered localStorage value.
+      var select = document.querySelector('form[action="/stock"] [name="warehouse"]');
+      var validValues = select
+        ? Array.from(select.options).map(function (o) { return o.value; })
+        : [];
+      if (validValues.indexOf(saved) !== -1) {
+        params.set('warehouse', saved);
+        window.location.replace(window.location.pathname + '?' + params.toString());
+      }
     }
   }
   var filterForm = document.querySelector('form[action="/stock"][method="get"]');

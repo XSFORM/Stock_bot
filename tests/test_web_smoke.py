@@ -961,6 +961,6 @@ def test_get_invoice_by_number_includes_client_id(client: TestClient) -> None:
     assert response.status_code == 200
     html = response.text
     # The option for our client must have `selected` attribute
-    assert f'value="{the_client_id}" selected' in html or f"value=\"{the_client_id}\" selected" in html, (
+    assert f'value="{the_client_id}" selected' in html, (
         f"Client {client_name} (id={the_client_id}) must be pre-selected in the edit form"
     )
