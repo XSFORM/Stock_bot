@@ -430,7 +430,7 @@ def index(request: Request):
 def products(request: Request, show_archived: int = 0, highlight: int = 0, q: str = ""):
     rows = list_products(include_archived=bool(show_archived), search=q if q else None)
     brands = list_brands()
-    return _render(request, "products.html", {"products": rows, "brands": brands, "show_archived": show_archived, "highlight": highlight, "search_q": q})
+    return _render(request, "products.html", {"products": rows, "brands": brands, "show_archived": show_archived, "highlight": highlight, "search_q": q, "markup_presets": get_sale_markup_presets()})
 
 
 @app.post("/products/add")
@@ -580,6 +580,7 @@ def stock_get(request: Request, warehouse: str = "", q: str = "", msg: str = "",
             "search_q": q or "",
             "msg": msg,
             "show_archived": show_archived,
+            "markup_presets": get_sale_markup_presets(),
         },
     )
 
