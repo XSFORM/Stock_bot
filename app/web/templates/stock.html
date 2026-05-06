@@ -24,13 +24,22 @@
     </div>
 
     <div class="col-auto">
+      <label class="form-label mb-1">{{ t.stock_sort_label }}</label>
+      <select class="form-select" name="sort_by">
+        <option value="qty_asc" {% if sort_by == "qty_asc" %}selected{% endif %}>{{ t.stock_sort_qty_asc }}</option>
+        <option value="qty_desc" {% if sort_by == "qty_desc" %}selected{% endif %}>{{ t.stock_sort_qty_desc }}</option>
+        <option value="model" {% if sort_by == "model" %}selected{% endif %}>{{ t.stock_sort_model }}</option>
+      </select>
+    </div>
+
+    <div class="col-auto">
       <button class="btn btn-secondary">{{ t.btn_filter }}</button>
     </div>
 
     <input type="hidden" name="show_archived" value="{{ show_archived }}">
 
     <div class="col-auto">
-      <a class="btn btn-success" href="/stock/xlsx?warehouse={{ selected_warehouse }}&q={{ search_q }}&show_archived={{ show_archived }}">{{ t.btn_download_xlsx }}</a>
+      <a class="btn btn-success" href="/stock/xlsx?warehouse={{ selected_warehouse }}&q={{ search_q }}&show_archived={{ show_archived }}&sort_by={{ sort_by }}">{{ t.btn_download_xlsx }}</a>
     </div>
   </form>
 
@@ -38,6 +47,7 @@
     <form method="get" action="/stock" class="d-inline">
       <input type="hidden" name="warehouse" value="{{ selected_warehouse }}">
       <input type="hidden" name="q" value="{{ search_q }}">
+      <input type="hidden" name="sort_by" value="{{ sort_by }}">
       {% if show_archived %}
         <input type="hidden" name="show_archived" value="0">
         <button class="btn btn-sm btn-secondary">{{ t.hide_archived }}</button>
@@ -91,6 +101,7 @@
                     <input type="hidden" name="warehouse" value="{{ selected_warehouse }}">
                     <input type="hidden" name="q" value="{{ search_q }}">
                     <input type="hidden" name="show_archived" value="{{ show_archived }}">
+                    <input type="hidden" name="sort_by" value="{{ sort_by }}">
                     <button class="dropdown-item" type="submit">{{ t.btn_unarchive }}</button>
                   </form>
                 {% else %}
@@ -99,6 +110,7 @@
                     <input type="hidden" name="warehouse" value="{{ selected_warehouse }}">
                     <input type="hidden" name="q" value="{{ search_q }}">
                     <input type="hidden" name="show_archived" value="{{ show_archived }}">
+                    <input type="hidden" name="sort_by" value="{{ sort_by }}">
                     <button class="dropdown-item text-warning" type="submit">{{ t.btn_archive }}</button>
                   </form>
                 {% endif %}
@@ -132,6 +144,7 @@
           <input type="hidden" name="warehouse" value="{{ selected_warehouse }}">
           <input type="hidden" name="q" value="{{ search_q }}">
           <input type="hidden" name="show_archived" value="{{ show_archived }}">
+          <input type="hidden" name="sort_by" value="{{ sort_by }}">
           <div class="mb-2">
             <label class="form-label form-label-sm">{{ t.stock_lbl_barcode }}</label>
             <input type="text" class="form-control form-control-sm" name="barcode" id="edit-barcode">

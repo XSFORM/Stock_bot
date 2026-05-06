@@ -570,8 +570,8 @@ async def api_products_upsert_by_barcode(request: Request):
 # ---------------- stock ----------------
 
 @app.get("/stock", response_class=HTMLResponse)
-def stock_get(request: Request, warehouse: str = "", q: str = "", msg: str = "", show_archived: int = 0):
-    rows = get_stock(warehouse if warehouse else None, q if q else None, include_archived=bool(show_archived))
+def stock_get(request: Request, warehouse: str = "", q: str = "", msg: str = "", show_archived: int = 0, sort_by: str = "qty_asc"):
+    rows = get_stock(warehouse if warehouse else None, q if q else None, include_archived=bool(show_archived), sort_by=sort_by)
     return _render(
         request,
         "stock.html",
@@ -581,6 +581,7 @@ def stock_get(request: Request, warehouse: str = "", q: str = "", msg: str = "",
             "search_q": q or "",
             "msg": msg,
             "show_archived": show_archived,
+            "sort_by": sort_by,
             "markup_presets": get_sale_markup_presets(),
         },
     )
@@ -593,10 +594,11 @@ def stock_update_wh_price(
     warehouse: str = Form(""),
     q: str = Form(""),
     show_archived: int = Form(0),
+    sort_by: str = Form("qty_asc"),
 ):
     ok, err = update_product_wh_price(product_id, wh_price)
     msg = "wh_price_updated" if ok else f"error:{err}"
-    return RedirectResponse(url=f"/stock?warehouse={warehouse}&q={q}&msg={msg}&show_archived={show_archived}", status_code=303)
+    return RedirectResponse(url=f"/stock?warehouse={warehouse}&q={q}&msg={msg}&show_archived={show_archived}&sort_by={sort_by}", status_code=303)
 
 
 @app.post("/stock/product/edit")
@@ -609,24 +611,25 @@ def stock_edit_product(
     warehouse: str = Form(""),
     q: str = Form(""),
     show_archived: int = Form(0),
+    sort_by: str = Form("qty_asc"),
 ):
     ok, err = update_product_full(product_id, barcode, wh_price, model, name)
     msg = "product_updated" if ok else f"error:{err}"
-    return RedirectResponse(url=f"/stock?warehouse={warehouse}&q={q}&msg={msg}&show_archived={show_archived}", status_code=303)
+    return RedirectResponse(url=f"/stock?warehouse={warehouse}&q={q}&msg={msg}&show_archived={show_archived}&sort_by={sort_by}", status_code=303)
 
 
 @app.post("/stock/product/{product_id}/archive")
-def stock_product_archive(product_id: int, warehouse: str = Form(""), q: str = Form(""), show_archived: int = Form(0)):
+def stock_product_archive(product_id: int, warehouse: str = Form(""), q: str = Form(""), show_archived: int = Form(0), sort_by: str = Form("qty_asc")):
     ok, err = set_product_archived(product_id, 1)
     msg = "archived" if ok else f"error:{err}"
-    return RedirectResponse(url=f"/stock?warehouse={warehouse}&q={q}&msg={msg}&show_archived={show_archived}", status_code=303)
+    return RedirectResponse(url=f"/stock?warehouse={warehouse}&q={q}&msg={msg}&show_archived={show_archived}&sort_by={sort_by}", status_code=303)
 
 
 @app.post("/stock/product/{product_id}/unarchive")
-def stock_product_unarchive(product_id: int, warehouse: str = Form(""), q: str = Form(""), show_archived: int = Form(0)):
+def stock_product_unarchive(product_id: int, warehouse: str = Form(""), q: str = Form(""), show_archived: int = Form(0), sort_by: str = Form("qty_asc")):
     ok, err = set_product_archived(product_id, 0)
     msg = "unarchived" if ok else f"error:{err}"
-    return RedirectResponse(url=f"/stock?warehouse={warehouse}&q={q}&msg={msg}&show_archived={show_archived}", status_code=303)
+    return RedirectResponse(url=f"/stock?warehouse={warehouse}&q={q}&msg={msg}&show_archived={show_archived}&sort_by={sort_by}", status_code=303)
 
 
 @app.get("/products/{product_id}/history", response_class=HTMLResponse)
@@ -640,8 +643,8 @@ def product_history_get(request: Request, product_id: int):
 
 
 @app.get("/stock/xlsx")
-def stock_xlsx(warehouse: str = "", q: str = "", show_archived: int = 0):
-    rows = get_stock(warehouse if warehouse else None, q if q else None, include_archived=bool(show_archived))
+def stock_xlsx(warehouse: str = "", q: str = "", show_archived: int = 0, sort_by: str = "qty_asc"):
+    rows = get_stock(warehouse if warehouse else None, q if q else None, include_archived=bool(show_archived), sort_by=sort_by)
     wh_key = (warehouse or "").strip().upper()
     today = date.today().isoformat()
     if wh_key == "TM_DEPO":
