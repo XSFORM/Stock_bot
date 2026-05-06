@@ -28,8 +28,35 @@
         {% endif %}
       {% endif %}
 
+      <form class="row g-2 mb-3 align-items-end" method="get" action="/clients">
+        <div class="col-auto">
+          <label class="form-label mb-1">{{ t.lbl_search }}</label>
+          <input class="form-control" name="q" value="{{ search_q }}" placeholder="{{ t.clients_search_placeholder }}">
+        </div>
+        <div class="col-auto">
+          <label class="form-label mb-1">{{ t.stock_sort_label }}</label>
+          <select class="form-select" name="sort_by">
+            <option value="name_asc" {% if sort_by == "name_asc" %}selected{% endif %}>{{ t.clients_sort_name_asc }}</option>
+            <option value="name_desc" {% if sort_by == "name_desc" %}selected{% endif %}>{{ t.clients_sort_name_desc }}</option>
+            <option value="debt_desc" {% if sort_by == "debt_desc" %}selected{% endif %}>{{ t.clients_sort_debt_desc }}</option>
+            <option value="debt_asc" {% if sort_by == "debt_asc" %}selected{% endif %}>{{ t.clients_sort_debt_asc }}</option>
+          </select>
+        </div>
+        <div class="col-auto">
+          <button class="btn btn-secondary">{{ t.btn_filter }}</button>
+        </div>
+        {% if search_q %}
+        <div class="col-auto">
+          <a href="/clients?show_archived={{ show_archived }}&sort_by={{ sort_by }}" class="btn btn-outline-secondary">{{ t.btn_clear }}</a>
+        </div>
+        {% endif %}
+        <input type="hidden" name="show_archived" value="{{ show_archived }}">
+      </form>
+
       <div class="mb-2">
         <form method="get" action="/clients" class="d-inline">
+          <input type="hidden" name="q" value="{{ search_q }}">
+          <input type="hidden" name="sort_by" value="{{ sort_by }}">
           {% if show_archived %}
             <input type="hidden" name="show_archived" value="0">
             <button class="btn btn-sm btn-secondary">{{ t.hide_archived }}</button>

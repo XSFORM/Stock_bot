@@ -868,9 +868,33 @@ def move_all_post(
 # ---------------- clients --------------------
 
 @app.get("/clients", response_class=HTMLResponse)
-def clients_get(request: Request, msg: str = "", show_archived: int = 0):
+def clients_get(request: Request, msg: str = "", show_archived: int = 0, q: str = "", sort_by: str = "name_asc"):
     clients = list_clients_with_balance(include_archived=bool(show_archived))
-    return _render(request, "clients.html", {"clients": clients, "message": msg, "show_archived": show_archived})
+    # Filter by search query (name, phone, note)
+    if q:
+        q_lower = q.lower()
+        clients = [
+            c for c in clients
+            if q_lower in (c.get("name") or "").lower()
+            or q_lower in (c.get("phone") or "").lower()
+            or q_lower in (c.get("note") or "").lower()
+        ]
+    # Sort
+    if sort_by == "name_desc":
+        clients = sorted(clients, key=lambda c: (c.get("name") or "").lower(), reverse=True)
+    elif sort_by == "debt_desc":
+        clients = sorted(clients, key=lambda c: c.get("balance") or 0, reverse=True)
+    elif sort_by == "debt_asc":
+        clients = sorted(clients, key=lambda c: c.get("balance") or 0)
+    else:  # name_asc (default)
+        clients = sorted(clients, key=lambda c: (c.get("name") or "").lower())
+    return _render(request, "clients.html", {
+        "clients": clients,
+        "message": msg,
+        "show_archived": show_archived,
+        "search_q": q,
+        "sort_by": sort_by,
+    })
 
 
 @app.post("/clients/add")
