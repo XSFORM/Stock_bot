@@ -559,7 +559,14 @@ def get_stock(
     warehouse: Optional[str] = None,
     q: Optional[str] = None,
     include_archived: bool = False,
+    sort_by: str = "qty_asc",
 ) -> list[dict[str, Any]]:
+    _SORT_ORDERS = {
+        "qty_asc": "s.qty ASC, s.warehouse_code, p.brand, p.model",
+        "qty_desc": "s.qty DESC, s.warehouse_code, p.brand, p.model",
+        "model": "s.warehouse_code, p.brand, p.model",
+    }
+    order_clause = _SORT_ORDERS.get(sort_by, _SORT_ORDERS["qty_asc"])
     with _connect() as conn:
         conditions = []
         params: list[Any] = []
@@ -583,7 +590,7 @@ def get_stock(
             FROM stock s
             JOIN products p ON p.id = s.product_id
             {where}
-            ORDER BY s.warehouse_code, p.brand, p.model
+            ORDER BY {order_clause}
             """,
             params,
         ).fetchall()
