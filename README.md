@@ -382,3 +382,5 @@ Keys are organized with comments by section:
 * The background image can be replaced by uploading a JPG/PNG from **Settings → Background Image**.
 * The uploaded file overwrites `app/web/static/bg.jpg`.
 * Options: enable/disable background, background-size (cover / contain), overlay opacity.
+* Background URLs use automatic cache-busting (`?v=<file mtime>`) so new uploads appear without hard refresh.
+* Pocket Price has a separate background upload in **Settings → Pocket Price Background**, stored at `app/web/static/price-bg.jpg` with the same cache-busting behavior.

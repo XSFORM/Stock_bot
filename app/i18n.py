@@ -325,6 +325,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_bg_overlay": "Overlay opacity (0 – 100, 0 = no overlay)",
         "settings_bg_upload": "Upload new background image (JPG/PNG)",
         "settings_bg_save": "Save background settings",
+        "settings_price_bg_heading": "Pocket Price Background",
+        "settings_price_bg_upload": "Upload Pocket Price background (JPG/PNG)",
+        "settings_price_bg_save": "Save Pocket Price background",
         # Sale markup presets
         "settings_markup_heading": "Sale Markup Presets",
         "settings_markup_hint": "Choose which markup % buttons appear on the Sale page. At least one must be active; the default must be among the active presets.",
@@ -799,6 +802,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_bg_overlay": "Прозрачность наложения (0 – 100, 0 = без наложения)",
         "settings_bg_upload": "Загрузить фон (JPG/PNG)",
         "settings_bg_save": "Сохранить настройки фона",
+        "settings_price_bg_heading": "Фон Pocket Price",
+        "settings_price_bg_upload": "Загрузить фон Pocket Price (JPG/PNG)",
+        "settings_price_bg_save": "Сохранить фон Pocket Price",
         # Sale markup presets
         "settings_markup_heading": "Наценки продажи",
         "settings_markup_hint": "Выберите, какие кнопки % наценки отображаются на странице продажи. Хотя бы одна должна быть активна; стандартная должна быть среди активных.",
@@ -1273,6 +1279,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_bg_overlay": "Üstüni örtme aýdyňlygy (0 – 100, 0 = örtmesiz)",
         "settings_bg_upload": "Täze fon ýükläň (JPG/PNG)",
         "settings_bg_save": "Fon sazlamalaryny saklamak",
+        "settings_price_bg_heading": "Pocket Price fon suraty",
+        "settings_price_bg_upload": "Pocket Price üçin fon ýükläň (JPG/PNG)",
+        "settings_price_bg_save": "Pocket Price fonuny saklamak",
         # Sale markup presets
         "settings_markup_heading": "Satuw nasenkalary",
         "settings_markup_hint": "Satuw sahypasynda haýsy % düwmeleri görkezmeli boljakdygyny saýlaň. Azyndan biri işjeň bolmaly; deslapky aktiwleriň arasynda bolmaly.",
