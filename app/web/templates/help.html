@@ -33,6 +33,7 @@
       <li><a href="#ru-admin">Настройки (Admin)</a></li>
       <li><a href="#ru-pocket-price">Pocket Price</a></li>
       <li><a href="#ru-pocket-catalog">Pocket Catalog</a></li>
+      <li><a href="#ru-backgrounds">Фоновые картинки</a></li>
       <li><a href="#ru-tips">Советы и частые ошибки</a></li>
       <li><a href="#ru-authors">Авторы</a></li>
     </ol>
@@ -316,8 +317,61 @@
   <p><strong>Безопасность:</strong> токен привязан к конкретному устройству. Для смены устройства или
   отзыва доступа используйте Admin → Токены Catalog.</p>
 
-  {# 17. Tips #}
-  <h4 id="ru-tips" class="mt-4">17. Советы и частые ошибки</h4>
+  {# 17. Background images #}
+  <h4 id="ru-backgrounds" class="mt-4">17. Фоновые картинки</h4>
+
+  <h5 class="mt-3">Основной фон сайта</h5>
+  <p>
+    Основной фон используется на всех страницах веб-интерфейса Hasapcy: товары, склад, приход,
+    перемещение, продажа, возврат, клиенты, поставщики, накладные, история, админка, справочник.
+  </p>
+  <p><strong>Файл:</strong> <code>app/web/static/bg.jpg</code></p>
+  <p>Заменить можно через <strong>Админ → Настройки → Background Image</strong>.</p>
+  <p><strong>Рекомендуемый размер для ПК:</strong> <code>1920 × 1080 px</code> (соотношение 16:9)</p>
+  <p>Также подходят: <code>2560 × 1440 px</code>, <code>3840 × 2160 px</code></p>
+  <p>
+    <strong>Совет:</strong> используйте горизонтальную картинку — основной интерфейс чаще открывается
+    на ПК, ноутбуке или планшете. Тёмная или нейтральная картинка улучшает читаемость таблиц и текста.
+  </p>
+
+  <h5 class="mt-3">Фон Pocket Price</h5>
+  <p>Pocket Price использует отдельную фоновую картинку.</p>
+  <p><strong>Файл:</strong> <code>app/web/static/price-bg.jpg</code></p>
+  <p>Заменить можно через <strong>Админ → Настройки → Pocket Price Background</strong>.</p>
+  <p><strong>Рекомендуемый размер для телефона:</strong> <code>1080 × 1920 px</code> (соотношение 9:16)</p>
+  <p>Также подходят: <code>1440 × 2560 px</code>, <code>720 × 1280 px</code></p>
+  <p>
+    <strong>Совет:</strong> используйте вертикальную картинку — Pocket Price обычно открывается
+    на телефоне. Не слишком яркий фон лучше, так как поверх него отображаются карточки товаров и цены.
+  </p>
+
+  <h5 class="mt-3">Название и формат файла</h5>
+  <p>
+    При загрузке через админку название вашего файла не важно — можно загрузить файл с любым именем,
+    например <code>shop-background.png</code> или <code>pocket-mobile.webp</code>.
+    Система сама сохранит изображения в нужные файлы:
+  </p>
+  <ul>
+    <li><code>bg.jpg</code> — основной фон</li>
+    <li><code>price-bg.jpg</code> — фон Pocket Price</li>
+  </ul>
+  <p><strong>Поддерживаемые форматы:</strong> <code>.jpg</code>, <code>.jpeg</code>, <code>.png</code>, <code>.webp</code>, <code>.gif</code></p>
+  <p>Для лучшей скорости загрузки рекомендуется: <code>.jpg</code> или <code>.webp</code></p>
+
+  <h5 class="mt-3">Размер файла</h5>
+  <p>
+    Слишком большие изображения могут замедлять загрузку страницы. Рекомендуется держать размер файла
+    примерно в пределах <strong>500 KB — 2 MB</strong>.
+  </p>
+
+  <h5 class="mt-3">Обновление без Ctrl+F5</h5>
+  <p>
+    После последних изменений фон обновляется сразу после загрузки новой картинки через админку —
+    без ручной очистки кэша и без <strong>Ctrl+F5</strong>.
+  </p>
+
+  {# 18. Tips #}
+  <h4 id="ru-tips" class="mt-4">18. Советы и частые ошибки</h4>
   <ul>
     <li>✅ Всегда завершайте операцию кнопкой «Завершить» — незавершённый приход или продажа не влияет на остатки.</li>
     <li>✅ Перед продажей убедитесь, что товар есть на складе — система не позволит продать больше, чем есть в наличии.</li>
@@ -328,8 +382,8 @@
     <li>⚠️ Интернет обязателен. Если страница не загружается — проверьте соединение.</li>
   </ul>
 
-  {# 18. Authors #}
-  <h4 id="ru-authors" class="mt-4">18. Авторы</h4>
+  {# 19. Authors #}
+  <h4 id="ru-authors" class="mt-4">19. Авторы</h4>
   <p>
     <strong>Идея и разработка:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><path fill="#4caf50" d="M45 16.2l-5 2.75-5 4.75L35 40h7c1.657 0 3-1.343 3-3V16.2z"/><path fill="#1e88e5" d="M3 16.2l3.614 1.71L13 23.7V40H6c-1.657 0-3-1.343-3-3V16.2z"/><polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17"/><path fill="#c62828" d="M3 12.298V16.2l10 7.5V11.2L9.876 8.859A3.296 3.296 0 007.298 8C4.924 8 3 9.924 3 12.298z"/><path fill="#fbc02d" d="M45 12.298V16.2l-10 7.5V11.2l3.124-2.341A3.296 3.296 0 0040.702 8C43.076 8 45 9.924 45 12.298z"/></svg> <a href="mailto:berditairov@gmail.com">berditairov@gmail.com</a><br>
     <strong>Telegram:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#2CA5E0"/><path fill="white" d="M17.928 6.17L5.638 10.926c-.877.352-.872.84-.16 1.057l3.184.994 7.364-4.647c.347-.211.665-.098.404.134l-5.963 5.386-.233 3.296c.34 0 .49-.155.678-.336l1.627-1.582 3.384 2.496c.623.344 1.071.167 1.226-.578l2.214-10.427c.227-.906-.347-1.316-1.015-1.03z"/></svg> <a href="https://t.me/technica_1416">https://t.me/technica_1416</a><br>
@@ -371,6 +425,7 @@
       <li><a href="#tm-admin">Sazlamalar (Admin)</a></li>
       <li><a href="#tm-pocket-price">Pocket Price</a></li>
       <li><a href="#tm-pocket-catalog">Pocket Catalog</a></li>
+      <li><a href="#tm-backgrounds">Fon suratlary</a></li>
       <li><a href="#tm-tips">Maslahatlar we ýalňyşlyklar</a></li>
       <li><a href="#tm-authors">Awtorlary</a></li>
     </ol>
@@ -637,8 +692,61 @@
   <p><strong>Howpsuzlyk:</strong> token belli bir enjama baglanýar. Enjamlary çalyşmak ýa-da girişi ýatyrmak
   üçin Admin → Catalog Tokenleri bölümini ulanyň.</p>
 
-  {# 17. Tips #}
-  <h4 id="tm-tips" class="mt-4">17. Maslahatlar we ýalňyşlyklar</h4>
+  {# 17. Background images #}
+  <h4 id="tm-backgrounds" class="mt-4">17. Fon suratlary</h4>
+
+  <h5 class="mt-3">Saýtyň esasy fony</h5>
+  <p>
+    Esasy fon Hasapcy web interfeýsiniň ähli sahypalarynda ulanylýar: harytlar, ammar, kabul etmek,
+    geçirmek, satyş, yzyna gaýtarmak, müşderiler, üpjün edijiler, hasap-fakturalar, taryh, admin, gollanma.
+  </p>
+  <p><strong>Faýl:</strong> <code>app/web/static/bg.jpg</code></p>
+  <p>Çalşyrmak üçin: <strong>Admin → Sazlamalar → Background Image</strong>.</p>
+  <p><strong>Maslahat berilýän ölçeg (PC üçin):</strong> <code>1920 × 1080 px</code> (16:9 gatnaşygy)</p>
+  <p>Şeýle hem laýyk: <code>2560 × 1440 px</code>, <code>3840 × 2160 px</code></p>
+  <p>
+    <strong>Maslahat:</strong> gorizontal surat ulanyň — esasy interfeýs köplenç PC, noutbuk ýa-da
+    planşetde açylýar. Goýy ýa-da bitarap surat tablisalaryň we tekstiň okalmagyny gowulaşdyrýar.
+  </p>
+
+  <h5 class="mt-3">Pocket Price fony</h5>
+  <p>Pocket Price aýratyn fon surat ulanýar.</p>
+  <p><strong>Faýl:</strong> <code>app/web/static/price-bg.jpg</code></p>
+  <p>Çalşyrmak üçin: <strong>Admin → Sazlamalar → Pocket Price Background</strong>.</p>
+  <p><strong>Maslahat berilýän ölçeg (telefon üçin):</strong> <code>1080 × 1920 px</code> (9:16 gatnaşygy)</p>
+  <p>Şeýle hem laýyk: <code>1440 × 2560 px</code>, <code>720 × 1280 px</code></p>
+  <p>
+    <strong>Maslahat:</strong> wertikal surat ulanyň — Pocket Price köplenç telefonda açylýar.
+    Gaty ýagty däl fon has gowy, sebäbi üstünde haryt kartasy we bahalar görkezilýär.
+  </p>
+
+  <h5 class="mt-3">Faýlyň ady we formaty</h5>
+  <p>
+    Admin arkaly ýüklenende faýlyň ady möhüm däl — islendik at bilen ýükläp bilersiňiz,
+    meselem <code>shop-background.png</code> ýa-da <code>pocket-mobile.webp</code>.
+    Ulgam suratlary dogry faýllara özi ýatyrýar:
+  </p>
+  <ul>
+    <li><code>bg.jpg</code> — esasy fon</li>
+    <li><code>price-bg.jpg</code> — Pocket Price fony</li>
+  </ul>
+  <p><strong>Goldanylýan formatlar:</strong> <code>.jpg</code>, <code>.jpeg</code>, <code>.png</code>, <code>.webp</code>, <code>.gif</code></p>
+  <p>Iň gowy tizlik üçin maslahat: <code>.jpg</code> ýa-da <code>.webp</code></p>
+
+  <h5 class="mt-3">Faýlyň ölçegi</h5>
+  <p>
+    Gaty uly suratlar sahypanyň ýüklenişini haýalladyp biler. Faýl ölçegini takmynan
+    <strong>500 KB — 2 MB</strong> arasynda saklamak maslahat berilýär.
+  </p>
+
+  <h5 class="mt-3">Ctrl+F5 bolmazdan täzelenmek</h5>
+  <p>
+    Soňky üýtgeşmelerden soň, admin arkaly täze surat ýüklenensoň fon dessine täzelenýär —
+    keşi el bilen arassalamazdan we <strong>Ctrl+F5</strong> basmadan.
+  </p>
+
+  {# 18. Tips #}
+  <h4 id="tm-tips" class="mt-4">18. Maslahatlar we ýalňyşlyklar</h4>
   <ul>
     <li>✅ Amaly hemişe «Tamamlamak» düwmesi bilen tamamlaň — tamamlanmadyk kabul etmek ýa-da satyş galdyklara täsir etmeýär.</li>
     <li>✅ Satmazdan ozal harydyň ammarda bardygyna göz ýetiriň — ulgam mümkin bolan mukdardan köp satmaga rugsat bermeýär.</li>
@@ -648,8 +756,8 @@
     <li>⚠️ Internet hökmandyr. Sahypa ýüklenmese — baglanyşygy barlaň.</li>
   </ul>
 
-  {# 18. Authors #}
-  <h4 id="tm-authors" class="mt-4">18. Awtorlary</h4>
+  {# 19. Authors #}
+  <h4 id="tm-authors" class="mt-4">19. Awtorlary</h4>
   <p>
     <strong>Pikir we işläp düzmek:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><path fill="#4caf50" d="M45 16.2l-5 2.75-5 4.75L35 40h7c1.657 0 3-1.343 3-3V16.2z"/><path fill="#1e88e5" d="M3 16.2l3.614 1.71L13 23.7V40H6c-1.657 0-3-1.343-3-3V16.2z"/><polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17"/><path fill="#c62828" d="M3 12.298V16.2l10 7.5V11.2L9.876 8.859A3.296 3.296 0 007.298 8C4.924 8 3 9.924 3 12.298z"/><path fill="#fbc02d" d="M45 12.298V16.2l-10 7.5V11.2l3.124-2.341A3.296 3.296 0 0040.702 8C43.076 8 45 9.924 45 12.298z"/></svg> <a href="mailto:berditairov@gmail.com">berditairov@gmail.com</a><br>
     <strong>Telegram:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#2CA5E0"/><path fill="white" d="M17.928 6.17L5.638 10.926c-.877.352-.872.84-.16 1.057l3.184.994 7.364-4.647c.347-.211.665-.098.404.134l-5.963 5.386-.233 3.296c.34 0 .49-.155.678-.336l1.627-1.582 3.384 2.496c.623.344 1.071.167 1.226-.578l2.214-10.427c.227-.906-.347-1.316-1.015-1.03z"/></svg> <a href="https://t.me/technica_1416">https://t.me/technica_1416</a><br>
@@ -691,6 +799,7 @@
       <li><a href="#en-admin">Admin settings</a></li>
       <li><a href="#en-pocket-price">Pocket Price</a></li>
       <li><a href="#en-pocket-catalog">Pocket Catalog</a></li>
+      <li><a href="#en-backgrounds">Background images</a></li>
       <li><a href="#en-tips">Tips &amp; common mistakes</a></li>
       <li><a href="#en-authors">Authors</a></li>
     </ol>
@@ -978,8 +1087,61 @@
   <p><strong>Security:</strong> the token is bound to a specific device. To change devices or revoke
   access use Admin → Catalog Tokens.</p>
 
-  {# 17. Tips #}
-  <h4 id="en-tips" class="mt-4">17. Tips &amp; common mistakes</h4>
+  {# 17. Background images #}
+  <h4 id="en-backgrounds" class="mt-4">17. Background images</h4>
+
+  <h5 class="mt-3">Main site background</h5>
+  <p>
+    The main background is used on all pages of the Hasapcy web interface: products, stock, receive,
+    move, sale, return, clients, suppliers, invoices, history, admin, and help.
+  </p>
+  <p><strong>File:</strong> <code>app/web/static/bg.jpg</code></p>
+  <p>To replace it go to <strong>Admin → Settings → Background Image</strong>.</p>
+  <p><strong>Recommended size for desktop:</strong> <code>1920 × 1080 px</code> (16:9 ratio)</p>
+  <p>Also suitable: <code>2560 × 1440 px</code>, <code>3840 × 2160 px</code></p>
+  <p>
+    <strong>Tip:</strong> use a landscape (horizontal) image — the main interface is most often opened
+    on a PC, laptop, or tablet. A dark or neutral background improves readability of tables and text.
+  </p>
+
+  <h5 class="mt-3">Pocket Price background</h5>
+  <p>Pocket Price uses a separate background image.</p>
+  <p><strong>File:</strong> <code>app/web/static/price-bg.jpg</code></p>
+  <p>To replace it go to <strong>Admin → Settings → Pocket Price Background</strong>.</p>
+  <p><strong>Recommended size for mobile:</strong> <code>1080 × 1920 px</code> (9:16 ratio)</p>
+  <p>Also suitable: <code>1440 × 2560 px</code>, <code>720 × 1280 px</code></p>
+  <p>
+    <strong>Tip:</strong> use a portrait (vertical) image — Pocket Price is usually opened on a phone.
+    A not-too-bright background is better since product cards and prices are displayed on top of it.
+  </p>
+
+  <h5 class="mt-3">File name and format</h5>
+  <p>
+    When uploading through the admin panel the original file name does not matter — you can upload
+    a file with any name, for example <code>shop-background.png</code> or <code>pocket-mobile.webp</code>.
+    The system saves the images to the correct files automatically:
+  </p>
+  <ul>
+    <li><code>bg.jpg</code> — main background</li>
+    <li><code>price-bg.jpg</code> — Pocket Price background</li>
+  </ul>
+  <p><strong>Supported formats:</strong> <code>.jpg</code>, <code>.jpeg</code>, <code>.png</code>, <code>.webp</code>, <code>.gif</code></p>
+  <p>For best loading speed: <code>.jpg</code> or <code>.webp</code> is recommended.</p>
+
+  <h5 class="mt-3">File size</h5>
+  <p>
+    Very large images may slow down page loading. It is recommended to keep the file size roughly within
+    <strong>500 KB — 2 MB</strong>.
+  </p>
+
+  <h5 class="mt-3">Updates without Ctrl+F5</h5>
+  <p>
+    After recent changes the background updates immediately after uploading a new image via the admin
+    panel — no manual cache clearing and no <strong>Ctrl+F5</strong> needed.
+  </p>
+
+  {# 18. Tips #}
+  <h4 id="en-tips" class="mt-4">18. Tips &amp; common mistakes</h4>
   <ul>
     <li>✅ Always finish an operation with the «Finish» button — an unfinished receive or sale does not
         affect stock balances.</li>
@@ -993,8 +1155,8 @@
     <li>⚠️ Internet is required. If the page does not load — check your connection.</li>
   </ul>
 
-  {# 18. Authors #}
-  <h4 id="en-authors" class="mt-4">18. Authors</h4>
+  {# 19. Authors #}
+  <h4 id="en-authors" class="mt-4">19. Authors</h4>
   <p>
     <strong>Idea &amp; development:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><path fill="#4caf50" d="M45 16.2l-5 2.75-5 4.75L35 40h7c1.657 0 3-1.343 3-3V16.2z"/><path fill="#1e88e5" d="M3 16.2l3.614 1.71L13 23.7V40H6c-1.657 0-3-1.343-3-3V16.2z"/><polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17"/><path fill="#c62828" d="M3 12.298V16.2l10 7.5V11.2L9.876 8.859A3.296 3.296 0 007.298 8C4.924 8 3 9.924 3 12.298z"/><path fill="#fbc02d" d="M45 12.298V16.2l-10 7.5V11.2l3.124-2.341A3.296 3.296 0 0040.702 8C43.076 8 45 9.924 45 12.298z"/></svg> <a href="mailto:berditairov@gmail.com">berditairov@gmail.com</a><br>
     <strong>Telegram:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#2CA5E0"/><path fill="white" d="M17.928 6.17L5.638 10.926c-.877.352-.872.84-.16 1.057l3.184.994 7.364-4.647c.347-.211.665-.098.404.134l-5.963 5.386-.233 3.296c.34 0 .49-.155.678-.336l1.627-1.582 3.384 2.496c.623.344 1.071.167 1.226-.578l2.214-10.427c.227-.906-.347-1.316-1.015-1.03z"/></svg> <a href="https://t.me/technica_1416">https://t.me/technica_1416</a><br>
