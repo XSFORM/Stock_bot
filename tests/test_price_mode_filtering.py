@@ -148,3 +148,25 @@ class TestFullMode:
     def test_qty_total_absent_without_show_qty(self, seeded_product_id: int) -> None:
         product = self._search(show_qty=False)
         assert "qty_total" not in product
+
+
+class TestPocketPriceActiveMarkupPresets:
+    """Pocket Price prices must use active sale markup settings."""
+
+    def test_full_mode_uses_active_markups(self, seeded_product_id: int) -> None:
+        from app.db.sqlite import search_products_for_price, set_setting
+
+        set_setting("sale_markup_presets", "15,25")
+        product = search_products_for_price("ACME", limit=1, mode="FULL")[0]
+        assert product["price_wh10"] == pytest.approx(115.0, rel=1e-4)
+        assert product["price_wh25"] == pytest.approx(125.0, rel=1e-4)
+
+    def test_full_mode_shows_single_price_when_one_markup_active(
+        self, seeded_product_id: int
+    ) -> None:
+        from app.db.sqlite import search_products_for_price, set_setting
+
+        set_setting("sale_markup_presets", "20")
+        product = search_products_for_price("ACME", limit=1, mode="FULL")[0]
+        assert product["price_wh10"] == pytest.approx(120.0, rel=1e-4)
+        assert "price_wh25" not in product

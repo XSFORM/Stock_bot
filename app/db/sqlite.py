@@ -294,12 +294,22 @@ def _apply_price_mode(product: dict[str, Any], mode: str) -> dict[str, Any]:
     In both modes the raw wh_price is always removed.
     """
     wh = float(product.get("wh_price", 0) or 0)
-    product["price_wh10"] = round(wh * 1.10, 4)
-    product["price_wh25"] = round(wh * 1.25, 4)
+    presets = get_sale_markup_presets()
+    pocket_markups = [presets[0]]
+    if presets[-1] != presets[0]:
+        pocket_markups.append(presets[-1])
+
+    product["price_wh10"] = round(wh * (1 + pocket_markups[0] / 100.0), 4)
+    if len(pocket_markups) > 1:
+        product["price_wh25"] = round(wh * (1 + pocket_markups[1] / 100.0), 4)
+    else:
+        product["price_wh25"] = round(wh * (1 + pocket_markups[0] / 100.0), 4)
     product.pop("wh_price", None)
     if (mode or "SIMPLE").upper() != "FULL":
         product.pop("price_wh10", None)
         product.pop("note", None)
+    elif len(pocket_markups) < 2:
+        product.pop("price_wh25", None)
     return product
 
 
