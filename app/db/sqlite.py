@@ -290,14 +290,33 @@ def _apply_price_mode(product: dict[str, Any], mode: str) -> dict[str, Any]:
     such as price_wh10 and note are stripped.
 
     FULL mode: returns all of the above plus price_wh10 and note.
+    NOTE: ``price_wh10`` / ``price_wh25`` are legacy Pocket Price API field names;
+    they now carry primary/secondary active markup prices (not fixed 10%/25%).
 
     In both modes the raw wh_price is always removed.
     """
     wh = float(product.get("wh_price", 0) or 0)
-    product["price_wh10"] = round(wh * 1.10, 4)
-    product["price_wh25"] = round(wh * 1.25, 4)
+    presets = get_sale_markup_presets()
+    if not presets:
+        presets = list(_FALLBACK_MARKUP_PRESETS)
+    # Pocket Price shows at most two compact sell prices, so we use the
+    # lowest and highest active markups.
+    pocket_markups = [presets[0]]
+    if len(presets) > 1 and presets[-1] != presets[0]:
+        pocket_markups.append(presets[-1])
+    is_full = (mode or "SIMPLE").upper() == "FULL"
+    primary_markup = pocket_markups[0]
+    highest_markup = pocket_markups[-1]
+
+    product["price_wh10"] = round(wh * (1 + primary_markup / 100.0), 4)
+    if is_full:
+        if len(pocket_markups) > 1:
+            product["price_wh25"] = round(wh * (1 + highest_markup / 100.0), 4)
+    else:
+        # SIMPLE should always expose one sell price via legacy key `price_wh25`.
+        product["price_wh25"] = round(wh * (1 + highest_markup / 100.0), 4)
     product.pop("wh_price", None)
-    if (mode or "SIMPLE").upper() != "FULL":
+    if not is_full:
         product.pop("price_wh10", None)
         product.pop("note", None)
     return product
