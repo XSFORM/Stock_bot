@@ -298,18 +298,16 @@ def _apply_price_mode(product: dict[str, Any], mode: str) -> dict[str, Any]:
     pocket_markups = [presets[0]]
     if presets[-1] != presets[0]:
         pocket_markups.append(presets[-1])
+    is_full = (mode or "SIMPLE").upper() == "FULL"
 
     product["price_wh10"] = round(wh * (1 + pocket_markups[0] / 100.0), 4)
-    if len(pocket_markups) > 1:
-        product["price_wh25"] = round(wh * (1 + pocket_markups[1] / 100.0), 4)
-    else:
-        product["price_wh25"] = round(wh * (1 + pocket_markups[0] / 100.0), 4)
+    if len(pocket_markups) > 1 or not is_full:
+        second_markup = pocket_markups[1] if len(pocket_markups) > 1 else pocket_markups[0]
+        product["price_wh25"] = round(wh * (1 + second_markup / 100.0), 4)
     product.pop("wh_price", None)
-    if (mode or "SIMPLE").upper() != "FULL":
+    if not is_full:
         product.pop("price_wh10", None)
         product.pop("note", None)
-    elif len(pocket_markups) < 2:
-        product.pop("price_wh25", None)
     return product
 
 

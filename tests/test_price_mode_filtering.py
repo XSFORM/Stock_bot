@@ -157,9 +157,12 @@ class TestPocketPriceActiveMarkupPresets:
         from app.db.sqlite import search_products_for_price, set_setting
 
         set_setting("sale_markup_presets", "15,25")
-        product = search_products_for_price("ACME", limit=1, mode="FULL")[0]
-        assert product["price_wh10"] == pytest.approx(115.0, rel=1e-4)
-        assert product["price_wh25"] == pytest.approx(125.0, rel=1e-4)
+        product = search_products_for_price(
+            "ACME", limit=1, mode="FULL", show_buy_price=True
+        )[0]
+        base_price = product["buy_price"]
+        assert product["price_wh10"] == pytest.approx(base_price * 1.15, rel=1e-4)
+        assert product["price_wh25"] == pytest.approx(base_price * 1.25, rel=1e-4)
 
     def test_full_mode_shows_single_price_when_one_markup_active(
         self, seeded_product_id: int
@@ -167,6 +170,9 @@ class TestPocketPriceActiveMarkupPresets:
         from app.db.sqlite import search_products_for_price, set_setting
 
         set_setting("sale_markup_presets", "20")
-        product = search_products_for_price("ACME", limit=1, mode="FULL")[0]
-        assert product["price_wh10"] == pytest.approx(120.0, rel=1e-4)
+        product = search_products_for_price(
+            "ACME", limit=1, mode="FULL", show_buy_price=True
+        )[0]
+        base_price = product["buy_price"]
+        assert product["price_wh10"] == pytest.approx(base_price * 1.20, rel=1e-4)
         assert "price_wh25" not in product
