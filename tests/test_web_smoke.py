@@ -9,7 +9,7 @@ no attribute 'split'`` at runtime on a clean server installation.
 from __future__ import annotations
 
 import os
-import tempfile
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -51,6 +51,60 @@ def test_products_page_returns_200(client: TestClient) -> None:
     """GET /products must render without error."""
     response = client.get("/products")
     assert response.status_code == 200
+
+
+def test_index_background_has_dynamic_cache_busting_version(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.web import main as web_main
+
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    bg_path = static_dir / "bg.jpg"
+    bg_path.write_bytes(b"main-bg")
+    os.utime(bg_path, (1_715_260_000, 1_715_260_000))
+    monkeypatch.setattr(web_main, "STATIC_DIR", static_dir)
+
+    response = client.get("/")
+    assert response.status_code == 200
+    assert f'/static/bg.jpg?v={bg_path.stat().st_mtime_ns}' in response.text
+
+
+def test_price_page_background_has_dynamic_cache_busting_version(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.web import main as web_main
+
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    bg_path = static_dir / "price-bg.jpg"
+    bg_path.write_bytes(b"price-bg")
+    os.utime(bg_path, (1_715_260_100, 1_715_260_100))
+    monkeypatch.setattr(web_main, "STATIC_DIR", static_dir)
+
+    response = client.get("/price")
+    assert response.status_code == 200
+    assert f'/static/price-bg.jpg?v={bg_path.stat().st_mtime_ns}' in response.text
+
+
+def test_admin_price_background_upload_overwrites_price_bg_file(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.web import main as web_main
+
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    monkeypatch.setattr(web_main, "STATIC_DIR", static_dir)
+
+    response = client.post(
+        "/admin/settings/price-background",
+        files={"price_bg_file": ("new-price-bg.webp", b"new-image", "image/webp")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/settings?saved=1"
+    assert (static_dir / "price-bg.jpg").read_bytes() == b"new-image"
 
 
 def test_unlock_page_returns_200(client: TestClient) -> None:

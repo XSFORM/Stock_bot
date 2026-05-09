@@ -98,6 +98,16 @@
     <button type="submit" class="btn btn-sm btn-primary">{{ t.settings_bg_save }}</button>
   </form>
 
+  <h6 class="mb-2">{{ t.settings_price_bg_heading }}</h6>
+  <form method="post" action="/admin/settings/price-background" enctype="multipart/form-data" class="mb-4">
+    <div class="mb-3">
+      <label class="form-label small">{{ t.settings_price_bg_upload }}</label>
+      <input type="file" name="price_bg_file" class="form-control form-control-sm"
+             accept=".jpg,.jpeg,.png,.webp,.gif" style="max-width:360px">
+    </div>
+    <button type="submit" class="btn btn-sm btn-primary">{{ t.settings_price_bg_save }}</button>
+  </form>
+
   <!-- ── Sale Markup Presets ───────────────────────────────────────── -->
   <h5 class="mt-4 mb-3 border-bottom pb-2">💰 {{ t.settings_markup_heading }}</h5>
   <form method="post" action="/admin/settings/markup" class="mb-4">

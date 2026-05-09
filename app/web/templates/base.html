@@ -20,7 +20,7 @@
       {% if bg_enabled | default(true) %}
       background-image:
         linear-gradient(rgba(0,0,0,{{ overlay_alpha }}), rgba(0,0,0,{{ overlay_alpha }})),
-        url("/static/bg.jpg");
+        url("/static/bg.jpg?v={{ bg_version | default('0') }}");
       background-size: {{ bg_size | default('cover') }};
       background-position: center;
       background-attachment: fixed;

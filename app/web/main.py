@@ -210,6 +210,7 @@ _DOWNLOAD_ALLOWED_DIRS = {
     "invoices": INVOICES_DIR,
     "backups": BACKUPS_DIR,
 }
+_ALLOWED_BG_UPLOAD_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif")
 
 
 def _hash_password(password: str) -> str:
@@ -373,12 +374,21 @@ def _render(request: Request, name: str, ctx: dict[str, Any]) -> HTMLResponse:
         "bg_enabled": get_setting("bg_enabled", "1") == "1",
         "bg_size": get_setting("bg_size", "cover"),
         "bg_overlay": get_setting("bg_overlay", "25"),
+        "bg_version": _static_asset_version("bg.jpg"),
         "nav_total_debt_usd": get_total_clients_debt(),
         "nav_total_suppliers_debt_usd": get_total_suppliers_debt(),
         "nav_stock_value_usd": get_total_stock_value(),
     }
     base.update(ctx)
     return templates.TemplateResponse(request, name, base)
+
+
+def _static_asset_version(name: str) -> str:
+    path = STATIC_DIR / name
+    try:
+        return str(path.stat().st_mtime_ns)
+    except OSError:
+        return "0"
 
 
 @app.get("/api/brand-prefixes")
@@ -1811,10 +1821,23 @@ async def admin_settings_background(
     set_setting("bg_overlay", str(overlay))
     if bg_file and bg_file.filename:
         suffix = Path(bg_file.filename).suffix.lower()
-        if suffix in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+        if suffix in _ALLOWED_BG_UPLOAD_EXTS:
             dest = STATIC_DIR / "bg.jpg"
             with dest.open("wb") as fout:
                 shutil.copyfileobj(bg_file.file, fout)
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
+@app.post("/admin/settings/price-background")
+async def admin_settings_price_background(
+    price_bg_file: UploadFile = File(None),
+):
+    if price_bg_file and price_bg_file.filename:
+        suffix = Path(price_bg_file.filename).suffix.lower()
+        if suffix in _ALLOWED_BG_UPLOAD_EXTS:
+            dest = STATIC_DIR / "price-bg.jpg"
+            with dest.open("wb") as fout:
+                shutil.copyfileobj(price_bg_file.file, fout)
     return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
 
 
@@ -2301,6 +2324,7 @@ def price_page(request: Request):
         {
             "ui_lang": lang,
             "ui_theme": theme,
+            "price_bg_version": _static_asset_version("price-bg.jpg"),
             "t": get_translations(lang),
         },
     )
@@ -2326,12 +2350,12 @@ def price_manifest():
 @app.get("/price/sw.js")
 def price_sw():
     sw_code = r"""
-const CACHE = 'pocket-price-v1';
+const CACHE = 'pocket-price-v2';
 const SHELL = ['/price'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE).then(c => Promise.all(SHELL.map(url => fetch(url).then(r => c.put(url, r.clone())).catch(() => null)))).then(() => self.skipWaiting())
   );
 });
 
@@ -2345,12 +2369,18 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // Network-first for API calls; cache-first for shell
+  // Network-first for API calls and shell
   if (url.pathname.startsWith('/api/price')) {
     e.respondWith(fetch(e.request).catch(() => new Response('{"error":"offline"}', {headers:{'Content-Type':'application/json'}})));
   } else if (SHELL.includes(url.pathname)) {
     e.respondWith(
-      caches.match(e.request).then(r => r || fetch(e.request))
+      fetch(e.request)
+        .then(r => {
+          const copy = r.clone();
+          caches.open(CACHE).then(c => c.put(e.request, copy));
+          return r;
+        })
+        .catch(() => caches.match(e.request).then(r => r || caches.match('/price')))
     );
   }
 });
