@@ -53,6 +53,25 @@ def test_products_page_returns_200(client: TestClient) -> None:
     assert response.status_code == 200
 
 
+@pytest.mark.parametrize(
+    ("lang", "manual_entry_text"),
+    [
+        ("en", "or enter/scan barcode"),
+        ("ru", "или введите/отсканируйте штрихкод"),
+    ],
+)
+def test_catalog_page_supports_manual_barcode_scanner_entry(
+    client: TestClient, lang: str, manual_entry_text: str
+) -> None:
+    """GET /catalog must expose Enter handling and scanner-friendly copy."""
+    response = client.get("/catalog", headers={"cookie": f"ui_lang={lang}"})
+    assert response.status_code == 200
+    assert manual_entry_text in response.text
+    assert "addEventListener('keydown'" in response.text
+    assert "event.key === 'Enter'" in response.text
+    assert "focusManualBarcodeSoon();" in response.text
+
+
 def test_index_background_has_dynamic_cache_busting_version(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

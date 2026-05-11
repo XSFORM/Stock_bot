@@ -141,6 +141,7 @@ var _deviceId = '';
 var _stream = null;
 var _scanInterval = null;
 var _currentBarcode = null;
+var _lastScanSource = null;
 
 (function() {
   // Generate or restore persistent device UUID
@@ -199,11 +200,39 @@ function showUnpaired() {
 }
 
 // ── Manual barcode entry ──────────────────────────────────────────────────────
+function focusManualBarcodeSoon() {
+  var schedule = window.requestAnimationFrame || function(cb) {
+    // Fallback: ~16ms ≈ one frame at 60fps.
+    window.setTimeout(cb, 16);
+  };
+  schedule(function() {
+    var input = document.getElementById('manual-barcode');
+    if (!input) return;
+    try {
+      input.focus({ preventScroll: true });
+    } catch(e) {
+      input.focus();
+    }
+  });
+}
+
 function submitManual() {
-  var barcode = (document.getElementById('manual-barcode').value || '').trim();
-  if (!barcode) { setScanStatus(T.errBarcodeEmpty); return; }
-  document.getElementById('manual-barcode').value = '';
+  var input = document.getElementById('manual-barcode');
+  var barcode = (input.value || '').trim();
+  if (!barcode) { setScanStatus(T.errBarcodeEmpty); focusManualBarcodeSoon(); return; }
+  _lastScanSource = 'manual';
+  input.value = '';
   handleBarcode(barcode);
+}
+
+var manualBarcodeInput = document.getElementById('manual-barcode');
+if (manualBarcodeInput) {
+  manualBarcodeInput.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      submitManual();
+    }
+  });
 }
 
 // ── Scan helpers ─────────────────────────────────────────────────────────────
@@ -256,6 +285,7 @@ function startBarcodeDetection(video) {
       var codes = await detector.detect(video);
       if (codes.length > 0) {
         var code = codes[0].rawValue;
+        _lastScanSource = 'camera';
         stopScan();
         await handleBarcode(code);
       }
@@ -459,12 +489,19 @@ function renderSuccess(msg) {
       '<div class="success-msg">' + escHtml(msg) + '</div>' +
     '</div>' +
     '<button class="btn btn-success w-100" onclick="scanNext()">' + escHtml(T.btnScanNext) + '</button>';
+  if (_lastScanSource === 'manual') {
+    focusManualBarcodeSoon();
+  }
 }
 
 function scanNext() {
   _currentBarcode = null;
   document.getElementById('result-area').innerHTML = '';
   setScanStatus('');
+  if (_lastScanSource === 'manual') {
+    focusManualBarcodeSoon();
+    return;
+  }
   startScan();
 }
 
