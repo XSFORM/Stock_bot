@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if ui_lang == 'ru' %}
+<div class="bg-white p-4 rounded shadow-sm">
+  <h2 class="mb-1">📊 Отчёты</h2>
+  <p class="text-muted mb-4">Подготовленный раздел для будущей аналитики ERP</p>
+  <div class="alert alert-info">
+    Здесь планируется показывать продажи, выручку, прибыль, складские остатки, расходы и графики по выбранному периоду.
+  </div>
+  <p class="mb-0">В этом этапе раздел добавлен в навигацию как безопасная заглушка. Бизнес-логика и расчёты отчётов будут реализованы позже.</p>
+</div>
+{% elif ui_lang == 'tm' %}
+<div class="bg-white p-4 rounded shadow-sm">
+  <h2 class="mb-1">📊 Hasabatlar</h2>
+  <p class="text-muted mb-4">ERP-niň geljekki analitikasy üçin taýýarlanan bölüm</p>
+  <div class="alert alert-info">
+    Bu ýerde geljekde saýlanan döwür boýunça satyş, düşewünt, peýda, ammar galdyklary, çykdajylar we grafikler görkeziler.
+  </div>
+  <p class="mb-0">Bu etapda bölüm diňe menýuda howpsuz ýer hökmünde goşuldy. Hasaplamalar we doly hasabat logikasy soňra ýerine ýetiriler.</p>
+</div>
+{% else %}
+<div class="bg-white p-4 rounded shadow-sm">
+  <h2 class="mb-1">📊 Reports</h2>
+  <p class="text-muted mb-4">Prepared section for future ERP analytics</p>
+  <div class="alert alert-info">
+    This section is intended for future sales, revenue, profit, stock, expense, and chart-based analytics by period.
+  </div>
+  <p class="mb-0">At this stage the page is a safe placeholder in navigation only. Report calculations and business logic will be added later.</p>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1626,6 +1626,11 @@ def return_xlsx_view(request: Request, n: int):
 # Help page
 # ──────────────────────────────────────────────────────────────────────────────
 
+@app.get("/reports", response_class=HTMLResponse)
+def reports_page(request: Request):
+    return _render(request, "reports.html", {})
+
+
 @app.get("/help", response_class=HTMLResponse)
 def help_page(request: Request):
     return _render(request, "help.html", {})
