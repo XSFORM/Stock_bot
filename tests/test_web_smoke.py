@@ -67,10 +67,12 @@ def test_catalog_page_supports_manual_barcode_scanner_entry(
     response = client.get("/catalog", headers={"cookie": f"ui_lang={lang}"})
     assert response.status_code == 200
     assert manual_entry_text in response.text
-    assert "event.key === 'Enter'" in response.text
     assert "var _lastScanSource = null;" in response.text
     assert "function submitManual()" in response.text
-    assert "_lastScanSource = 'manual';\n  input.value = '';" in response.text
+    assert "addEventListener('keydown'" in response.text
+    assert "event.key === 'Enter'" in response.text
+    assert "_lastScanSource = 'manual';" in response.text
+    assert "input.value = '';" in response.text
     assert "focusManualBarcodeSoon();" in response.text
 
 

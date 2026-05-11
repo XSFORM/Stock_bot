@@ -89,8 +89,7 @@
       <div class="text-muted small mb-1">{{ t.catalog_manual_entry }}</div>
       <div class="d-flex gap-2">
         <input id="manual-barcode" type="text" class="form-control form-control-sm"
-               placeholder="EAN / UPC / Code128" inputmode="numeric"
-               onkeydown="if (event.key === 'Enter') { event.preventDefault(); submitManual(); }">
+               placeholder="EAN / UPC / Code128" inputmode="numeric">
         <button class="btn btn-sm btn-outline-success" onclick="submitManual()">→</button>
       </div>
     </div>
@@ -202,7 +201,10 @@ function showUnpaired() {
 
 // ── Manual barcode entry ──────────────────────────────────────────────────────
 function focusManualBarcodeSoon() {
-  window.setTimeout(function() {
+  var schedule = window.requestAnimationFrame || function(cb) {
+    window.setTimeout(cb, 0);
+  };
+  schedule(function() {
     var input = document.getElementById('manual-barcode');
     if (!input) return;
     try {
@@ -210,7 +212,7 @@ function focusManualBarcodeSoon() {
     } catch(e) {
       input.focus();
     }
-  }, 0);
+  });
 }
 
 function submitManual() {
@@ -221,6 +223,13 @@ function submitManual() {
   input.value = '';
   handleBarcode(barcode);
 }
+
+document.getElementById('manual-barcode').addEventListener('keydown', function(event) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    submitManual();
+  }
+});
 
 // ── Scan helpers ─────────────────────────────────────────────────────────────
 function setScanStatus(msg) {
