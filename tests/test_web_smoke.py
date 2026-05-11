@@ -68,7 +68,9 @@ def test_catalog_page_supports_manual_barcode_scanner_entry(
     assert response.status_code == 200
     assert manual_entry_text in response.text
     assert "event.key === 'Enter'" in response.text
-    assert "_lastScanSource = 'manual';" in response.text
+    assert "var _lastScanSource = null;" in response.text
+    assert "function submitManual()" in response.text
+    assert "_lastScanSource = 'manual';\n  input.value = '';" in response.text
     assert "focusManualBarcodeSoon();" in response.text
 
 
