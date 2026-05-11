@@ -8,7 +8,7 @@
 {# ════════════════════════ RUSSIAN ════════════════════════ #}
 <div class="bg-white p-4 rounded shadow-sm" id="help-top">
 
-  <h2 class="mb-1">📖 Справочник ERP</h2>
+  <h2 class="mb-1">📖 Помощь ERP</h2>
   <p class="text-muted mb-4">Полное руководство пользователя</p>
 
   {# Table of contents #}
@@ -25,6 +25,7 @@
         <ul class="mt-1"><li><a href="#ru-free-item">Свободная позиция вне склада</a></li></ul>
       </li>
       <li><a href="#ru-return">Возврат</a></li>
+      <li><a href="#ru-reports">Отчёты</a></li>
       <li><a href="#ru-brands">Бренды</a></li>
       <li><a href="#ru-clients">Клиенты</a></li>
       <li><a href="#ru-suppliers">Поставщики</a></li>
@@ -48,6 +49,12 @@
   <div class="alert alert-warning">
     <strong>⚠️ Важно:</strong> для работы системы необходимо постоянное подключение к интернету.
     Все данные хранятся на вашем сервере и синхронизируются через браузер в режиме реального времени.
+  </div>
+  <div class="alert alert-info">
+    <strong>Структура верхнего меню:</strong> после продажных операций доступен раздел <strong>«Отчёты»</strong>.
+    Пункт <strong>«Документы»</strong> объединяет <strong>накладные</strong> и <strong>историю</strong>.
+    Пункт <strong>«Справочники»</strong> объединяет <strong>бренды</strong>, <strong>клиентов</strong> и <strong>поставщиков</strong>.
+    Раздел <strong>«Помощь»</strong> содержит руководство пользователя.
   </div>
 
   {# 2. Quick start #}
@@ -179,9 +186,15 @@
     <li>Завершите операцию — остатки пересчитаются, долг клиента скорректируется.</li>
   </ol>
 
+  {# 8a. Reports #}
+  <h4 id="ru-reports" class="mt-4">8a. Отчёты</h4>
+  <p>Раздел <strong>«Отчёты»</strong> подготовлен в верхнем меню как место для будущей аналитики ERP.</p>
+  <p>Здесь планируется отображать продажи, выручку, прибыль, складские остатки, расходы и графики по выбранному периоду.</p>
+  <p class="mb-0">На текущем этапе раздел может открываться как безопасная заглушка без расчётов и без изменения бизнес-логики.</p>
+
   {# 9. Brands #}
   <h4 id="ru-brands" class="mt-4">9. Бренды</h4>
-  <p>Справочник торговых марок. Каждый товар должен принадлежать бренду.</p>
+  <p>Справочник торговых марок. Раздел доступен из выпадающего меню <strong>«Справочники»</strong>. Каждый товар должен принадлежать бренду.</p>
   <ul>
     <li>Добавить бренд: укажите название (например, «Artel» или «Xiaomi»).</li>
     <li>Редактировать название бренда.</li>
@@ -191,7 +204,7 @@
 
   {# 10. Clients #}
   <h4 id="ru-clients" class="mt-4">10. Клиенты</h4>
-  <p>Справочник покупателей. Здесь хранится информация о каждом клиенте и его текущий долг.</p>
+  <p>Справочник покупателей. Раздел доступен из меню <strong>«Справочники»</strong>. Здесь хранится информация о каждом клиенте и его текущий долг.</p>
   <ul>
     <li>Добавить клиента: имя и номер телефона.</li>
     <li>Редактировать: изменить имя, телефон.</li>
@@ -201,7 +214,7 @@
 
   {# 11. Suppliers #}
   <h4 id="ru-suppliers" class="mt-4">11. Поставщики</h4>
-  <p>Справочник поставщиков доступен из меню <strong>«Поставщики»</strong>. Здесь хранится информация о поставщиках и текущий долг перед ними в USD.</p>
+  <p>Справочник поставщиков доступен из выпадающего меню <strong>«Справочники»</strong>. Здесь хранится информация о поставщиках и текущий долг перед ними в USD.</p>
   <ul>
     <li>Добавить поставщика: имя, телефон и заметка.</li>
     <li>Баланс поставщика (Debt USD) считается как сумма завершённых приходных накладных минус сумма оплат и корректировок в журнале поставщика.</li>
@@ -212,7 +225,7 @@
 
   {# 12. Invoices #}
   <h4 id="ru-invoices" class="mt-4">12. Накладные (Invoices)</h4>
-  <p>Список всех созданных документов: накладные продажи и возвраты.</p>
+  <p>Список всех созданных документов: накладные продажи и возвраты. Раздел доступен из меню <strong>«Документы»</strong>.</p>
   <ul>
     <li>Просмотр: нажмите «Просмотреть» рядом с накладной — откроется страница с деталями.</li>
     <li>Скачать XLSX: получить накладную в формате Excel для печати или передачи клиенту.</li>
@@ -223,7 +236,7 @@
 
   {# 13. History #}
   <h4 id="ru-history" class="mt-4">13. История (History)</h4>
-  <p>Полный журнал всех движений товаров: приходы, продажи, возвраты. Позволяет отследить любую операцию.</p>
+  <p>Полный журнал всех движений товаров: приходы, продажи, возвраты. Раздел доступен из меню <strong>«Документы»</strong> и позволяет отследить любую операцию.</p>
   <ul>
     <li>Поиск по ключевому слову (бренд, модель, номер накладной, клиент).</li>
     <li>Для каждой записи указано: дата/время, тип операции, товар, количество, цена, склад, контрагент.</li>
@@ -336,7 +349,7 @@
   <h5 class="mt-3">Основной фон сайта</h5>
   <p>
     Основной фон используется на всех страницах веб-интерфейса Hasapcy: товары, склад, приход,
-    перемещение, продажа, возврат, клиенты, поставщики, накладные, история, админка, справочник.
+    перемещение, продажа, возврат, отчёты, клиенты, поставщики, накладные, история, админка, помощь.
   </p>
   <p><strong>Файл:</strong> <code>app/web/static/bg.jpg</code></p>
   <p>Заменить можно через <strong>Админ → Настройки → Background Image</strong>.</p>
@@ -430,6 +443,7 @@
         <ul class="mt-1"><li><a href="#tm-free-item">Ammardan daşary erkin pozisiýa</a></li></ul>
       </li>
       <li><a href="#tm-return">Yzyna gaýtarmak</a></li>
+      <li><a href="#tm-reports">Hasabatlar</a></li>
       <li><a href="#tm-brands">Brendler</a></li>
       <li><a href="#tm-clients">Müşderiler</a></li>
       <li><a href="#tm-suppliers">Üpjün edijiler</a></li>
@@ -454,6 +468,12 @@
   <div class="alert alert-warning">
     <strong>⚠️ Möhüm:</strong> ulgamyň işlemegi üçin hemişe internet baglanyşygy zerurdyr.
     Ähli maglumatlar serweriňizde saklanýar we brauzer arkaly hakyky wagtda sinhronlaşdyrylýar.
+  </div>
+  <div class="alert alert-info">
+    <strong>Ýokarky menýunyň gurluşy:</strong> satyş amallaryndan soň <strong>«Hasabatlar»</strong> bölümi bar.
+    <strong>«Resminamalar»</strong> bölüminde <strong>hasap-fakturalar</strong> we <strong>taryh</strong> birleşdirildi.
+    <strong>«Salgylanmalar»</strong> bölüminde <strong>brendler</strong>, <strong>müşderiler</strong> we <strong>üpjün edijiler</strong> ýerleşýär.
+    <strong>«Kömek»</strong> bölüminde ulanyjy gollanmasy ýerleşýär.
   </div>
 
   {# 2. Quick start #}
@@ -572,9 +592,15 @@
     <li>Amaly tamamlaň — galdyklar täzeden hasaplanar, müşderiniň bergisi sazlanar.</li>
   </ol>
 
+  {# 8a. Reports #}
+  <h4 id="tm-reports" class="mt-4">8a. Hasabatlar</h4>
+  <p><strong>«Hasabatlar»</strong> bölümi ýokarky menýuda ERP-niň geljekki analitikasy üçin taýýarlanyldy.</p>
+  <p>Bu ýerde geljekde satyş, düşewünt, peýda, ammar galdyklary, çykdajylar we saýlanan döwür boýunça grafikler görkeziler.</p>
+  <p class="mb-0">Häzirki etapda bölüm diňe howpsuz boş ýer hökmünde açylyp biler — hiç hili hasaplama ýa-da biznes logikasy üýtgedilmeýär.</p>
+
   {# 9. Brands #}
   <h4 id="tm-brands" class="mt-4">9. Brendler</h4>
-  <p>Söwda markalarynyň sanawy. Her haryt bir brende degişli bolmalydyr.</p>
+  <p>Söwda markalarynyň sanawy. Bölüm <strong>«Salgylanmalar»</strong> menýusyndan açylýar. Her haryt bir brende degişli bolmalydyr.</p>
   <ul>
     <li>Brend goşmak: at görkeziň (meselem, «Artel» ýa-da «Xiaomi»).</li>
     <li>Brend adyny redaktirlemek.</li>
@@ -583,7 +609,7 @@
 
   {# 10. Clients #}
   <h4 id="tm-clients" class="mt-4">10. Müşderiler</h4>
-  <p>Alyjylaryň sanawy. Bu ýerde her müşderiniň maglumaty we häzirki bergisi saklanýar.</p>
+  <p>Alyjylaryň sanawy. Bölüm <strong>«Salgylanmalar»</strong> menýusyndan açylýar. Bu ýerde her müşderiniň maglumaty we häzirki bergisi saklanýar.</p>
   <ul>
     <li>Müşderi goşmak: at we telefon belgisi.</li>
     <li>Redaktirlemek: ady, telefony üýtgetmek.</li>
@@ -593,7 +619,7 @@
 
   {# 11. Suppliers #}
   <h4 id="tm-suppliers" class="mt-4">11. Üpjün edijiler</h4>
-  <p><strong>Üpjün edijiler</strong> bölümi menýudan açylýar. Bu ýerde üpjün edijileriň maglumaty we olaryň öňündäki USD bergiňiz alnyp barylýar.</p>
+  <p><strong>Üpjün edijiler</strong> bölümi <strong>«Salgylanmalar»</strong> açylýan menýusyndan açylýar. Bu ýerde üpjün edijileriň maglumaty we olaryň öňündäki USD bergiňiz alnyp barylýar.</p>
   <ul>
     <li>Üpjün ediji goşmak: ady, telefon belgisi we bellik.</li>
     <li>Bergi (Debt USD) = tamamlanan kabul ediş hasap-fakturalarynyň jemi − tölegler/korrektirowkalar žurnalynyň jemi.</li>
@@ -604,7 +630,7 @@
 
   {# 12. Invoices #}
   <h4 id="tm-invoices" class="mt-4">12. Hasap-fakturalar</h4>
-  <p>Döredilen ähli resminamalaryň sanawy: satyş hasap-fakturaları we yzyna gaýtarmalar.</p>
+  <p>Döredilen ähli resminamalaryň sanawy: satyş hasap-fakturaları we yzyna gaýtarmalar. Bölüm <strong>«Resminamalar»</strong> menýusyndan açylýar.</p>
   <ul>
     <li>Görmek: hasap-fakturayň ýanyndaky «Görmek» düwmesine basyň — jikme-jik sahypa açylar.</li>
     <li>XLSX ýüklemek: müşderi üçin çap etmek ýa-da bermek üçin Excel formatynda almak.</li>
@@ -614,7 +640,7 @@
 
   {# 13. History #}
   <h4 id="tm-history" class="mt-4">13. Taryh</h4>
-  <p>Ähli haryt hereketleriniň doly žurnaly: kabul etmek, satyş, yzyna gaýtarmak.</p>
+  <p>Ähli haryt hereketleriniň doly žurnaly: kabul etmek, satyş, yzyna gaýtarmak. Bölüm <strong>«Resminamalar»</strong> menýusyndan açylýar.</p>
   <ul>
     <li>Açar söz boýunça gözleg (brend, model, hasap-faktura belgisi, müşderi).</li>
     <li>Her ýazgy üçin: sene/wagt, amal görnüşi, haryt, mukdar, baha, ammar, garşy tarap.</li>
@@ -724,7 +750,7 @@
   <h5 class="mt-3">Saýtyň esasy fony</h5>
   <p>
     Esasy fon Hasapcy web interfeýsiniň ähli sahypalarynda ulanylýar: harytlar, ammar, kabul etmek,
-    geçirmek, satyş, yzyna gaýtarmak, müşderiler, üpjün edijiler, hasap-fakturalar, taryh, admin, gollanma.
+    geçirmek, satyş, yzyna gaýtarmak, hasabatlar, müşderiler, üpjün edijiler, hasap-fakturalar, taryh, admin, kömek.
   </p>
   <p><strong>Faýl:</strong> <code>app/web/static/bg.jpg</code></p>
   <p>Çalşyrmak üçin: <strong>Admin → Sazlamalar → Background Image</strong>.</p>
@@ -817,6 +843,7 @@
         <ul class="mt-1"><li><a href="#en-free-item">Free position (non-stock item)</a></li></ul>
       </li>
       <li><a href="#en-return">Return</a></li>
+      <li><a href="#en-reports">Reports</a></li>
       <li><a href="#en-brands">Brands</a></li>
       <li><a href="#en-clients">Clients</a></li>
       <li><a href="#en-suppliers">Suppliers</a></li>
@@ -841,6 +868,12 @@
   <div class="alert alert-warning">
     <strong>⚠️ Important:</strong> a permanent internet connection is required for the system to work.
     All data is stored on your server and synchronised through the browser in real time.
+  </div>
+  <div class="alert alert-info">
+    <strong>Top menu structure:</strong> the <strong>Reports</strong> section now appears after sales operations.
+    <strong>Documents</strong> groups <strong>Invoices</strong> and <strong>History</strong>.
+    <strong>Directories</strong> groups <strong>Brands</strong>, <strong>Clients</strong>, and <strong>Suppliers</strong>.
+    The <strong>Help</strong> section contains the user manual.
   </div>
 
   {# 2. Quick start #}
@@ -972,9 +1005,15 @@
     <li>Finish the operation — balances are recalculated and client debt is adjusted.</li>
   </ol>
 
+  {# 8a. Reports #}
+  <h4 id="en-reports" class="mt-4">8a. Reports</h4>
+  <p>The <strong>Reports</strong> section has been added to the top menu as a prepared space for future ERP analytics.</p>
+  <p>It is intended to show sales, revenue, profit, stock balances, expenses, and charts for a selected period.</p>
+  <p class="mb-0">At the current stage it may open as a safe placeholder only, without calculations or business-logic changes.</p>
+
   {# 9. Brands #}
   <h4 id="en-brands" class="mt-4">9. Brands</h4>
-  <p>A directory of trade marks. Every product must belong to a brand.</p>
+  <p>A directory of trade marks. This section is available from the <strong>Directories</strong> dropdown. Every product must belong to a brand.</p>
   <ul>
     <li>Add a brand: enter the name (e.g. «Artel» or «Xiaomi»).</li>
     <li>Edit a brand name.</li>
@@ -984,7 +1023,7 @@
 
   {# 10. Clients #}
   <h4 id="en-clients" class="mt-4">10. Clients</h4>
-  <p>A directory of buyers. Stores each client's details and their current outstanding debt.</p>
+  <p>A directory of buyers. This section is available from the <strong>Directories</strong> dropdown and stores each client's details and their current outstanding debt.</p>
   <ul>
     <li>Add a client: name and phone number.</li>
     <li>Edit: change name, phone.</li>
@@ -994,7 +1033,7 @@
 
   {# 11. Suppliers #}
   <h4 id="en-suppliers" class="mt-4">11. Suppliers</h4>
-  <p>The <strong>Suppliers</strong> section is available from the top menu. It stores supplier details and tracks your outstanding supplier debt in USD.</p>
+  <p>The <strong>Suppliers</strong> section is available from the <strong>Directories</strong> dropdown. It stores supplier details and tracks your outstanding supplier debt in USD.</p>
   <ul>
     <li>Add a supplier: name, phone number, and note.</li>
     <li>Supplier debt (Debt USD) is calculated as total completed receive invoices minus total supplier payments/adjustments in the supplier ledger.</li>
@@ -1005,7 +1044,7 @@
 
   {# 12. Invoices #}
   <h4 id="en-invoices" class="mt-4">12. Invoices</h4>
-  <p>A list of all created documents: sales invoices and returns.</p>
+  <p>A list of all created documents: sales invoices and returns. This section is available from the <strong>Documents</strong> dropdown.</p>
   <ul>
     <li>View: click «View» next to an invoice — a details page opens.</li>
     <li>Download XLSX: get the invoice in Excel format for printing or sending to the client.</li>
@@ -1016,7 +1055,7 @@
 
   {# 13. History #}
   <h4 id="en-history" class="mt-4">13. History</h4>
-  <p>A complete log of all stock movements: receives, sales, returns. Use it to trace any operation.</p>
+  <p>A complete log of all stock movements: receives, sales, returns. This section is available from the <strong>Documents</strong> dropdown and helps trace any operation.</p>
   <ul>
     <li>Search by keyword (brand, model, invoice number, client).</li>
     <li>Each record shows: date/time, operation type, product, quantity, price, warehouse, counterparty.</li>
@@ -1132,7 +1171,7 @@
   <h5 class="mt-3">Main site background</h5>
   <p>
     The main background is used on all pages of the Hasapcy web interface: products, stock, receive,
-    move, sale, return, clients, suppliers, invoices, history, admin, and help.
+    move, sale, return, reports, clients, suppliers, invoices, history, admin, and help.
   </p>
   <p><strong>File:</strong> <code>app/web/static/bg.jpg</code></p>
   <p>To replace it go to <strong>Admin → Settings → Background Image</strong>.</p>

@@ -53,6 +53,33 @@ def test_products_page_returns_200(client: TestClient) -> None:
     assert response.status_code == 200
 
 
+def test_index_nav_groups_and_reports_ru(client: TestClient) -> None:
+    """GET / in RU must expose compact nav groups and the renamed Help item."""
+    response = client.get("/", headers={"cookie": "ui_lang=ru"})
+    assert response.status_code == 200
+    assert "Отчёты" in response.text
+    assert "Документы" in response.text
+    assert "Справочники" in response.text
+    assert "Помощь" in response.text
+    assert 'href="/reports"' in response.text
+    assert 'href="/invoices"' in response.text
+    assert 'href="/history"' in response.text
+    assert 'href="/brands"' in response.text
+    assert 'href="/clients"' in response.text
+    assert 'href="/suppliers"' in response.text
+    assert 'href="/help">Помощь<' in response.text
+    assert 'href="/help">Справочник<' not in response.text
+
+
+def test_reports_page_returns_placeholder_ru(client: TestClient) -> None:
+    """GET /reports in RU must render the safe future-analytics placeholder."""
+    response = client.get("/reports", headers={"cookie": "ui_lang=ru"})
+    assert response.status_code == 200
+    assert "📊 Отчёты" in response.text
+    assert "Подготовленный раздел для будущей аналитики ERP" in response.text
+    assert "продажи, выручку, прибыль, складские остатки, расходы и графики" in response.text
+
+
 @pytest.mark.parametrize(
     ("lang", "manual_entry_text"),
     [
@@ -139,6 +166,10 @@ def test_help_page_includes_suppliers_section_ru(client: TestClient) -> None:
     assert response.status_code == 200
     assert 'href="#ru-suppliers"' in response.text
     assert 'id="ru-suppliers"' in response.text
+    assert 'href="#ru-reports"' in response.text
+    assert 'id="ru-reports"' in response.text
+    assert "Структура верхнего меню" in response.text
+    assert "Помощь ERP" in response.text
 
 
 def test_help_page_includes_suppliers_section_en(client: TestClient) -> None:
@@ -147,6 +178,9 @@ def test_help_page_includes_suppliers_section_en(client: TestClient) -> None:
     assert response.status_code == 200
     assert 'href="#en-suppliers"' in response.text
     assert 'id="en-suppliers"' in response.text
+    assert 'href="#en-reports"' in response.text
+    assert 'id="en-reports"' in response.text
+    assert "Top menu structure" in response.text
 
 
 def test_stock_xlsx_returns_xlsx_bytes(client: TestClient) -> None:
