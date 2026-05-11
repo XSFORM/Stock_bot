@@ -53,6 +53,16 @@ def test_products_page_returns_200(client: TestClient) -> None:
     assert response.status_code == 200
 
 
+def test_catalog_page_supports_manual_barcode_scanner_entry(client: TestClient) -> None:
+    """GET /catalog must expose Enter handling and scanner-friendly copy."""
+    response = client.get("/catalog", headers={"cookie": "ui_lang=ru"})
+    assert response.status_code == 200
+    assert "или введите/отсканируйте штрихкод" in response.text
+    assert "event.key === 'Enter'" in response.text
+    assert "_lastScanSource = 'manual';" in response.text
+    assert "focusManualBarcodeSoon();" in response.text
+
+
 def test_index_background_has_dynamic_cache_busting_version(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

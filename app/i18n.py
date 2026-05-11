@@ -484,7 +484,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "catalog_error_generic": "Error: ",
         "catalog_btn_scan": "📷 Scan Barcode",
         "catalog_btn_stop": "✕ Stop scanning",
-        "catalog_manual_entry": "or enter barcode manually",
+        "catalog_manual_entry": "or enter/scan barcode",
         "catalog_not_supported": "Barcode scanning is not supported in this browser. Try Chrome on Android.",
     },
     "ru": {
@@ -961,7 +961,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "catalog_error_generic": "Ошибка: ",
         "catalog_btn_scan": "📷 Сканировать штрихкод",
         "catalog_btn_stop": "✕ Остановить",
-        "catalog_manual_entry": "или введите штрихкод вручную",
+        "catalog_manual_entry": "или введите/отсканируйте штрихкод",
         "catalog_not_supported": "Сканирование штрихкодов не поддерживается. Используйте Chrome на Android.",
     },
     "tm": {
@@ -1438,7 +1438,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "catalog_error_generic": "Ýalňyşlyk: ",
         "catalog_btn_scan": "📷 Ştrikhkod skanirle",
         "catalog_btn_stop": "✕ Bes et",
-        "catalog_manual_entry": "ýa-da ştrikhkody el bilen giriziň",
+        "catalog_manual_entry": "ýa-da ştrikhkody giriziň/skanirläň",
         "catalog_not_supported": "Ştrikhkod skanirlemek bu brauzerde goldanylmaýar. Android-de Chrome ulanyň.",
     },
 }
