@@ -366,6 +366,52 @@ def test_reports_low_stock_sorted_by_warehouse_brand_model(client: TestClient) -
     assert idx_model_0 < idx_model_1 < idx_model_2
 
 
+def test_reports_low_stock_sorted_by_qty_ascending(client: TestClient) -> None:
+    """Low-stock table must sort by qty ASC first so the most critical items appear first."""
+    from app.db.sqlite import DB_PATH
+
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.executemany(
+            "INSERT OR IGNORE INTO warehouses (code, title) VALUES (?, ?)",
+            [("QTY_WH", "Qty Sort Warehouse")],
+        )
+        conn.executemany(
+            "INSERT INTO products (brand, model, name, wh_price, barcode, note, archived) VALUES (?, ?, ?, ?, '', '', 0)",
+            [
+                ("QTY_BRAND", "QTY_MODEL_TWO", "Qty Product 2", 10.0),
+                ("QTY_BRAND", "QTY_MODEL_ZERO", "Qty Product 0", 10.0),
+                ("QTY_BRAND", "QTY_MODEL_ONE", "Qty Product 1", 10.0),
+            ],
+        )
+        rows = conn.execute(
+            "SELECT id, model FROM products WHERE model IN (?, ?, ?)",
+            ("QTY_MODEL_TWO", "QTY_MODEL_ZERO", "QTY_MODEL_ONE"),
+        ).fetchall()
+        product_ids = {model: pid for pid, model in rows}
+        conn.executemany(
+            "INSERT INTO stock (warehouse_code, product_id, qty) VALUES (?, ?, ?)",
+            [
+                ("QTY_WH", product_ids["QTY_MODEL_TWO"], 2.0),
+                ("QTY_WH", product_ids["QTY_MODEL_ZERO"], 0.0),
+                ("QTY_WH", product_ids["QTY_MODEL_ONE"], 1.0),
+            ],
+        )
+        conn.commit()
+
+    response = client.get(
+        "/reports?date_from=2026-01-01&date_to=2026-01-31",
+        headers={"cookie": "ui_lang=ru"},
+    )
+    assert response.status_code == 200
+    idx_zero = response.text.find("QTY_MODEL_ZERO")
+    idx_one = response.text.find("QTY_MODEL_ONE")
+    idx_two = response.text.find("QTY_MODEL_TWO")
+    assert idx_zero != -1 and idx_one != -1 and idx_two != -1
+    # qty=0 must come before qty=1, which must come before qty=2
+    assert idx_zero < idx_one < idx_two
+
+
 @pytest.mark.parametrize(
     ("lang", "manual_entry_text"),
     [

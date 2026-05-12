@@ -1480,7 +1480,7 @@ def get_reports_snapshot(
             WHERE p.archived = 0
               AND s.qty <= ?
               {warehouse_filter_sql}
-            ORDER BY s.warehouse_code ASC, p.brand ASC, p.model ASC, p.name ASC, s.qty ASC
+            ORDER BY s.qty ASC, s.warehouse_code ASC, p.brand ASC, p.model ASC, p.name ASC
             LIMIT 20
             """,
             [float(low_stock_threshold), *selected_warehouses],
