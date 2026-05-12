@@ -229,6 +229,59 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
+// Persist selected warehouses across navigation using localStorage.
+// NOTE: This script is intentionally placed after the <form> element in the HTML
+// so that document.getElementById('reportsWarehouses') is already available when
+// the script executes (no DOMContentLoaded wrapper required).
+(function () {
+  var KEY = 'reports_warehouses';
+  // Grab the select once; reuse below to avoid duplicate lookups.
+  var select = document.getElementById('reportsWarehouses');
+  var params = new URLSearchParams(window.location.search);
+
+  if (params.has('warehouses')) {
+    // URL already contains warehouse selection — save it to localStorage.
+    localStorage.setItem(KEY, JSON.stringify(params.getAll('warehouses')));
+  } else {
+    // No warehouse param in URL — try to restore from localStorage.
+    var saved = localStorage.getItem(KEY);
+    if (saved !== null) {
+      try {
+        var savedValues = JSON.parse(saved);
+        if (Array.isArray(savedValues) && savedValues.length > 0) {
+          // Only redirect when the saved selection is not "all warehouses" (the
+          // default), so we avoid an infinite redirect loop.
+          var nonAll = savedValues.filter(function (v) { return v !== 'all'; });
+          if (nonAll.length > 0) {
+            // Validate each value against the actual <select> options to prevent
+            // a tampered localStorage value from being appended to the URL.
+            var validValues = select
+              ? Array.from(select.options).map(function (o) { return o.value; })
+              : [];
+            var validSaved = nonAll.filter(function (v) { return validValues.indexOf(v) !== -1; });
+            if (validSaved.length > 0) {
+              validSaved.forEach(function (v) { params.append('warehouses', v); });
+              window.location.replace(window.location.pathname + '?' + params.toString());
+            }
+          }
+        }
+      } catch (e) { /* ignore JSON parse errors */ }
+    }
+  }
+
+  // Save selected warehouses whenever the filter form is submitted.
+  // Use closest('form') on the known select element instead of a
+  // fragile attribute-based document query.
+  var filterForm = select && select.closest('form');
+  if (filterForm) {
+    filterForm.addEventListener('submit', function () {
+      var selected = Array.from(select.selectedOptions).map(function (o) { return o.value; });
+      localStorage.setItem(KEY, JSON.stringify(selected));
+    });
+  }
+})();
+</script>
+<script>
   (function () {
     const periodSelect = document.getElementById('reportsPeriod');
     const dateFromInput = document.getElementById('reportsDateFrom');
