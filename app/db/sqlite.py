@@ -1371,7 +1371,14 @@ def get_reports_snapshot(
     date_to: str,
     top_limit: int = 10,
     low_stock_threshold: float = 2,
+    warehouse_codes: Optional[list[str]] = None,
 ) -> dict[str, Any]:
+    selected_warehouses = [code.strip() for code in (warehouse_codes or []) if code and code.strip()]
+    warehouse_filter_sql = ""
+    if selected_warehouses:
+        placeholders = ",".join("?" for _ in selected_warehouses)
+        warehouse_filter_sql = f" AND s.warehouse_code IN ({placeholders})"
+
     with _connect() as conn:
         sales_row = conn.execute(
             """
@@ -1412,27 +1419,31 @@ def get_reports_snapshot(
         returns_total = float(returns_row["returns_total"]) if returns_row else 0.0
 
         stock_row = conn.execute(
-            """
+            f"""
             SELECT COALESCE(SUM(s.qty), 0) AS stock_qty_total
             FROM stock s
             JOIN products p ON p.id = s.product_id
             WHERE p.archived = 0
-            """
+            {warehouse_filter_sql}
+            """,
+            selected_warehouses,
         ).fetchone()
         stock_qty_total = float(stock_row["stock_qty_total"]) if stock_row else 0.0
 
         positions_row = conn.execute(
-            """
+            f"""
             SELECT COUNT(*) AS positions_count
             FROM (
                 SELECT s.product_id
                 FROM stock s
                 JOIN products p ON p.id = s.product_id
                 WHERE p.archived = 0
+                {warehouse_filter_sql}
                 GROUP BY s.product_id
                 HAVING SUM(s.qty) > 0
             )
-            """
+            """,
+            selected_warehouses,
         ).fetchone()
         stock_positions_count = int(positions_row["positions_count"]) if positions_row else 0
 
@@ -1458,7 +1469,7 @@ def get_reports_snapshot(
         ).fetchall()
 
         low_stock_rows = conn.execute(
-            """
+            f"""
             SELECT s.warehouse_code,
                    COALESCE(p.brand, '') AS brand,
                    COALESCE(p.model, '') AS model,
@@ -1468,10 +1479,11 @@ def get_reports_snapshot(
             JOIN products p ON p.id = s.product_id
             WHERE p.archived = 0
               AND s.qty <= ?
-            ORDER BY s.qty ASC, p.brand ASC, p.model ASC, p.name ASC
+              {warehouse_filter_sql}
+            ORDER BY s.warehouse_code ASC, p.brand ASC, p.model ASC, p.name ASC, s.qty ASC
             LIMIT 20
             """,
-            (float(low_stock_threshold),),
+            [float(low_stock_threshold), *selected_warehouses],
         ).fetchall()
 
         daily_rows = conn.execute(
