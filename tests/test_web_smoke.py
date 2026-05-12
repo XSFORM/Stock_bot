@@ -60,6 +60,7 @@ def test_index_nav_groups_and_reports_ru(client: TestClient) -> None:
     """GET / in RU must expose compact nav groups and the renamed Help item."""
     response = client.get("/", headers={"cookie": "ui_lang=ru"})
     assert response.status_code == 200
+    assert 'class="navbar navbar-expand-lg navbar-dark bg-dark app-top-nav"' in response.text
     assert "Отчёты" in response.text
     assert "Документы" in response.text
     assert "Справочники" in response.text
