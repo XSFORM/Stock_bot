@@ -401,7 +401,8 @@ def _reports_period_bounds(
 ) -> tuple[date, date, str]:
     today = date.today()
     # Keep empty by default so we can detect "period was not sent" separately
-    # (for backward-compatible custom date links), then fallback to this_month.
+    # (for backward-compatible custom date links); fallback to this_month is
+    # applied later by the default return at the end of this function.
     selected = (period or "").strip().lower()
 
     if selected == "today":

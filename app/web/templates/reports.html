@@ -211,6 +211,7 @@
     const hasCustomOption = !!(periodSelect && periodSelect.querySelector('option[value="custom"]'));
 
     const toIsoDate = (value) => {
+      // Keep local-calendar date formatting (avoid UTC shifts from toISOString()).
       const year = value.getFullYear();
       const month = String(value.getMonth() + 1).padStart(2, '0');
       const day = String(value.getDate()).padStart(2, '0');
