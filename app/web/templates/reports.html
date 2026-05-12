@@ -2,32 +2,228 @@
 {% block content %}
 
 {% if ui_lang == 'ru' %}
-<div class="bg-white p-4 rounded shadow-sm">
-  <h2 class="mb-1">📊 Отчёты</h2>
-  <p class="text-muted mb-4">Подготовленный раздел для будущей аналитики ERP</p>
-  <div class="alert alert-info">
-    Здесь планируется показывать продажи, выручку, прибыль, складские остатки, расходы и графики по выбранному периоду.
-  </div>
-  <p class="mb-0">В этом этапе раздел добавлен в навигацию как безопасная заглушка. Бизнес-логика и расчёты отчётов будут реализованы позже.</p>
-</div>
+{% set title = '📊 Отчёты' %}
+{% set subtitle = 'Базовая аналитика по продажам, возвратам и складу без сложного расчёта прибыли/маржи.' %}
+{% set period_label = 'Период' %}
+{% set from_label = 'С' %}
+{% set to_label = 'По' %}
+{% set apply_label = 'Применить' %}
+{% set cards_title = 'Основные показатели' %}
+{% set top_title = 'Топ товаров по продажам' %}
+{% set low_title = 'Низкие остатки' %}
+{% set chart_title = 'Выручка по дням' %}
+{% set daily_table_title = 'Продажи по дням' %}
+{% set empty_top = 'За выбранный период продаж нет.' %}
+{% set empty_low = 'Товары с низким остатком не найдены.' %}
+{% set th_brand = 'Бренд' %}
+{% set th_model = 'Модель / Название' %}
+{% set th_qty = 'Количество продано' %}
+{% set th_sum = 'Сумма продаж' %}
+{% set th_warehouse = 'Склад' %}
+{% set th_stock = 'Остаток' %}
+{% set th_date = 'Дата' %}
+{% set th_sales_count = 'Продаж' %}
+{% set metric_revenue = 'Выручка за период' %}
+{% set metric_returns = 'Возвраты за период' %}
+{% set metric_net = 'Чистая выручка' %}
+{% set metric_sales_count = 'Количество продаж / чеков' %}
+{% set metric_sold_qty = 'Продано товаров, шт.' %}
+{% set metric_avg_check = 'Средний чек' %}
+{% set metric_stock_qty = 'Товаров на складе, шт.' %}
+{% set metric_stock_value = 'Стоимость склада по закупке' %}
 {% elif ui_lang == 'tm' %}
-<div class="bg-white p-4 rounded shadow-sm">
-  <h2 class="mb-1">📊 Hasabatlar</h2>
-  <p class="text-muted mb-4">ERP-niň geljekki analitikasy üçin taýýarlanan bölüm</p>
-  <div class="alert alert-info">
-    Bu ýerde geljekde saýlanan döwür boýunça satyş, düşewünt, peýda, ammar galdyklary, çykdajylar we grafikler görkeziler.
-  </div>
-  <p class="mb-0">Bu etapda bölüm diňe menýuda howpsuz ýer hökmünde goşuldy. Hasaplamalar we doly hasabat logikasy soňra ýerine ýetiriler.</p>
-</div>
+{% set title = '📊 Hasabatlar' %}
+{% set subtitle = 'Satyş, yzyna gaýtaryş we ammar boýunça esasy analitika. Çylşyrymly peýda/marja hasaplamasy ýok.' %}
+{% set period_label = 'Döwür' %}
+{% set from_label = 'Başlangyç' %}
+{% set to_label = 'Soňky' %}
+{% set apply_label = 'Ulan' %}
+{% set cards_title = 'Esasy görkezijiler' %}
+{% set top_title = 'Satyş boýunça iň köp satylanlar' %}
+{% set low_title = 'Pes galyndylar' %}
+{% set chart_title = 'Günler boýunça düşewünt' %}
+{% set daily_table_title = 'Günler boýunça satyş' %}
+{% set empty_top = 'Saýlanan döwürde satyş ýok.' %}
+{% set empty_low = 'Pes galyndyly haryt tapylmady.' %}
+{% set th_brand = 'Brend' %}
+{% set th_model = 'Model / Ady' %}
+{% set th_qty = 'Satylan mukdar' %}
+{% set th_sum = 'Satyş jemi' %}
+{% set th_warehouse = 'Ammar' %}
+{% set th_stock = 'Galyndy' %}
+{% set th_date = 'Sene' %}
+{% set th_sales_count = 'Satyş sany' %}
+{% set metric_revenue = 'Döwür boýunça düşewünt' %}
+{% set metric_returns = 'Döwür boýunça yzyna gaýtaryş' %}
+{% set metric_net = 'Arassa düşewünt' %}
+{% set metric_sales_count = 'Satyş / çek sany' %}
+{% set metric_sold_qty = 'Satylan haryt, sany' %}
+{% set metric_avg_check = 'Orta çek' %}
+{% set metric_stock_qty = 'Ammardaky haryt, sany' %}
+{% set metric_stock_value = 'Ammar gymmaty (satyn alyş)' %}
 {% else %}
-<div class="bg-white p-4 rounded shadow-sm">
-  <h2 class="mb-1">📊 Reports</h2>
-  <p class="text-muted mb-4">Prepared section for future ERP analytics</p>
-  <div class="alert alert-info">
-    This section is intended for future sales, revenue, profit, stock, expense, and chart-based analytics by period.
-  </div>
-  <p class="mb-0">At this stage the page is a safe placeholder in navigation only. Report calculations and business logic will be added later.</p>
-</div>
+{% set title = '📊 Reports' %}
+{% set subtitle = 'Basic ERP analytics for sales, returns and stock without complex profit/margin calculations.' %}
+{% set period_label = 'Period' %}
+{% set from_label = 'From' %}
+{% set to_label = 'To' %}
+{% set apply_label = 'Apply' %}
+{% set cards_title = 'Key metrics' %}
+{% set top_title = 'Top products by sales' %}
+{% set low_title = 'Low stock' %}
+{% set chart_title = 'Revenue by day' %}
+{% set daily_table_title = 'Daily sales' %}
+{% set empty_top = 'No sales for the selected period.' %}
+{% set empty_low = 'No low-stock products found.' %}
+{% set th_brand = 'Brand' %}
+{% set th_model = 'Model / Name' %}
+{% set th_qty = 'Sold qty' %}
+{% set th_sum = 'Sales total' %}
+{% set th_warehouse = 'Warehouse' %}
+{% set th_stock = 'Stock' %}
+{% set th_date = 'Date' %}
+{% set th_sales_count = 'Sales count' %}
+{% set metric_revenue = 'Revenue in period' %}
+{% set metric_returns = 'Returns in period' %}
+{% set metric_net = 'Net revenue' %}
+{% set metric_sales_count = 'Sales / receipts count' %}
+{% set metric_sold_qty = 'Sold units' %}
+{% set metric_avg_check = 'Average receipt' %}
+{% set metric_stock_qty = 'Units in stock' %}
+{% set metric_stock_value = 'Stock value (purchase)' %}
 {% endif %}
 
+<div class="bg-white p-4 rounded shadow-sm">
+  <h2 class="mb-1">{{ title }}</h2>
+  <p class="text-muted mb-4">{{ subtitle }}</p>
+
+  <form method="get" action="/reports" class="row g-2 align-items-end mb-4">
+    <div class="col-12 col-md-3">
+      <label class="form-label">{{ period_label }}</label>
+      <select name="period" class="form-select">
+        {% for option in period_options %}
+        <option value="{{ option.key }}" {% if period == option.key %}selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label">{{ from_label }}</label>
+      <input type="date" class="form-control" name="date_from" value="{{ date_from }}">
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label">{{ to_label }}</label>
+      <input type="date" class="form-control" name="date_to" value="{{ date_to }}">
+    </div>
+    <div class="col-12 col-md-3">
+      <button class="btn btn-primary w-100" type="submit">{{ apply_label }}</button>
+    </div>
+  </form>
+
+  <h5 class="mb-3">{{ cards_title }}</h5>
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted">{{ metric_revenue }}</div><div class="h5 mb-0">{{ "%.2f"|format(reports.revenue) }} $</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted">{{ metric_returns }}</div><div class="h5 mb-0">{{ "%.2f"|format(reports.returns_total) }} $</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted">{{ metric_net }}</div><div class="h5 mb-0">{{ "%.2f"|format(reports.net_revenue) }} $</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted">{{ metric_sales_count }}</div><div class="h5 mb-0">{{ reports.sales_count }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted">{{ metric_sold_qty }}</div><div class="h5 mb-0">{{ "%.2f"|format(reports.sold_qty) }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted">{{ metric_avg_check }}</div><div class="h5 mb-0">{{ "%.2f"|format(reports.avg_check) }} $</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted">{{ metric_stock_qty }}</div><div class="h5 mb-0">{{ "%.2f"|format(reports.stock_qty_total) }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted">{{ metric_stock_value }}</div><div class="h5 mb-0">{{ "%.2f"|format(reports.stock_value) }} $</div></div></div></div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-12 col-xl-7">
+      <h5 class="mb-3">{{ top_title }}</h5>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle">
+          <thead><tr><th>#</th><th>{{ th_brand }}</th><th>{{ th_model }}</th><th class="text-end">{{ th_qty }}</th><th class="text-end">{{ th_sum }}</th></tr></thead>
+          <tbody>
+            {% for row in reports.top_products %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              <td>{{ row.brand or '—' }}</td>
+              <td>{{ row.model or row.name or '—' }}</td>
+              <td class="text-end">{{ "%.2f"|format(row.sold_qty) }}</td>
+              <td class="text-end">{{ "%.2f"|format(row.sales_total) }} $</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-muted">{{ empty_top }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="col-12 col-xl-5">
+      <h5 class="mb-3">{{ low_title }}</h5>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle">
+          <thead><tr><th>{{ th_brand }}</th><th>{{ th_model }}</th><th>{{ th_warehouse }}</th><th class="text-end">{{ th_stock }}</th></tr></thead>
+          <tbody>
+            {% for row in reports.low_stock %}
+            <tr>
+              <td>{{ row.brand or '—' }}</td>
+              <td>{{ row.model or row.name or '—' }}</td>
+              <td>{{ row.warehouse_code }}</td>
+              <td class="text-end">{{ "%.2f"|format(row.qty) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted">{{ empty_low }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-4">
+    <h5 class="mb-3">{{ chart_title }}</h5>
+    <div class="card mb-3">
+      <div class="card-body">
+        <canvas id="salesChart" height="100"></canvas>
+      </div>
+    </div>
+
+    <h6 class="mb-2">{{ daily_table_title }}</h6>
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle">
+        <thead><tr><th>{{ th_date }}</th><th class="text-end">{{ metric_revenue }}</th><th class="text-end">{{ th_sales_count }}</th></tr></thead>
+        <tbody>
+          {% for i in range(daily_labels|length) %}
+          <tr>
+            <td>{{ daily_labels[i] }}</td>
+            <td class="text-end">{{ "%.2f"|format(daily_revenue[i]) }} $</td>
+            <td class="text-end">{{ daily_sales_count[i] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+  (function () {
+    const labels = {{ daily_labels | tojson }};
+    const revenue = {{ daily_revenue | tojson }};
+    const ctx = document.getElementById('salesChart');
+    if (!ctx || !labels.length) return;
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Revenue',
+          data: revenue,
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+  })();
+</script>
 {% endblock %}
