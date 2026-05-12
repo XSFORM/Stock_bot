@@ -9,6 +9,7 @@ no attribute 'split'`` at runtime on a clean server installation.
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from datetime import date
 from pathlib import Path
@@ -259,6 +260,110 @@ def test_reports_all_time_js_handler_present(client: TestClient) -> None:
     assert response.status_code == 200
     assert "all_time" in response.text
     assert "earliest" in response.text
+
+
+def test_reports_warehouse_filter_applies_to_stock_kpis_and_low_stock(client: TestClient) -> None:
+    from app.db.sqlite import DB_PATH
+
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.executemany(
+            "INSERT OR IGNORE INTO warehouses (code, title) VALUES (?, ?)",
+            [("RWF_A", "Reports Warehouse A"), ("RWF_B", "Reports Warehouse B")],
+        )
+        conn.executemany(
+            "INSERT INTO products (brand, model, name, wh_price, barcode, note, archived) VALUES (?, ?, ?, ?, '', '', 0)",
+            [
+                ("RWF_BRAND", "RWF_HIGH_A", "Reports Filter High A", 10.0),
+                ("RWF_BRAND", "RWF_HIGH_B", "Reports Filter High B", 11.0),
+                ("RWF_BRAND", "RWF_LOW_A", "Reports Filter Low A", 12.0),
+                ("RWF_BRAND", "RWF_LOW_B", "Reports Filter Low B", 13.0),
+            ],
+        )
+        rows = conn.execute(
+            "SELECT id, model FROM products WHERE model IN (?, ?, ?, ?)",
+            ("RWF_HIGH_A", "RWF_HIGH_B", "RWF_LOW_A", "RWF_LOW_B"),
+        ).fetchall()
+        product_ids = {model: pid for pid, model in rows}
+        conn.executemany(
+            "INSERT INTO stock (warehouse_code, product_id, qty) VALUES (?, ?, ?)",
+            [
+                ("RWF_A", product_ids["RWF_HIGH_A"], 5.0),
+                ("RWF_B", product_ids["RWF_HIGH_B"], 7.0),
+                ("RWF_A", product_ids["RWF_LOW_A"], 1.0),
+                ("RWF_B", product_ids["RWF_LOW_B"], 1.0),
+            ],
+        )
+        conn.commit()
+
+    response = client.get(
+        "/reports?date_from=2026-01-01&date_to=2026-01-31&warehouses=RWF_A",
+        headers={"cookie": "ui_lang=ru"},
+    )
+    assert response.status_code == 200
+    assert 'option value="RWF_A" selected' in response.text
+    assert 'option value="RWF_B" selected' not in response.text
+    assert 'option value="all" selected' not in response.text
+    assert "RWF_LOW_A" in response.text
+    assert "RWF_LOW_B" not in response.text
+
+    stock_qty_match = re.search(
+        r"Товаров на складе, шт\.</div><div class=\"h5 mb-0\">([0-9.]+)</div>",
+        response.text,
+    )
+    assert stock_qty_match
+    assert float(stock_qty_match.group(1)) == 6.0
+
+    positions_match = re.search(
+        r"Позиций с остатком</div><div class=\"h5 mb-0\">([0-9]+)</div>",
+        response.text,
+    )
+    assert positions_match
+    assert int(positions_match.group(1)) == 2
+
+
+def test_reports_low_stock_sorted_by_warehouse_brand_model(client: TestClient) -> None:
+    from app.db.sqlite import DB_PATH
+
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.executemany(
+            "INSERT OR IGNORE INTO warehouses (code, title) VALUES (?, ?)",
+            [("SRT_A", "Sort Warehouse A"), ("SRT_B", "Sort Warehouse B")],
+        )
+        conn.executemany(
+            "INSERT INTO products (brand, model, name, wh_price, barcode, note, archived) VALUES (?, ?, ?, ?, '', '', 0)",
+            [
+                ("SRT_BRAND_A", "SRT_MODEL_1", "Sort Product 1", 10.0),
+                ("SRT_BRAND_A", "SRT_MODEL_0", "Sort Product 0", 10.0),
+                ("SRT_BRAND_B", "SRT_MODEL_2", "Sort Product 2", 10.0),
+            ],
+        )
+        rows = conn.execute(
+            "SELECT id, model FROM products WHERE model IN (?, ?, ?)",
+            ("SRT_MODEL_1", "SRT_MODEL_0", "SRT_MODEL_2"),
+        ).fetchall()
+        product_ids = {model: pid for pid, model in rows}
+        conn.executemany(
+            "INSERT INTO stock (warehouse_code, product_id, qty) VALUES (?, ?, ?)",
+            [
+                ("SRT_B", product_ids["SRT_MODEL_2"], 1.0),
+                ("SRT_A", product_ids["SRT_MODEL_1"], 1.0),
+                ("SRT_A", product_ids["SRT_MODEL_0"], 1.0),
+            ],
+        )
+        conn.commit()
+
+    response = client.get(
+        "/reports?date_from=2026-01-01&date_to=2026-01-31",
+        headers={"cookie": "ui_lang=ru"},
+    )
+    assert response.status_code == 200
+    idx_model_0 = response.text.find("SRT_MODEL_0")
+    idx_model_1 = response.text.find("SRT_MODEL_1")
+    idx_model_2 = response.text.find("SRT_MODEL_2")
+    assert idx_model_0 != -1 and idx_model_1 != -1 and idx_model_2 != -1
+    assert idx_model_0 < idx_model_1 < idx_model_2
 
 
 @pytest.mark.parametrize(

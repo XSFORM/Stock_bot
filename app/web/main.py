@@ -13,7 +13,7 @@ from datetime import date
 from typing import Any, List, Optional
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, Form, Request, Response, UploadFile
+from fastapi import FastAPI, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import jinja2
@@ -472,6 +472,29 @@ def _reports_period_options(lang: str) -> list[dict[str, str]]:
         {"key": "all_time", "label": "All time"},
         {"key": "custom", "label": "Custom period"},
     ]
+
+
+def _reports_warehouse_filter(
+    selected_values: Optional[list[str]],
+    available_codes: list[str],
+) -> list[str]:
+    normalized_available: dict[str, str] = {
+        code.strip().upper(): code for code in available_codes if code and code.strip()
+    }
+    selected_codes: list[str] = []
+    seen: set[str] = set()
+    for raw in selected_values or []:
+        for chunk in str(raw).split(","):
+            value = chunk.strip()
+            if not value:
+                continue
+            if value.lower() == "all":
+                return []
+            canonical = normalized_available.get(value.upper())
+            if canonical and canonical not in seen:
+                seen.add(canonical)
+                selected_codes.append(canonical)
+    return selected_codes
 
 
 @app.get("/api/brand-prefixes")
@@ -1715,8 +1738,12 @@ def reports_page(
     period: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    warehouses: Optional[list[str]] = Query(default=None),
 ):
     lang = _get_ui_lang(request)
+    warehouse_options = list_warehouses()
+    warehouse_codes = [w["code"] for w in warehouse_options]
+    selected_warehouses = _reports_warehouse_filter(warehouses, warehouse_codes)
     period_from, period_to, selected_period = _reports_period_bounds(
         period,
         date_from,
@@ -1728,6 +1755,7 @@ def reports_page(
         date_to=period_to.isoformat(),
         top_limit=10,
         low_stock_threshold=2,
+        warehouse_codes=selected_warehouses,
     )
 
     sales_by_day = {row["day"]: row for row in snapshot["daily_sales"]}
@@ -1756,6 +1784,9 @@ def reports_page(
             "daily_revenue": day_revenue,
             "daily_sales_count": day_sales_count,
             "earliest_date": (get_earliest_operation_date() or period_from).isoformat(),
+            "warehouse_options": warehouse_options,
+            "selected_warehouses": selected_warehouses,
+            "all_warehouses_selected": not selected_warehouses,
         },
     )
 

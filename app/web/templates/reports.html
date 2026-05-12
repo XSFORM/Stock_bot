@@ -7,6 +7,10 @@
 {% set period_label = 'Период' %}
 {% set from_label = 'С' %}
 {% set to_label = 'По' %}
+{% set warehouse_label = 'Склад' %}
+{% set all_warehouses_label = 'Все склады' %}
+{% set warehouse_hint = 'Можно выбрать один или несколько складов.' %}
+{% set warehouse_scope_note = 'Фильтр склада применяется к складским показателям и низким остаткам.' %}
 {% set apply_label = 'Применить' %}
 {% set cards_title = 'Основные показатели' %}
 {% set top_title = 'Топ товаров по продажам' %}
@@ -37,6 +41,10 @@
 {% set period_label = 'Döwür' %}
 {% set from_label = 'Başlangyç' %}
 {% set to_label = 'Soňky' %}
+{% set warehouse_label = 'Ammar' %}
+{% set all_warehouses_label = 'Ähli ammarlar' %}
+{% set warehouse_hint = 'Bir ýa-da birnäçe ammar saýlap bilersiňiz.' %}
+{% set warehouse_scope_note = 'Ammar süzgüji diňe ammar görkezijilerine we pes galyndylara ulanylýar.' %}
 {% set apply_label = 'Ulan' %}
 {% set cards_title = 'Esasy görkezijiler' %}
 {% set top_title = 'Satyş boýunça iň köp satylanlar' %}
@@ -67,6 +75,10 @@
 {% set period_label = 'Period' %}
 {% set from_label = 'From' %}
 {% set to_label = 'To' %}
+{% set warehouse_label = 'Warehouse' %}
+{% set all_warehouses_label = 'All warehouses' %}
+{% set warehouse_hint = 'You can select one or multiple warehouses.' %}
+{% set warehouse_scope_note = 'Warehouse filter applies to stock metrics and low stock only.' %}
 {% set apply_label = 'Apply' %}
 {% set cards_title = 'Key metrics' %}
 {% set top_title = 'Top products by sales' %}
@@ -117,7 +129,20 @@
     <div class="col-12 col-md-3">
       <button class="btn btn-primary w-100" type="submit">{{ apply_label }}</button>
     </div>
+    <div class="col-12">
+      <label class="form-label">{{ warehouse_label }}</label>
+      <select id="reportsWarehouses" name="warehouses" class="form-select" multiple size="4">
+        <option value="all" {% if all_warehouses_selected %}selected{% endif %}>{{ all_warehouses_label }}</option>
+        {% for warehouse in warehouse_options %}
+        <option value="{{ warehouse.code }}" {% if warehouse.code in selected_warehouses %}selected{% endif %}>
+          {{ warehouse.code }}{% if warehouse.title and warehouse.title != warehouse.code %} — {{ warehouse.title }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      <div class="form-text">{{ warehouse_hint }}</div>
+    </div>
   </form>
+  <p class="text-muted small mb-4">{{ warehouse_scope_note }}</p>
 
   <h5 class="mb-3">{{ cards_title }}</h5>
   <div class="row g-3 mb-4">
@@ -208,6 +233,7 @@
     const periodSelect = document.getElementById('reportsPeriod');
     const dateFromInput = document.getElementById('reportsDateFrom');
     const dateToInput = document.getElementById('reportsDateTo');
+    const warehousesSelect = document.getElementById('reportsWarehouses');
     const hasCustomOption = !!(periodSelect && periodSelect.querySelector('option[value="custom"]'));
 
     const toIsoDate = (dateValue) => {
@@ -269,6 +295,30 @@
         dateToInput.addEventListener('change', switchToCustom);
         dateToInput.addEventListener('input', switchToCustom);
       }
+    }
+
+    if (warehousesSelect) {
+      const normalizeWarehouseSelection = () => {
+        const options = Array.from(warehousesSelect.options);
+        const allOption = options.find((option) => option.value === 'all');
+        if (!allOption) return;
+        const selectedOptions = options.filter((option) => option.selected);
+        if (!selectedOptions.length) {
+          allOption.selected = true;
+          return;
+        }
+        const selectedNonAll = selectedOptions.filter((option) => option.value !== 'all');
+        if (selectedNonAll.length) {
+          allOption.selected = false;
+          return;
+        }
+        options.forEach((option) => {
+          if (option.value !== 'all') option.selected = false;
+        });
+        allOption.selected = true;
+      };
+      warehousesSelect.addEventListener('change', normalizeWarehouseSelection);
+      normalizeWarehouseSelection();
     }
 
     const labels = {{ daily_labels | tojson }};
