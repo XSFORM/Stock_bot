@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -190,6 +191,35 @@ def test_reports_page_custom_period_uses_sales_returns_and_stock_data(client: Te
     assert "RPT_MODEL_A" in response.text
     assert "RPT_WH" in response.text
     assert "2026-01-05" in response.text
+
+
+def test_reports_page_preset_period_overrides_stale_date_params(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.web import main as web_main
+
+    class FixedDate(date):
+        @classmethod
+        def today(cls) -> date:
+            return cls(2026, 3, 15)
+
+    monkeypatch.setattr(web_main, "date", FixedDate)
+
+    response = client.get(
+        "/reports?period=today&date_from=2026-01-01&date_to=2026-01-31",
+        headers={"cookie": "ui_lang=ru"},
+    )
+    assert response.status_code == 200
+    assert 'name="date_from" value="2026-03-15"' in response.text
+    assert 'name="date_to" value="2026-03-15"' in response.text
+    assert '<option value="custom"' in response.text
+
+
+def test_reports_page_contains_period_date_sync_script(client: TestClient) -> None:
+    response = client.get("/reports", headers={"cookie": "ui_lang=ru"})
+    assert response.status_code == 200
+    assert 'id="reportsPeriod"' in response.text
+    assert "computeRangeFromPreset" in response.text
+    assert "periodSelect.addEventListener('change'" in response.text
+    assert "periodSelect.value = 'custom'" in response.text
 
 
 @pytest.mark.parametrize(
