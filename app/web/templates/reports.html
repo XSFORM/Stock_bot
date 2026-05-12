@@ -100,7 +100,7 @@
   <form method="get" action="/reports" class="row g-2 align-items-end mb-4">
     <div class="col-12 col-md-3">
       <label class="form-label">{{ period_label }}</label>
-      <select name="period" class="form-select">
+      <select id="reportsPeriod" name="period" class="form-select">
         {% for option in period_options %}
         <option value="{{ option.key }}" {% if period == option.key %}selected{% endif %}>{{ option.label }}</option>
         {% endfor %}
@@ -108,11 +108,11 @@
     </div>
     <div class="col-6 col-md-3">
       <label class="form-label">{{ from_label }}</label>
-      <input type="date" class="form-control" name="date_from" value="{{ date_from }}">
+      <input id="reportsDateFrom" type="date" class="form-control" name="date_from" value="{{ date_from }}">
     </div>
     <div class="col-6 col-md-3">
       <label class="form-label">{{ to_label }}</label>
-      <input type="date" class="form-control" name="date_to" value="{{ date_to }}">
+      <input id="reportsDateTo" type="date" class="form-control" name="date_to" value="{{ date_to }}">
     </div>
     <div class="col-12 col-md-3">
       <button class="btn btn-primary w-100" type="submit">{{ apply_label }}</button>
@@ -205,6 +205,68 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
   (function () {
+    const periodSelect = document.getElementById('reportsPeriod');
+    const dateFromInput = document.getElementById('reportsDateFrom');
+    const dateToInput = document.getElementById('reportsDateTo');
+    const hasCustomOption = !!(periodSelect && periodSelect.querySelector('option[value="custom"]'));
+
+    const toIsoDate = (dateValue) => {
+      // Keep local-calendar date formatting (avoid UTC shifts from toISOString()).
+      const year = dateValue.getFullYear();
+      const month = String(dateValue.getMonth() + 1).padStart(2, '0');
+      const day = String(dateValue.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const computeRangeFromPreset = (preset) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (preset === 'today') {
+        const current = toIsoDate(today);
+        return { from: current, to: current };
+      }
+      if (preset === '7d') {
+        const start = new Date(today);
+        start.setDate(start.getDate() - 6);
+        return { from: toIsoDate(start), to: toIsoDate(today) };
+      }
+      if (preset === '30d') {
+        const start = new Date(today);
+        start.setDate(start.getDate() - 29);
+        return { from: toIsoDate(start), to: toIsoDate(today) };
+      }
+      if (preset === 'this_month') {
+        const start = new Date(today.getFullYear(), today.getMonth(), 1);
+        return { from: toIsoDate(start), to: toIsoDate(today) };
+      }
+      if (preset === 'last_month') {
+        const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const end = new Date(today.getFullYear(), today.getMonth(), 0);
+        return { from: toIsoDate(start), to: toIsoDate(end) };
+      }
+      return null;
+    };
+
+    if (periodSelect && dateFromInput && dateToInput) {
+      periodSelect.addEventListener('change', () => {
+        if (periodSelect.value === 'custom') return;
+        const range = computeRangeFromPreset(periodSelect.value);
+        if (!range) return;
+        dateFromInput.value = range.from;
+        dateToInput.value = range.to;
+      });
+
+      if (hasCustomOption) {
+        const switchToCustom = () => {
+          periodSelect.value = 'custom';
+        };
+        dateFromInput.addEventListener('change', switchToCustom);
+        dateFromInput.addEventListener('input', switchToCustom);
+        dateToInput.addEventListener('change', switchToCustom);
+        dateToInput.addEventListener('input', switchToCustom);
+      }
+    }
+
     const labels = {{ daily_labels | tojson }};
     const revenue = {{ daily_revenue | tojson }};
     const ctx = document.getElementById('salesChart');

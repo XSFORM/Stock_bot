@@ -393,19 +393,23 @@ def _static_asset_version(name: str) -> str:
 
 
 def _reports_period_bounds(
-    period: str, date_from: Optional[str], date_to: Optional[str]
+    period: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    *,
+    period_explicit: bool = True,
 ) -> tuple[date, date, str]:
-    today = date.today()
-    selected = (period or "this_month").strip().lower()
+    """Resolve final reports date bounds.
 
-    if date_from and date_to:
-        try:
-            start = date.fromisoformat(date_from)
-            end = date.fromisoformat(date_to)
-            if start <= end:
-                return start, end, "custom"
-        except ValueError:
-            pass
+    `period_explicit` indicates whether the request contained a `period` query
+    param. When period is omitted but valid date bounds are provided, the range
+    is treated as custom for backward-compatible direct links.
+    """
+    today = date.today()
+    # Keep empty by default so we can detect "period was not sent" separately
+    # (for backward-compatible custom date links); fallback to this_month is
+    # applied later by the default/final return path.
+    selected = (period or "").strip().lower()
 
     if selected == "today":
         return today, today, "today"
@@ -418,6 +422,16 @@ def _reports_period_bounds(
         last_month_end = this_month_start - timedelta(days=1)
         last_month_start = last_month_end.replace(day=1)
         return last_month_start, last_month_end, "last_month"
+    # Backward compatibility: allow direct links with date_from/date_to and no
+    # explicit period query param to keep working as custom ranges.
+    if selected == "custom" or (not period_explicit and date_from and date_to):
+        try:
+            start = date.fromisoformat(date_from)
+            end = date.fromisoformat(date_to)
+            if start <= end:
+                return start, end, "custom"
+        except ValueError:
+            pass
 
     this_month_start = today.replace(day=1)
     return this_month_start, today, "this_month"
@@ -431,6 +445,7 @@ def _reports_period_options(lang: str) -> list[dict[str, str]]:
             {"key": "30d", "label": "30 дней"},
             {"key": "this_month", "label": "Этот месяц"},
             {"key": "last_month", "label": "Прошлый месяц"},
+            {"key": "custom", "label": "Произвольный период"},
         ]
     if lang == "tm":
         return [
@@ -439,6 +454,7 @@ def _reports_period_options(lang: str) -> list[dict[str, str]]:
             {"key": "30d", "label": "30 gün"},
             {"key": "this_month", "label": "Şu aý"},
             {"key": "last_month", "label": "Geçen aý"},
+            {"key": "custom", "label": "Erkin döwür"},
         ]
     return [
         {"key": "today", "label": "Today"},
@@ -446,6 +462,7 @@ def _reports_period_options(lang: str) -> list[dict[str, str]]:
         {"key": "30d", "label": "30 days"},
         {"key": "this_month", "label": "This month"},
         {"key": "last_month", "label": "Last month"},
+        {"key": "custom", "label": "Custom period"},
     ]
 
 
@@ -1687,12 +1704,17 @@ def return_xlsx_view(request: Request, n: int):
 @app.get("/reports", response_class=HTMLResponse)
 def reports_page(
     request: Request,
-    period: str = "this_month",
+    period: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
 ):
     lang = _get_ui_lang(request)
-    period_from, period_to, selected_period = _reports_period_bounds(period, date_from, date_to)
+    period_from, period_to, selected_period = _reports_period_bounds(
+        period,
+        date_from,
+        date_to,
+        period_explicit="period" in request.query_params,
+    )
     snapshot = get_reports_snapshot(
         date_from=period_from.isoformat(),
         date_to=period_to.isoformat(),
