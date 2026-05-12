@@ -408,7 +408,7 @@ def _reports_period_bounds(
     today = date.today()
     # Keep empty by default so we can detect "period was not sent" separately
     # (for backward-compatible custom date links); fallback to this_month is
-    # applied later by the default return at the end of this function.
+    # applied later by the default/final return path.
     selected = (period or "").strip().lower()
 
     if selected == "today":
