@@ -208,7 +208,7 @@
     const periodSelect = document.getElementById('reportsPeriod');
     const dateFromInput = document.getElementById('reportsDateFrom');
     const dateToInput = document.getElementById('reportsDateTo');
-    const hasCustomOption = periodSelect && Array.from(periodSelect.options).some((option) => option.value === 'custom');
+    const hasCustomOption = !!(periodSelect && periodSelect.querySelector('option[value="custom"]'));
 
     const toIsoDate = (value) => {
       const year = value.getFullYear();
