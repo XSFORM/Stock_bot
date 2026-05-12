@@ -121,6 +121,7 @@ from app.db.sqlite import (
     get_total_suppliers_debt,
     get_total_stock_value,
     get_reports_snapshot,
+    get_earliest_operation_date,
     # invoice editing
     get_sale_invoice_full,
     get_sale_invoice_items_full,
@@ -422,6 +423,10 @@ def _reports_period_bounds(
         last_month_end = this_month_start - timedelta(days=1)
         last_month_start = last_month_end.replace(day=1)
         return last_month_start, last_month_end, "last_month"
+    if selected == "all_time":
+        earliest = get_earliest_operation_date()
+        start = earliest if earliest is not None else today
+        return start, today, "all_time"
     # Backward compatibility: allow direct links with date_from/date_to and no
     # explicit period query param to keep working as custom ranges.
     if selected == "custom" or (not period_explicit and date_from and date_to):
@@ -445,6 +450,7 @@ def _reports_period_options(lang: str) -> list[dict[str, str]]:
             {"key": "30d", "label": "30 дней"},
             {"key": "this_month", "label": "Этот месяц"},
             {"key": "last_month", "label": "Прошлый месяц"},
+            {"key": "all_time", "label": "За всё время"},
             {"key": "custom", "label": "Произвольный период"},
         ]
     if lang == "tm":
@@ -454,6 +460,7 @@ def _reports_period_options(lang: str) -> list[dict[str, str]]:
             {"key": "30d", "label": "30 gün"},
             {"key": "this_month", "label": "Şu aý"},
             {"key": "last_month", "label": "Geçen aý"},
+            {"key": "all_time", "label": "Tutuş döwür"},
             {"key": "custom", "label": "Erkin döwür"},
         ]
     return [
@@ -462,6 +469,7 @@ def _reports_period_options(lang: str) -> list[dict[str, str]]:
         {"key": "30d", "label": "30 days"},
         {"key": "this_month", "label": "This month"},
         {"key": "last_month", "label": "Last month"},
+        {"key": "all_time", "label": "All time"},
         {"key": "custom", "label": "Custom period"},
     ]
 
@@ -1747,6 +1755,7 @@ def reports_page(
             "daily_labels": day_labels,
             "daily_revenue": day_revenue,
             "daily_sales_count": day_sales_count,
+            "earliest_date": (get_earliest_operation_date() or period_from).isoformat(),
         },
     )
 
