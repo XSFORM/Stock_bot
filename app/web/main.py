@@ -399,6 +399,12 @@ def _reports_period_bounds(
     *,
     period_explicit: bool = True,
 ) -> tuple[date, date, str]:
+    """Resolve final reports date bounds.
+
+    `period_explicit` indicates whether the request contained a `period` query
+    param. When period is omitted but valid date bounds are provided, the range
+    is treated as custom for backward-compatible direct links.
+    """
     today = date.today()
     # Keep empty by default so we can detect "period was not sent" separately
     # (for backward-compatible custom date links); fallback to this_month is
