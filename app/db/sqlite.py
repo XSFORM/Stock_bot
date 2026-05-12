@@ -1421,6 +1421,21 @@ def get_reports_snapshot(
         ).fetchone()
         stock_qty_total = float(stock_row["stock_qty_total"]) if stock_row else 0.0
 
+        positions_row = conn.execute(
+            """
+            SELECT COUNT(*) AS positions_count
+            FROM (
+                SELECT s.product_id
+                FROM stock s
+                JOIN products p ON p.id = s.product_id
+                WHERE p.archived = 0
+                GROUP BY s.product_id
+                HAVING SUM(s.qty) > 0
+            )
+            """
+        ).fetchone()
+        stock_positions_count = int(positions_row["positions_count"]) if positions_row else 0
+
         top_rows = conn.execute(
             """
             SELECT
@@ -1475,7 +1490,6 @@ def get_reports_snapshot(
         ).fetchall()
 
     avg_check = (revenue / sales_count) if sales_count > 0 else 0.0
-    stock_value = get_total_stock_value()
 
     return {
         "revenue": round(revenue, 2),
@@ -1485,7 +1499,7 @@ def get_reports_snapshot(
         "sold_qty": round(sold_qty, 2),
         "avg_check": round(avg_check, 2),
         "stock_qty_total": round(stock_qty_total, 2),
-        "stock_value": round(stock_value, 2),
+        "stock_positions_count": stock_positions_count,
         "top_products": [_row_to_dict(r) for r in top_rows],
         "low_stock": [_row_to_dict(r) for r in low_stock_rows],
         "daily_sales": [_row_to_dict(r) for r in daily_rows],

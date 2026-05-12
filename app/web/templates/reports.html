@@ -30,7 +30,7 @@
 {% set metric_sold_qty = 'Продано товаров, шт.' %}
 {% set metric_avg_check = 'Средний чек' %}
 {% set metric_stock_qty = 'Товаров на складе, шт.' %}
-{% set metric_stock_value = 'Стоимость склада по закупке' %}
+{% set metric_stock_positions = 'Позиций с остатком' %}
 {% elif ui_lang == 'tm' %}
 {% set title = '📊 Hasabatlar' %}
 {% set subtitle = 'Satyş, yzyna gaýtaryş we ammar boýunça esasy analitika. Çylşyrymly peýda/marja hasaplamasy ýok.' %}
@@ -60,7 +60,7 @@
 {% set metric_sold_qty = 'Satylan haryt, sany' %}
 {% set metric_avg_check = 'Orta çek' %}
 {% set metric_stock_qty = 'Ammardaky haryt, sany' %}
-{% set metric_stock_value = 'Ammar gymmaty (satyn alyş)' %}
+{% set metric_stock_positions = 'Galyndyly pozisiýalar' %}
 {% else %}
 {% set title = '📊 Reports' %}
 {% set subtitle = 'Basic ERP analytics for sales, returns and stock without complex profit/margin calculations.' %}
@@ -90,7 +90,7 @@
 {% set metric_sold_qty = 'Sold units' %}
 {% set metric_avg_check = 'Average receipt' %}
 {% set metric_stock_qty = 'Units in stock' %}
-{% set metric_stock_value = 'Stock value (purchase)' %}
+{% set metric_stock_positions = 'Positions in stock' %}
 {% endif %}
 
 <div class="bg-white p-4 rounded shadow-sm">
@@ -128,7 +128,7 @@
     <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted">{{ metric_sold_qty }}</div><div class="h5 mb-0">{{ "%.2f"|format(reports.sold_qty) }}</div></div></div></div>
     <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted">{{ metric_avg_check }}</div><div class="h5 mb-0">{{ "%.2f"|format(reports.avg_check) }} $</div></div></div></div>
     <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted">{{ metric_stock_qty }}</div><div class="h5 mb-0">{{ "%.2f"|format(reports.stock_qty_total) }}</div></div></div></div>
-    <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted">{{ metric_stock_value }}</div><div class="h5 mb-0">{{ "%.2f"|format(reports.stock_value) }} $</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><div class="small text-muted">{{ metric_stock_positions }}</div><div class="h5 mb-0">{{ reports.stock_positions_count }}</div></div></div></div>
   </div>
 
   <div class="row g-4">
