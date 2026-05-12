@@ -120,6 +120,7 @@ from app.db.sqlite import (
     get_total_clients_debt,
     get_total_suppliers_debt,
     get_total_stock_value,
+    get_reports_snapshot,
     # invoice editing
     get_sale_invoice_full,
     get_sale_invoice_items_full,
@@ -389,6 +390,63 @@ def _static_asset_version(name: str) -> str:
         return str(path.stat().st_mtime_ns)
     except OSError:
         return "0"
+
+
+def _reports_period_bounds(
+    period: str, date_from: Optional[str], date_to: Optional[str]
+) -> tuple[date, date, str]:
+    today = date.today()
+    selected = (period or "this_month").strip().lower()
+
+    if date_from and date_to:
+        try:
+            start = date.fromisoformat(date_from)
+            end = date.fromisoformat(date_to)
+            if start <= end:
+                return start, end, "custom"
+        except ValueError:
+            pass
+
+    if selected == "today":
+        return today, today, "today"
+    if selected == "7d":
+        return today - timedelta(days=6), today, "7d"
+    if selected == "30d":
+        return today - timedelta(days=29), today, "30d"
+    if selected == "last_month":
+        this_month_start = today.replace(day=1)
+        last_month_end = this_month_start - timedelta(days=1)
+        last_month_start = last_month_end.replace(day=1)
+        return last_month_start, last_month_end, "last_month"
+
+    this_month_start = today.replace(day=1)
+    return this_month_start, today, "this_month"
+
+
+def _reports_period_options(lang: str) -> list[dict[str, str]]:
+    if lang == "ru":
+        return [
+            {"key": "today", "label": "Сегодня"},
+            {"key": "7d", "label": "7 дней"},
+            {"key": "30d", "label": "30 дней"},
+            {"key": "this_month", "label": "Этот месяц"},
+            {"key": "last_month", "label": "Прошлый месяц"},
+        ]
+    if lang == "tm":
+        return [
+            {"key": "today", "label": "Şu gün"},
+            {"key": "7d", "label": "7 gün"},
+            {"key": "30d", "label": "30 gün"},
+            {"key": "this_month", "label": "Şu aý"},
+            {"key": "last_month", "label": "Geçen aý"},
+        ]
+    return [
+        {"key": "today", "label": "Today"},
+        {"key": "7d", "label": "7 days"},
+        {"key": "30d", "label": "30 days"},
+        {"key": "this_month", "label": "This month"},
+        {"key": "last_month", "label": "Last month"},
+    ]
 
 
 @app.get("/api/brand-prefixes")
@@ -1627,8 +1685,48 @@ def return_xlsx_view(request: Request, n: int):
 # ──────────────────────────────────────────────────────────────────────────────
 
 @app.get("/reports", response_class=HTMLResponse)
-def reports_page(request: Request):
-    return _render(request, "reports.html", {})
+def reports_page(
+    request: Request,
+    period: str = "this_month",
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+):
+    lang = _get_ui_lang(request)
+    period_from, period_to, selected_period = _reports_period_bounds(period, date_from, date_to)
+    snapshot = get_reports_snapshot(
+        date_from=period_from.isoformat(),
+        date_to=period_to.isoformat(),
+        top_limit=10,
+        low_stock_threshold=2,
+    )
+
+    sales_by_day = {row["day"]: row for row in snapshot["daily_sales"]}
+    day_labels: list[str] = []
+    day_revenue: list[float] = []
+    day_sales_count: list[int] = []
+    current = period_from
+    while current <= period_to:
+        key = current.isoformat()
+        row = sales_by_day.get(key, {})
+        day_labels.append(key)
+        day_revenue.append(round(float(row.get("revenue", 0) or 0), 2))
+        day_sales_count.append(int(row.get("sales_count", 0) or 0))
+        current += timedelta(days=1)
+
+    return _render(
+        request,
+        "reports.html",
+        {
+            "reports": snapshot,
+            "period_options": _reports_period_options(lang),
+            "period": selected_period,
+            "date_from": period_from.isoformat(),
+            "date_to": period_to.isoformat(),
+            "daily_labels": day_labels,
+            "daily_revenue": day_revenue,
+            "daily_sales_count": day_sales_count,
+        },
+    )
 
 
 @app.get("/help", response_class=HTMLResponse)

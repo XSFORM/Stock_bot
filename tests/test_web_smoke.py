@@ -9,6 +9,7 @@ no attribute 'split'`` at runtime on a clean server installation.
 from __future__ import annotations
 
 import os
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -71,13 +72,124 @@ def test_index_nav_groups_and_reports_ru(client: TestClient) -> None:
     assert 'href="/help">Справочник<' not in response.text
 
 
-def test_reports_page_returns_placeholder_ru(client: TestClient) -> None:
-    """GET /reports in RU must render the safe future-analytics placeholder."""
+def test_reports_page_returns_basic_analytics_ru(client: TestClient) -> None:
+    """GET /reports in RU must render the working basic analytics page."""
     response = client.get("/reports", headers={"cookie": "ui_lang=ru"})
     assert response.status_code == 200
     assert "📊 Отчёты" in response.text
-    assert "Подготовленный раздел для будущей аналитики ERP" in response.text
-    assert "продажи, выручку, прибыль, складские остатки, расходы и графики" in response.text
+    assert "Базовая аналитика по продажам, возвратам и складу" in response.text
+    assert "Выручка за период" in response.text
+    assert "Топ товаров по продажам" in response.text
+    assert "Низкие остатки" in response.text
+    assert "id=\"salesChart\"" in response.text
+
+
+def test_reports_page_custom_period_uses_sales_returns_and_stock_data(client: TestClient) -> None:
+    from app.db.sqlite import DB_PATH
+
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute(
+            "INSERT OR IGNORE INTO warehouses (code, title) VALUES (?, ?)",
+            ("RPT_WH", "Report Warehouse"),
+        )
+        conn.execute(
+            "INSERT INTO clients (name, phone, note, created_at, archived) VALUES (?, '', '', datetime('now','localtime'), 0)",
+            ("Reports Test Client",),
+        )
+        client_id = int(conn.execute("SELECT id FROM clients WHERE name = ?", ("Reports Test Client",)).fetchone()[0])
+
+        conn.execute(
+            "INSERT INTO products (brand, model, name, wh_price, barcode, note, archived) VALUES (?, ?, ?, ?, '', '', 0)",
+            ("RPT_BRAND_A", "RPT_MODEL_A", "Report Product A", 30.0),
+        )
+        conn.execute(
+            "INSERT INTO products (brand, model, name, wh_price, barcode, note, archived) VALUES (?, ?, ?, ?, '', '', 0)",
+            ("RPT_BRAND_B", "RPT_MODEL_B", "Report Product B", 60.0),
+        )
+        product_a_id = int(
+            conn.execute(
+                "SELECT id FROM products WHERE brand = ? AND model = ?",
+                ("RPT_BRAND_A", "RPT_MODEL_A"),
+            ).fetchone()[0]
+        )
+        product_b_id = int(
+            conn.execute(
+                "SELECT id FROM products WHERE brand = ? AND model = ?",
+                ("RPT_BRAND_B", "RPT_MODEL_B"),
+            ).fetchone()[0]
+        )
+
+        conn.execute(
+            "INSERT INTO stock (warehouse_code, product_id, qty) VALUES (?, ?, ?)",
+            ("RPT_WH", product_a_id, 1.0),
+        )
+        conn.execute(
+            "INSERT INTO stock (warehouse_code, product_id, qty) VALUES (?, ?, ?)",
+            ("RPT_WH", product_b_id, 10.0),
+        )
+
+        conn.execute(
+            "INSERT INTO carts (client_id, warehouse_code, created_at, status) VALUES (?, ?, ?, 'CLOSED')",
+            (client_id, "RPT_WH", "2026-01-05 10:00:00"),
+        )
+        cart_in_period = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+        conn.execute(
+            "INSERT INTO invoices (cart_id, number, created_at, currency, total) VALUES (?, ?, ?, 'USD', ?)",
+            (cart_in_period, 900001, "2026-01-05 10:00:00", 100.0),
+        )
+        conn.execute(
+            "INSERT INTO cart_items (cart_id, product_id, free_line, free_name, qty, price_mode, unit_price, total) VALUES (?, ?, 0, '', ?, 'custom', ?, ?)",
+            (cart_in_period, product_a_id, 2.0, 50.0, 100.0),
+        )
+
+        conn.execute(
+            "INSERT INTO carts (client_id, warehouse_code, created_at, status) VALUES (?, ?, ?, 'CLOSED')",
+            (client_id, "RPT_WH", "2026-02-10 10:00:00"),
+        )
+        cart_out_period = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+        conn.execute(
+            "INSERT INTO invoices (cart_id, number, created_at, currency, total) VALUES (?, ?, ?, 'USD', ?)",
+            (cart_out_period, 900002, "2026-02-10 10:00:00", 200.0),
+        )
+        conn.execute(
+            "INSERT INTO cart_items (cart_id, product_id, free_line, free_name, qty, price_mode, unit_price, total) VALUES (?, ?, 0, '', ?, 'custom', ?, ?)",
+            (cart_out_period, product_b_id, 1.0, 200.0, 200.0),
+        )
+
+        conn.execute(
+            """
+            INSERT INTO return_invoices (number, client_id, warehouse_code, status, created_at, currency, total, note)
+            VALUES (?, ?, ?, 'DONE', ?, 'USD', ?, '')
+            """,
+            (910001, client_id, "RPT_WH", "2026-01-06 15:00:00", 20.0),
+        )
+        return_invoice_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+        conn.execute(
+            """
+            INSERT INTO return_items (invoice_id, product_id, qty, unit_price, total)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (return_invoice_id, product_a_id, 1.0, 20.0, 20.0),
+        )
+        conn.commit()
+
+    response = client.get(
+        "/reports?date_from=2026-01-01&date_to=2026-01-31",
+        headers={"cookie": "ui_lang=ru"},
+    )
+    assert response.status_code == 200
+    assert "Выручка за период" in response.text
+    assert "100.00 $" in response.text
+    assert "Возвраты за период" in response.text
+    assert "20.00 $" in response.text
+    assert "Чистая выручка" in response.text
+    assert "80.00 $" in response.text
+    assert "Количество продаж / чеков" in response.text
+    assert "RPT_BRAND_A" in response.text
+    assert "RPT_MODEL_A" in response.text
+    assert "RPT_WH" in response.text
+    assert "2026-01-05" in response.text
 
 
 @pytest.mark.parametrize(

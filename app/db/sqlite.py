@@ -1366,6 +1366,132 @@ def get_total_stock_value() -> float:
         return round(float(row["val"]) if row else 0.0, 4)
 
 
+def get_reports_snapshot(
+    date_from: str,
+    date_to: str,
+    top_limit: int = 10,
+    low_stock_threshold: float = 2,
+) -> dict[str, Any]:
+    with _connect() as conn:
+        sales_row = conn.execute(
+            """
+            SELECT COALESCE(SUM(i.total), 0) AS revenue,
+                   COUNT(*) AS sales_count
+            FROM invoices i
+            JOIN carts c ON c.id = i.cart_id
+            WHERE c.status = 'CLOSED'
+              AND date(i.created_at) BETWEEN ? AND ?
+            """,
+            (date_from, date_to),
+        ).fetchone()
+        revenue = float(sales_row["revenue"]) if sales_row else 0.0
+        sales_count = int(sales_row["sales_count"]) if sales_row else 0
+
+        sold_row = conn.execute(
+            """
+            SELECT COALESCE(SUM(ci.qty), 0) AS sold_qty
+            FROM cart_items ci
+            JOIN carts c ON c.id = ci.cart_id
+            JOIN invoices i ON i.cart_id = c.id
+            WHERE c.status = 'CLOSED'
+              AND date(i.created_at) BETWEEN ? AND ?
+            """,
+            (date_from, date_to),
+        ).fetchone()
+        sold_qty = float(sold_row["sold_qty"]) if sold_row else 0.0
+
+        returns_row = conn.execute(
+            """
+            SELECT COALESCE(SUM(total), 0) AS returns_total
+            FROM return_invoices
+            WHERE status = 'DONE'
+              AND date(created_at) BETWEEN ? AND ?
+            """,
+            (date_from, date_to),
+        ).fetchone()
+        returns_total = float(returns_row["returns_total"]) if returns_row else 0.0
+
+        stock_row = conn.execute(
+            """
+            SELECT COALESCE(SUM(s.qty), 0) AS stock_qty_total
+            FROM stock s
+            JOIN products p ON p.id = s.product_id
+            WHERE p.archived = 0
+            """
+        ).fetchone()
+        stock_qty_total = float(stock_row["stock_qty_total"]) if stock_row else 0.0
+
+        top_rows = conn.execute(
+            """
+            SELECT
+                COALESCE(p.brand, '') AS brand,
+                COALESCE(p.model, ci.free_name, '') AS model,
+                COALESCE(p.name, ci.free_name, '') AS name,
+                COALESCE(SUM(ci.qty), 0) AS sold_qty,
+                COALESCE(SUM(ci.total), 0) AS sales_total
+            FROM cart_items ci
+            JOIN carts c ON c.id = ci.cart_id
+            JOIN invoices i ON i.cart_id = c.id
+            LEFT JOIN products p ON p.id = ci.product_id
+            WHERE c.status = 'CLOSED'
+              AND date(i.created_at) BETWEEN ? AND ?
+            GROUP BY ci.product_id, ci.free_name, p.brand, p.model, p.name
+            ORDER BY sold_qty DESC, sales_total DESC
+            LIMIT ?
+            """,
+            (date_from, date_to, int(top_limit)),
+        ).fetchall()
+
+        low_stock_rows = conn.execute(
+            """
+            SELECT s.warehouse_code,
+                   COALESCE(p.brand, '') AS brand,
+                   COALESCE(p.model, '') AS model,
+                   COALESCE(p.name, '') AS name,
+                   s.qty
+            FROM stock s
+            JOIN products p ON p.id = s.product_id
+            WHERE p.archived = 0
+              AND s.qty <= ?
+            ORDER BY s.qty ASC, p.brand ASC, p.model ASC, p.name ASC
+            LIMIT 20
+            """,
+            (float(low_stock_threshold),),
+        ).fetchall()
+
+        daily_rows = conn.execute(
+            """
+            SELECT date(i.created_at) AS day,
+                   COALESCE(SUM(i.total), 0) AS revenue,
+                   COUNT(*) AS sales_count
+            FROM invoices i
+            JOIN carts c ON c.id = i.cart_id
+            WHERE c.status = 'CLOSED'
+              AND date(i.created_at) BETWEEN ? AND ?
+            GROUP BY date(i.created_at)
+            ORDER BY day ASC
+            """,
+            (date_from, date_to),
+        ).fetchall()
+
+    avg_check = (revenue / sales_count) if sales_count > 0 else 0.0
+    stock_value = get_total_stock_value()
+
+    return {
+        "revenue": round(revenue, 2),
+        "returns_total": round(returns_total, 2),
+        "net_revenue": round(revenue - returns_total, 2),
+        "sales_count": sales_count,
+        "sold_qty": round(sold_qty, 2),
+        "avg_check": round(avg_check, 2),
+        "stock_qty_total": round(stock_qty_total, 2),
+        "stock_value": round(stock_value, 2),
+        "top_products": [_row_to_dict(r) for r in top_rows],
+        "low_stock": [_row_to_dict(r) for r in low_stock_rows],
+        "daily_sales": [_row_to_dict(r) for r in daily_rows],
+    }
+
+
 # ── Warehouses ────────────────────────────────────────────────────────────────
 
 
