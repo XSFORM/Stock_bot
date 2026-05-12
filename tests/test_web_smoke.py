@@ -222,6 +222,45 @@ def test_reports_page_contains_period_date_sync_script(client: TestClient) -> No
     assert "periodSelect.value = 'custom'" in response.text
 
 
+def test_reports_all_time_period_preset_present(client: TestClient) -> None:
+    """The all_time preset option must appear in all supported languages."""
+    for lang, expected_label in [("ru", "За всё время"), ("en", "All time"), ("tm", "Tutuş döwür")]:
+        response = client.get("/reports", headers={"cookie": f"ui_lang={lang}"})
+        assert response.status_code == 200
+        assert 'value="all_time"' in response.text, f"all_time option missing for lang={lang}"
+        assert expected_label in response.text, f"Label missing for lang={lang}"
+
+
+def test_reports_all_time_period_overrides_stale_date_params(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """period=all_time must override stale date_from/date_to params."""
+    from app.web import main as web_main
+
+    class FixedDate(date):
+        @classmethod
+        def today(cls) -> date:
+            return cls(2026, 5, 12)
+
+    monkeypatch.setattr(web_main, "date", FixedDate)
+
+    response = client.get(
+        "/reports?period=all_time&date_from=2099-01-01&date_to=2099-12-31",
+        headers={"cookie": "ui_lang=ru"},
+    )
+    assert response.status_code == 200
+    # date_to must be today
+    assert 'name="date_to" value="2026-05-12"' in response.text
+    # date_from must NOT be the stale 2099 date
+    assert 'name="date_from" value="2099-01-01"' not in response.text
+
+
+def test_reports_all_time_js_handler_present(client: TestClient) -> None:
+    """The JS computeRangeFromPreset must contain an all_time branch."""
+    response = client.get("/reports", headers={"cookie": "ui_lang=ru"})
+    assert response.status_code == 200
+    assert "all_time" in response.text
+    assert "earliest" in response.text
+
+
 @pytest.mark.parametrize(
     ("lang", "manual_entry_text"),
     [

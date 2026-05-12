@@ -1492,6 +1492,37 @@ def get_reports_snapshot(
     }
 
 
+def get_earliest_operation_date() -> Optional[date]:
+    """Return the earliest date of any closed sale or completed return.
+
+    Returns None if the database has no operations yet.
+    """
+    from datetime import date as _date
+
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT MIN(earliest) AS earliest
+            FROM (
+                SELECT MIN(date(i.created_at)) AS earliest
+                FROM invoices i
+                JOIN carts c ON c.id = i.cart_id
+                WHERE c.status = 'CLOSED'
+                UNION ALL
+                SELECT MIN(date(ri.created_at)) AS earliest
+                FROM return_invoices ri
+                WHERE ri.status = 'DONE'
+            )
+            """
+        ).fetchone()
+        if row and row["earliest"]:
+            try:
+                return _date.fromisoformat(row["earliest"])
+            except ValueError:
+                pass
+    return None
+
+
 # ── Warehouses ────────────────────────────────────────────────────────────────
 
 
