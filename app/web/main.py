@@ -413,10 +413,8 @@ def _reports_period_bounds(
         last_month_end = this_month_start - timedelta(days=1)
         last_month_start = last_month_end.replace(day=1)
         return last_month_start, last_month_end, "last_month"
-    if selected == "this_month":
-        this_month_start = today.replace(day=1)
-        return this_month_start, today, "this_month"
-
+    # Backward compatibility: allow direct links with date_from/date_to and no
+    # explicit period query param to keep working as custom ranges.
     if selected == "custom" or (not period_explicit and date_from and date_to):
         try:
             start = date.fromisoformat(date_from)

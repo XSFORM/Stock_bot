@@ -255,13 +255,15 @@
         dateToInput.value = range.to;
       });
 
-      const switchToCustom = () => {
-        if (hasCustomOption) periodSelect.value = 'custom';
-      };
-      dateFromInput.addEventListener('change', switchToCustom);
-      dateFromInput.addEventListener('input', switchToCustom);
-      dateToInput.addEventListener('change', switchToCustom);
-      dateToInput.addEventListener('input', switchToCustom);
+      if (hasCustomOption) {
+        const switchToCustom = () => {
+          periodSelect.value = 'custom';
+        };
+        dateFromInput.addEventListener('change', switchToCustom);
+        dateFromInput.addEventListener('input', switchToCustom);
+        dateToInput.addEventListener('change', switchToCustom);
+        dateToInput.addEventListener('input', switchToCustom);
+      }
     }
 
     const labels = {{ daily_labels | tojson }};
