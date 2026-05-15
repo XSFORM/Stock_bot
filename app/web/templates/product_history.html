@@ -3,7 +3,7 @@
 <div class="bg-white p-3 rounded shadow-sm">
   <h4>{{ t.history_title }}: {{ product.brand }} {{ product.model }} <small class="text-muted fs-6">{{ product.name }}</small></h4>
   <div class="mb-3">
-    <a href="/stock" class="btn btn-sm btn-outline-secondary">{{ t.history_back_to_stock }}</a>
+    <a href="{{ return_to if return_to else '/stock' }}" class="btn btn-sm btn-outline-secondary">{{ t.history_back_to_stock }}</a>
   </div>
 
   <table class="table table-sm table-striped align-middle">

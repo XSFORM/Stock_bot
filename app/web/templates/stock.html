@@ -116,7 +116,9 @@
                 {% endif %}
               </li>
               <li>
-                <a class="dropdown-item" href="/products/{{ r.product_id }}/history">{{ t.nav_history }}</a>
+                <a class="dropdown-item"
+                   href="/products/{{ r.product_id }}/history?return_to={{ ('/stock?warehouse=' ~ selected_warehouse ~ '&q=' ~ search_q ~ '&sort=' ~ sort_by ~ '&show_archived=' ~ show_archived)|urlencode }}"
+                   target="_blank" rel="noopener noreferrer">{{ t.nav_history }}</a>
               </li>
               <li>
                 <a class="dropdown-item" href="/products?highlight={{ r.product_id }}#product-{{ r.product_id }}">{{ t.stock_open_in_products }}</a>
