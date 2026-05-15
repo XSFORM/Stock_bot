@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from datetime import date
 from typing import Any, List, Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from fastapi import FastAPI, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse
@@ -749,13 +749,16 @@ def stock_product_unarchive(product_id: int, warehouse: str = Form(""), q: str =
 
 
 @app.get("/products/{product_id}/history", response_class=HTMLResponse)
-def product_history_get(request: Request, product_id: int):
+def product_history_get(request: Request, product_id: int, return_to: str = ""):
     prods = list_products(include_archived=True)
     prod = next((p for p in prods if p["id"] == product_id), None)
     if not prod:
         return RedirectResponse(url="/stock?msg=product_not_found", status_code=303)
     events = list_history_by_product(product_id)
-    return _render(request, "product_history.html", {"product": prod, "events": events})
+    # Validate return_to to prevent open redirect: only allow relative paths without scheme/netloc
+    _parsed = urlparse(return_to)
+    safe_return_to = return_to if (return_to.startswith("/") and not _parsed.scheme and not _parsed.netloc) else ""
+    return _render(request, "product_history.html", {"product": prod, "events": events, "return_to": safe_return_to})
 
 
 @app.get("/stock/xlsx")
