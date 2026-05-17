@@ -1404,3 +1404,141 @@ def test_get_invoice_by_number_includes_client_id(client: TestClient) -> None:
     assert f'value="{the_client_id}" selected' in html, (
         f"Client {client_name} (id={the_client_id}) must be pre-selected in the edit form"
     )
+
+
+def test_sale_invoice_edit_accepts_off_stock_item_row(client: TestClient) -> None:
+    import uuid
+    from app.db import sqlite as db
+
+    suffix = uuid.uuid4().hex[:8]
+    warehouse_code = f"ES{suffix[:4]}".upper()
+    client_name = f"Edit Sale Off-stock {suffix}"
+
+    ok, err = db.add_client(client_name)
+    assert ok, err
+    db.add_warehouse(warehouse_code, f"WH {suffix}")
+    product_id = db.add_product(f"EB{suffix}".upper(), f"m{suffix}".lower(), "Invoice Edit Product", 10.0)
+    assert product_id > 0
+
+    client_id = next(c["id"] for c in db.list_clients(include_archived=True) if c["name"] == client_name)
+
+    with db._connect() as conn:  # noqa: SLF001 - integration setup
+        conn.execute(
+            "INSERT INTO stock (warehouse_code, product_id, qty) VALUES (?, ?, ?)",
+            (warehouse_code, product_id, 10.0),
+        )
+        next_num = conn.execute("SELECT COALESCE(MAX(number), 0) + 1 AS n FROM invoices").fetchone()["n"]
+        conn.execute(
+            "INSERT INTO carts (client_id, warehouse_code, status) VALUES (?, ?, 'CLOSED')",
+            (client_id, warehouse_code),
+        )
+        cart_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        conn.execute(
+            "INSERT INTO invoices (cart_id, number, total) VALUES (?, ?, ?)",
+            (cart_id, next_num, 10.0),
+        )
+        conn.execute(
+            "INSERT INTO cart_items (cart_id, product_id, free_line, free_name, qty, price_mode, unit_price, total)"
+            " VALUES (?, ?, 0, '', ?, 'custom', ?, ?)",
+            (cart_id, product_id, 1.0, 10.0, 10.0),
+        )
+        conn.commit()
+
+    response = client.post(
+        f"/invoices/sale/{next_num}/edit",
+        data={
+            "client_id": str(client_id),
+            "warehouse_code": warehouse_code,
+            "product_id": [str(product_id), ""],
+            "qty": ["1", "2"],
+            "unit_price": ["11.00", "3.50"],
+            "free_name": ["", "Delivery service"],
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/invoices?tab=sale&msg=invoice_updated"
+
+    with db._connect() as conn:  # noqa: SLF001 - verification query
+        rows = conn.execute(
+            "SELECT product_id, free_line, free_name, qty, unit_price"
+            " FROM cart_items WHERE cart_id = ? ORDER BY id",
+            (cart_id,),
+        ).fetchall()
+    assert len(rows) == 2
+    assert rows[0]["product_id"] == product_id
+    assert rows[0]["free_line"] == 0
+    assert float(rows[0]["qty"]) == 1.0
+    assert float(rows[0]["unit_price"]) == 11.0
+    assert rows[1]["product_id"] is None
+    assert rows[1]["free_line"] == 1
+    assert rows[1]["free_name"] == "Delivery service"
+    assert float(rows[1]["qty"]) == 2.0
+    assert float(rows[1]["unit_price"]) == 3.5
+
+
+def test_sale_invoice_edit_rejects_invalid_stock_product_id(client: TestClient) -> None:
+    import uuid
+    from app.db import sqlite as db
+
+    suffix = uuid.uuid4().hex[:8]
+    warehouse_code = f"IV{suffix[:4]}".upper()
+    client_name = f"Edit Sale Invalid Product {suffix}"
+
+    ok, err = db.add_client(client_name)
+    assert ok, err
+    db.add_warehouse(warehouse_code, f"WH {suffix}")
+    product_id = db.add_product(f"IB{suffix}".upper(), f"v{suffix}".lower(), "Invoice Edit Invalid Product", 10.0)
+    assert product_id > 0
+
+    client_id = next(c["id"] for c in db.list_clients(include_archived=True) if c["name"] == client_name)
+
+    with db._connect() as conn:  # noqa: SLF001 - integration setup
+        conn.execute(
+            "INSERT INTO stock (warehouse_code, product_id, qty) VALUES (?, ?, ?)",
+            (warehouse_code, product_id, 10.0),
+        )
+        next_num = conn.execute("SELECT COALESCE(MAX(number), 0) + 1 AS n FROM invoices").fetchone()["n"]
+        conn.execute(
+            "INSERT INTO carts (client_id, warehouse_code, status) VALUES (?, ?, 'CLOSED')",
+            (client_id, warehouse_code),
+        )
+        cart_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        conn.execute(
+            "INSERT INTO invoices (cart_id, number, total) VALUES (?, ?, ?)",
+            (cart_id, next_num, 10.0),
+        )
+        conn.execute(
+            "INSERT INTO cart_items (cart_id, product_id, free_line, free_name, qty, price_mode, unit_price, total)"
+            " VALUES (?, ?, 0, '', ?, 'custom', ?, ?)",
+            (cart_id, product_id, 1.0, 10.0, 10.0),
+        )
+        conn.commit()
+
+    response = client.post(
+        f"/invoices/sale/{next_num}/edit",
+        data={
+            "client_id": str(client_id),
+            "warehouse_code": warehouse_code,
+            "product_id": ["bad-id"],
+            "qty": ["1"],
+            "unit_price": ["11.00"],
+            "free_name": [""],
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/invoices/sale/{next_num}/edit?msg=invoice_edit_select_product"
+
+    with db._connect() as conn:  # noqa: SLF001 - verification query
+        rows = conn.execute(
+            "SELECT product_id, free_line, free_name, qty, unit_price"
+            " FROM cart_items WHERE cart_id = ? ORDER BY id",
+            (cart_id,),
+        ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["product_id"] == product_id
+    assert rows[0]["free_line"] == 0
+    assert rows[0]["free_name"] == ""
+    assert float(rows[0]["qty"]) == 1.0
+    assert float(rows[0]["unit_price"]) == 10.0
