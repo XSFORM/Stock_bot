@@ -1465,16 +1465,41 @@ def invoice_sale_edit_post(
     number: int,
     client_id: int = Form(...),
     warehouse_code: str = Form(...),
-    product_id: List[Optional[int]] = Form(...),
+    product_id: List[str] = Form(...),
     qty: List[float] = Form(...),
     unit_price: List[float] = Form(...),
     free_name: List[str] = Form(default=[]),
 ):
     new_items = []
-    for i, (pid, q, up) in enumerate(zip(product_id, qty, unit_price)):
-        fname = free_name[i] if i < len(free_name) else ""
+    for i, (pid_raw, q, up) in enumerate(zip(product_id, qty, unit_price)):
+        fname = (free_name[i] if i < len(free_name) else "").strip()
+        pid_text = (pid_raw or "").strip()
+        if fname:
+            if pid_text:
+                try:
+                    pid: Optional[int] = int(pid_text)
+                except ValueError:
+                    return RedirectResponse(
+                        url=f"/invoices/sale/{number}/edit?msg=invoice_edit_select_product",
+                        status_code=303,
+                    )
+            else:
+                pid = None
+        else:
+            if not pid_text:
+                return RedirectResponse(
+                    url=f"/invoices/sale/{number}/edit?msg=invoice_edit_select_product",
+                    status_code=303,
+                )
+            try:
+                pid = int(pid_text)
+            except ValueError:
+                return RedirectResponse(
+                    url=f"/invoices/sale/{number}/edit?msg=invoice_edit_select_product",
+                    status_code=303,
+                )
         new_items.append({
-            "product_id": pid if pid else None,
+            "product_id": pid,
             "free_name": fname,
             "qty": q,
             "unit_price": up,
