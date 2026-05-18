@@ -1,5 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+  .client-history-table .col-balance-after {
+    min-width: 11rem;
+    white-space: nowrap;
+    text-align: right;
+    padding-right: 1rem;
+  }
+
+  .client-history-table .col-note {
+    padding-left: 0.85rem;
+  }
+</style>
 <div class="bg-white p-3 rounded shadow-sm">
   <div class="d-flex align-items-center gap-3 mb-3">
     <h4 class="mb-0">{{ t.history_title }} — {{ client.name }}</h4>
@@ -19,15 +31,15 @@
     {% endif %}
   </div>
 
-  <table class="table table-sm table-striped align-middle">
+  <table class="table table-sm table-striped align-middle client-history-table">
     <thead class="table-dark">
       <tr>
         <th>{{ t.lbl_date_time }}</th>
         <th>{{ t.lbl_type }}</th>
         <th>{{ t.lbl_ref }}</th>
         <th class="text-end">{{ t.lbl_amount_usd }}</th>
-        <th class="text-end">{{ t.lbl_balance_after }}</th>
-        <th>{{ t.lbl_note }}</th>
+        <th class="col-balance-after">{{ t.lbl_balance_after }}</th>
+        <th class="col-note">{{ t.lbl_note }}</th>
         <th>{{ t.lbl_actions }}</th>
       </tr>
     </thead>
@@ -65,7 +77,7 @@
             <span class="text-muted">{{ "%.2f"|format(amount) }}</span>
           {% endif %}
         </td>
-        <td class="text-end">
+        <td class="col-balance-after">
           {% set balance_after = ev.get('balance_after', 0) | float %}
           {% if balance_after > 0 %}
             <span class="text-danger fw-semibold">{{ "%.2f"|format(balance_after) }} USD</span>
@@ -75,7 +87,7 @@
             <span class="text-muted">0.00 USD</span>
           {% endif %}
         </td>
-        <td>{{ ev.get('note') or '—' }}</td>
+        <td class="col-note">{{ ev.get('note') or '—' }}</td>
         <td>
           {% if ev.get('kind') == 'INVOICE' and ev.get('view_url') and ev.get('download_url') %}
             <a class="btn btn-sm btn-outline-primary" href="{{ ev.get('view_url') }}" target="_blank">{{ t.btn_view }}</a>

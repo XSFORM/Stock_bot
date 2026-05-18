@@ -1238,6 +1238,9 @@ def test_client_history_empty_state_colspan_matches_visible_columns(client: Test
     assert "Balance after" in html
     assert 'colspan="7"' in html
     assert 'colspan="6"' not in html
+    assert "client-history-table" in html
+    assert "col-balance-after" in html
+    assert "col-note" in html
 
 
 def test_invoice_search_filters_all_done_invoice_lists(client: TestClient) -> None:
