@@ -187,7 +187,7 @@ class TestSalePageMarkupButtons:
         resp = web_client.get("/sale")
         assert resp.status_code == 200
 
-    def test_sale_template_clears_validation_and_selection_state_on_input(self) -> None:
+    def test_sale_template_has_validation_and_selection_reset_logic(self) -> None:
         """Sale template script must clear stale browser validation and selection state."""
         from app.web.main import templates
 
