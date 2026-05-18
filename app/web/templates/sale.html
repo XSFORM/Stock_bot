@@ -312,8 +312,17 @@
       });
     });
 
+    function resetSelectedProduct() {
+      selectedProduct = null;
+      brandInput.value = '';
+      modelInput.value = '';
+      qtyInput.removeAttribute('max');
+    }
+
     searchInput.addEventListener('input', function () {
       clearTimeout(debounceTimer);
+      resetSelectedProduct();
+      searchInput.setCustomValidity('');
       const q = this.value.trim();
       if (q.length < 1) { hideSuggestions(); return; }
       debounceTimer = setTimeout(() => fetchSuggestions(q), 220);
@@ -354,6 +363,7 @@
       brandInput.value  = item.brand;
       modelInput.value  = item.model;
       qtyInput.max      = item.qty;
+      searchInput.setCustomValidity('');
       const mode = getSelectedRadio();
       autoFillPrice(mode);
       hideSuggestions();

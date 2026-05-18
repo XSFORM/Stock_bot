@@ -10,6 +10,7 @@ Covers:
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -185,6 +186,20 @@ class TestSalePageMarkupButtons:
         self._set_presets([10, 15, 25], 15)
         resp = web_client.get("/sale")
         assert resp.status_code == 200
+
+    def test_sale_template_clears_validation_and_selection_state_on_input(self) -> None:
+        """Sale template script must clear stale browser validation and selection state."""
+        from app.web.main import templates
+
+        template_dir = Path(templates.env.loader.searchpath[0])
+        template = template_dir / "sale.html"
+        text = template.read_text(encoding="utf-8")
+        assert "function resetSelectedProduct()" in text
+        assert "selectedProduct = null;" in text
+        assert "brandInput.value = '';" in text
+        assert "modelInput.value = '';" in text
+        assert "qtyInput.removeAttribute('max');" in text
+        assert "searchInput.setCustomValidity('');" in text
 
     def test_admin_settings_shows_active_presets_checked(self, web_client: TestClient) -> None:
         """Admin settings page shows checked checkboxes for active presets."""
