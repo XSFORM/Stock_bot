@@ -3323,6 +3323,7 @@ def list_history_by_product(product_id: int) -> list[dict[str, Any]]:
 _ALLOWED_MARKUPS: list[int] = [5, 10, 15, 20, 25, 30]
 _FALLBACK_MARKUP_PRESETS: list[int] = [10, 15, 25]
 _FALLBACK_DEFAULT_MARKUP: int = 15
+_DEFAULT_TMT_RATE: float = 19.50
 
 
 def get_setting(key: str, default: str = "") -> str:
@@ -3384,7 +3385,7 @@ def get_sale_default_markup() -> int:
 def get_pocket_price_tmt_rate() -> float:
     """Return the USD → TMT exchange rate for Pocket Price display.
 
-    Falls back to 19.50 when the setting is missing or invalid.
+    Falls back to _DEFAULT_TMT_RATE when the setting is missing or invalid.
     """
     raw = get_setting("pocket_price_tmt_rate", "")
     if raw:
@@ -3394,7 +3395,7 @@ def get_pocket_price_tmt_rate() -> float:
                 return val
         except (ValueError, TypeError):
             pass
-    return 19.50
+    return _DEFAULT_TMT_RATE
 
 
 def get_pocket_price_show_tmt() -> bool:

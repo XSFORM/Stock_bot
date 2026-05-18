@@ -149,6 +149,7 @@ from app.db.sqlite import (
     get_pocket_price_tmt_rate,
     get_pocket_price_show_tmt,
     _ALLOWED_MARKUPS,
+    _DEFAULT_TMT_RATE,
     create_session,
     is_valid_session,
     delete_session,
@@ -2003,13 +2004,13 @@ async def admin_settings_markup(request: Request):
 @app.post("/admin/settings/pocket-price-tmt")
 async def admin_settings_pocket_price_tmt(request: Request):
     form = await request.form()
-    rate_raw = form.get("pocket_tmt_rate", "19.50")
+    rate_raw = form.get("pocket_tmt_rate", "")
     try:
         rate = float(rate_raw)
         if rate <= 0:
-            rate = 19.50
+            rate = _DEFAULT_TMT_RATE
     except (ValueError, TypeError):
-        rate = 19.50
+        rate = _DEFAULT_TMT_RATE
     show_tmt = "1" if form.get("pocket_tmt_show") == "1" else "0"
     set_setting("pocket_price_tmt_rate", f"{rate:.4f}")
     set_setting("pocket_price_show_tmt", show_tmt)

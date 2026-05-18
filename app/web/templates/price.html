@@ -294,7 +294,7 @@ function fmt(v) { return v != null ? Number(v).toFixed(2) : '—'; }
 function fmtTmt(v) {
   if (v == null) return '—';
   var tmt = Number(v) * _tmtRate;
-  // Round to nearest 0.10
+  // Round to 1 decimal place (nearest 0.1 M), display with 2 decimals
   tmt = Math.round(tmt * 10) / 10;
   return tmt.toFixed(2);
 }
