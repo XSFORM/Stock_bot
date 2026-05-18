@@ -43,6 +43,7 @@
     .price-card .prod-name { font-size: 1rem; font-weight: 600; }
     .price-card .prod-sub { font-size: 0.8rem; color: #aaa; }
     .price-big { font-size: 1.4rem; font-weight: 700; color: #4aff91; }
+    .price-tmt { font-size: 0.95rem; font-weight: 600; color: #ffc107; }
     .price-small { font-size: 0.9rem; color: #aaa; }
     #scan-status { font-size: 0.85rem; color: #ffc107; min-height: 1.4em; }
     .result-list-item {
@@ -108,6 +109,8 @@ var _deviceId = '';
 var _mode = 'SIMPLE';
 var _showQty = false;
 var _showBuyPrice = false;
+var _showTmt = {{ pocket_tmt_show | tojson }};
+var _tmtRate = {{ pocket_tmt_rate | tojson }};
 var _qtyLabel = {{ (t.price_qty_label if t is defined and t.price_qty_label is defined else 'Qty') | tojson }};
 var _buyPriceLabel = {{ (t.price_buy_price_label if t is defined and t.price_buy_price_label is defined else 'Incoming') | tojson }};
 var _stream = null;
@@ -256,17 +259,22 @@ function selectProduct(idx) {
     '<div class="prod-sub">' + name + '</div>';
   if (_mode === 'FULL') {
     var fullPrices = [];
-    if (p.price_wh10 != null) fullPrices.push(fmt(p.price_wh10));
-    if (p.price_wh25 != null) fullPrices.push(fmt(p.price_wh25));
+    if (p.price_wh10 != null) fullPrices.push({usd: p.price_wh10});
+    if (p.price_wh25 != null) fullPrices.push({usd: p.price_wh25});
     html += '<div class="d-flex gap-3 mt-2 flex-wrap">' +
-      fullPrices.map(function(v) { return '<div><div class="price-big">' + v + ' $</div></div>'; }).join('') +
+      fullPrices.map(function(item) {
+        var usdStr = fmt(item.usd) + ' $';
+        var tmtStr = _showTmt ? '<div class="price-tmt">' + fmtTmt(item.usd) + ' M</div>' : '';
+        return '<div><div class="price-big">' + usdStr + '</div>' + tmtStr + '</div>';
+      }).join('') +
     '</div>';
     if (_showBuyPrice && p.buy_price != null) {
       html += '<div class="mt-2 small text-warning">' + escHtml(_buyPriceLabel) + ': ' + fmt(p.buy_price) + ' $</div>';
     }
   } else {
     var wh25 = fmt(p.price_wh25);
-    html += '<div class="mt-2"><div class="price-big">' + wh25 + ' $</div></div>';
+    var tmtLine = _showTmt ? '<div class="price-tmt">' + fmtTmt(p.price_wh25) + ' M</div>' : '';
+    html += '<div class="mt-2"><div class="price-big">' + wh25 + ' $</div>' + tmtLine + '</div>';
   }
   if (_showQty && p.qty_total != null) {
     html += '<div class="mt-2 small text-info">' + _qtyLabel + ': ' + Number(p.qty_total).toFixed(0) + '</div>';
@@ -283,6 +291,13 @@ function showList() {
 }
 
 function fmt(v) { return v != null ? Number(v).toFixed(2) : '—'; }
+function fmtTmt(v) {
+  if (v == null) return '—';
+  var tmt = Number(v) * _tmtRate;
+  // Round to nearest 0.10
+  tmt = Math.round(tmt * 10) / 10;
+  return tmt.toFixed(2);
+}
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
           .replace(/"/g,'&quot;').replace(/'/g,'&#39;');

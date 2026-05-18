@@ -3381,6 +3381,30 @@ def get_sale_default_markup() -> int:
     return presets[0]
 
 
+def get_pocket_price_tmt_rate() -> float:
+    """Return the USD → TMT exchange rate for Pocket Price display.
+
+    Falls back to 19.50 when the setting is missing or invalid.
+    """
+    raw = get_setting("pocket_price_tmt_rate", "")
+    if raw:
+        try:
+            val = float(raw)
+            if val > 0:
+                return val
+        except (ValueError, TypeError):
+            pass
+    return 19.50
+
+
+def get_pocket_price_show_tmt() -> bool:
+    """Return whether TMT prices should be shown in Pocket Price.
+
+    Falls back to False when the setting is missing.
+    """
+    return get_setting("pocket_price_show_tmt", "0") == "1"
+
+
 # ── Sessions ──────────────────────────────────────────────────────────────────
 
 
