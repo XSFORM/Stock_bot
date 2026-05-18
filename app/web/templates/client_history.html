@@ -26,6 +26,7 @@
         <th>{{ t.lbl_type }}</th>
         <th>{{ t.lbl_ref }}</th>
         <th class="text-end">{{ t.lbl_amount_usd }}</th>
+        <th class="text-end">{{ t.lbl_balance_after }}</th>
         <th>{{ t.lbl_note }}</th>
         <th>{{ t.lbl_actions }}</th>
       </tr>
@@ -64,6 +65,16 @@
             <span class="text-muted">{{ "%.2f"|format(amount) }}</span>
           {% endif %}
         </td>
+        <td class="text-end">
+          {% set balance_after = ev.get('balance_after', 0) | float %}
+          {% if balance_after > 0 %}
+            <span class="text-danger fw-semibold">{{ "%.2f"|format(balance_after) }} USD</span>
+          {% elif balance_after < 0 %}
+            <span class="text-success fw-semibold">{{ "%.2f"|format(balance_after) }} USD</span>
+          {% else %}
+            <span class="text-muted">0.00 USD</span>
+          {% endif %}
+        </td>
         <td>{{ ev.get('note') or '—' }}</td>
         <td>
           {% if ev.get('kind') == 'INVOICE' and ev.get('view_url') and ev.get('download_url') %}
@@ -79,7 +90,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="6" class="text-muted text-center">{{ t.client_history_no_events }}</td>
+        <td colspan="7" class="text-muted text-center">{{ t.client_history_no_events }}</td>
       </tr>
       {% endfor %}
     </tbody>

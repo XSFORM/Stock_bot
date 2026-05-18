@@ -1130,6 +1130,17 @@ def get_client_history(client_id: int) -> list[dict[str, Any]]:
                 "amount": float(row.get("amount") or 0),
                 "note": row.get("note", ""),
             })
+        events.sort(key=lambda x: x.get("created_at", ""))
+        running_balance = 0.0
+        for ev in events:
+            amount = float(ev.get("amount") or 0)
+            kind = str(ev.get("kind") or "")
+            if kind == "INVOICE":
+                running_balance += amount
+            elif kind in {"RETURN", "LEDGER"}:
+                running_balance -= amount
+            ev["balance_after"] = round(running_balance, 2)
+
         events.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return events
 

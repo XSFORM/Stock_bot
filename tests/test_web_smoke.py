@@ -1000,6 +1000,75 @@ def test_client_history_renders_datetime_and_debt_signage(client: TestClient) ->
     assert "--331.00" not in html
     assert "text-success\">-165.00" in html
     assert "text-danger\">+100.00" in html
+    assert "Balance after" in html
+    assert "100.00 USD" in html
+    assert "60.00 USD" in html
+    assert "391.00 USD" in html
+
+
+def test_get_client_history_balance_after_is_chronological(client: TestClient) -> None:
+    import uuid
+    from app.db import sqlite as db
+
+    suffix = uuid.uuid4().hex[:8]
+    client_name = f"History Balance {suffix}"
+    ok, err = db.add_client(client_name)
+    assert ok, err
+    db.add_warehouse("1416_SHOP", "Shop")
+    product_id = db.add_product(f"BB{suffix}".upper(), f"b{suffix}".lower(), "Balance Product", 10.0)
+    assert product_id > 0
+
+    client_id = next(c["id"] for c in db.list_clients(include_archived=True) if c["name"] == client_name)
+
+    with db._connect() as conn:  # noqa: SLF001 - deterministic timeline setup
+        next_invoice = conn.execute("SELECT COALESCE(MAX(number), 0) + 1 AS n FROM invoices").fetchone()["n"]
+
+        conn.execute(
+            "INSERT INTO carts (client_id, warehouse_code, status, created_at) VALUES (?, ?, 'CLOSED', ?)",
+            (client_id, "1416_SHOP", "2026-04-16 11:19:42"),
+        )
+        cart_id_1 = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        conn.execute(
+            "INSERT INTO cart_items (cart_id, product_id, qty, price_mode, unit_price, total)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (cart_id_1, product_id, 1, "custom", 179.13, 179.13),
+        )
+        conn.execute(
+            "INSERT INTO invoices (cart_id, number, created_at, total) VALUES (?, ?, ?, ?)",
+            (cart_id_1, next_invoice, "2026-04-16 11:19:42", 179.13),
+        )
+        conn.execute(
+            "INSERT INTO client_ledger (client_id, created_at, amount, note) VALUES (?, ?, ?, ?)",
+            (client_id, "2026-04-16 13:35:32", 179.13, "Payment"),
+        )
+
+        conn.execute(
+            "INSERT INTO carts (client_id, warehouse_code, status, created_at) VALUES (?, ?, 'CLOSED', ?)",
+            (client_id, "1416_SHOP", "2026-04-18 11:45:36"),
+        )
+        cart_id_2 = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        conn.execute(
+            "INSERT INTO cart_items (cart_id, product_id, qty, price_mode, unit_price, total)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (cart_id_2, product_id, 1, "custom", 203.92, 203.92),
+        )
+        conn.execute(
+            "INSERT INTO invoices (cart_id, number, created_at, total) VALUES (?, ?, ?, ?)",
+            (cart_id_2, next_invoice + 1, "2026-04-18 11:45:36", 203.92),
+        )
+        conn.execute(
+            "INSERT INTO client_ledger (client_id, created_at, amount, note) VALUES (?, ?, ?, ?)",
+            (client_id, "2026-04-19 08:58:54", 106.49, "Partial payment"),
+        )
+        conn.commit()
+
+    events = db.get_client_history(client_id)
+    by_dt = {str(ev["created_at"]): float(ev["balance_after"]) for ev in events}
+    assert by_dt["2026-04-16 11:19:42"] == pytest.approx(179.13)
+    assert by_dt["2026-04-16 13:35:32"] == pytest.approx(0.0)
+    assert by_dt["2026-04-18 11:45:36"] == pytest.approx(203.92)
+    assert by_dt["2026-04-19 08:58:54"] == pytest.approx(97.43)
+    assert float(events[0]["balance_after"]) == pytest.approx(97.43)
 
 
 def test_supplier_debt_flow_with_receive_and_ledger(client: TestClient) -> None:
@@ -1166,9 +1235,9 @@ def test_client_history_empty_state_colspan_matches_visible_columns(client: Test
     assert response.status_code == 200
     html = response.text
 
-    assert "Balance after" not in html
-    assert 'colspan="6"' in html
-    assert 'colspan="7"' not in html
+    assert "Balance after" in html
+    assert 'colspan="7"' in html
+    assert 'colspan="6"' not in html
 
 
 def test_invoice_search_filters_all_done_invoice_lists(client: TestClient) -> None:
