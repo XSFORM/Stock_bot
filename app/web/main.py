@@ -146,6 +146,8 @@ from app.db.sqlite import (
     set_setting,
     get_sale_markup_presets,
     get_sale_default_markup,
+    get_pocket_price_tmt_rate,
+    get_pocket_price_show_tmt,
     _ALLOWED_MARKUPS,
     create_session,
     is_valid_session,
@@ -1933,6 +1935,8 @@ def admin_settings_get(request: Request, saved: str = "", msg: str = ""):
             "markup_presets": get_sale_markup_presets(),
             "default_markup": get_sale_default_markup(),
             "allowed_markups": _ALLOWED_MARKUPS,
+            "pocket_tmt_rate": get_pocket_price_tmt_rate(),
+            "pocket_tmt_show": get_pocket_price_show_tmt(),
         },
     )
 
@@ -1993,6 +1997,22 @@ async def admin_settings_markup(request: Request):
         )
     set_setting("sale_markup_presets", ",".join(str(p) for p in active))
     set_setting("sale_default_markup", str(default))
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
+@app.post("/admin/settings/pocket-price-tmt")
+async def admin_settings_pocket_price_tmt(request: Request):
+    form = await request.form()
+    rate_raw = form.get("pocket_tmt_rate", "19.50")
+    try:
+        rate = float(rate_raw)
+        if rate <= 0:
+            rate = 19.50
+    except (ValueError, TypeError):
+        rate = 19.50
+    show_tmt = "1" if form.get("pocket_tmt_show") == "1" else "0"
+    set_setting("pocket_price_tmt_rate", f"{rate:.4f}")
+    set_setting("pocket_price_show_tmt", show_tmt)
     return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
 
 
@@ -2519,6 +2539,8 @@ def price_page(request: Request):
             "ui_theme": theme,
             "price_bg_version": _static_asset_version("price-bg.jpg"),
             "t": get_translations(lang),
+            "pocket_tmt_rate": get_pocket_price_tmt_rate(),
+            "pocket_tmt_show": get_pocket_price_show_tmt(),
         },
     )
 

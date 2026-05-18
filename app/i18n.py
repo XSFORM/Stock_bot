@@ -338,6 +338,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_markup_save": "Save markup settings",
         "settings_markup_error_empty": "At least one markup % must be active.",
         "settings_markup_error_default": "Default markup must be among the active presets.",
+        # Pocket Price TMT settings
+        "settings_pocket_tmt_heading": "Pocket Price — TMT Prices",
+        "settings_pocket_tmt_rate_label": "Exchange rate USD → TMT",
+        "settings_pocket_tmt_show_label": "Show TMT prices in Pocket Price",
+        "settings_pocket_tmt_save": "Save TMT settings",
         # Backup / Restore section
         "settings_backup_heading": "Backup / Restore",
         "settings_backup_create_btn": "Create backup",
@@ -820,6 +825,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_markup_save": "Сохранить настройки наценки",
         "settings_markup_error_empty": "Хотя бы одна наценка должна быть активна.",
         "settings_markup_error_default": "Наценка по умолчанию должна быть среди активных.",
+        # Pocket Price TMT settings
+        "settings_pocket_tmt_heading": "Pocket Price — цены в манатах",
+        "settings_pocket_tmt_rate_label": "Курс USD → TMT",
+        "settings_pocket_tmt_show_label": "Показывать манаты в Pocket Price",
+        "settings_pocket_tmt_save": "Сохранить настройки манатов",
         # Backup / Restore section
         "settings_backup_heading": "Резервная копия / Восстановление",
         "settings_backup_create_btn": "Создать резервную копию",
@@ -1302,6 +1312,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_markup_save": "Nasenkany saklamak",
         "settings_markup_error_empty": "Azyndan bir nasenkasy işjeň bolmaly.",
         "settings_markup_error_default": "Deslapky nasenkasy işjeň nasenkalar arasynda bolmaly.",
+        # Pocket Price TMT settings
+        "settings_pocket_tmt_heading": "Pocket Price — TMT bahalary",
+        "settings_pocket_tmt_rate_label": "USD → TMT kursy",
+        "settings_pocket_tmt_show_label": "Pocket Price-da manat bahalaryny görkezmek",
+        "settings_pocket_tmt_save": "TMT sazlamalaryny saklamak",
         # Backup / Restore section
         "settings_backup_heading": "Ätiýaç nusgasy / Dikeltmek",
         "settings_backup_create_btn": "Ätiýaç nusgasyny döret",
