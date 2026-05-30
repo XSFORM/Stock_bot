@@ -141,7 +141,7 @@
 <div class="modal fade" id="adjustmentModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
-      <form method="post" id="adjustmentForm">
+      <form method="post" id="adjustmentForm" onsubmit="return confirmLedgerSubmit(this, 'adj', '-');">
         <input type="hidden" name="show_archived" id="adj_show_archived">
         <div class="modal-header">
           <h5 class="modal-title">{{ t.suppliers_adjust_title }} <span id="adj_supplier_name"></span></h5>
@@ -170,7 +170,7 @@
 <div class="modal fade" id="addDebtModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
-      <form method="post" id="addDebtForm">
+      <form method="post" id="addDebtForm" onsubmit="return confirmLedgerSubmit(this, 'debt', '+');">
         <input type="hidden" name="show_archived" id="debt_show_archived">
         <div class="modal-header">
           <h5 class="modal-title">{{ t.suppliers_add_debt_title }} <span id="debt_supplier_name"></span></h5>
@@ -213,5 +213,47 @@ function openAddDebt(supplierId, supplierName, showArchived) {
   document.getElementById('debt_note').value = '';
   new bootstrap.Modal(document.getElementById('addDebtModal')).show();
 }
+
+function confirmLedgerSubmit(form, prefix, sign) {
+  var amountInput = form.querySelector('input[name="amount"]');
+  var amount = parseFloat(amountInput.value || '0');
+  if (!amount || amount <= 0) {
+    alert('Please enter a valid amount.');
+    return false;
+  }
+  var noteInput = form.querySelector('input[name="note"], textarea[name="note"]');
+  var note = (noteInput ? (noteInput.value || '') : '').trim();
+  var actionLabel = (sign === '-') ? '-' : '+';
+  // Find target name from the modal title (already shows client name)
+  var titleSpan = form.querySelector('.modal-title span');
+  var name = (titleSpan ? titleSpan.textContent : '').trim();
+  var msg = 'Confirm:\n\n' + actionLabel + amount.toFixed(2) + ' USD'
+          + (name ? ('\n' + name) : '')
+          + (note ? ('\nNote: ' + note) : '')
+          + '\n\nAre you sure?';
+  if (!confirm(msg)) {
+    return false;
+  }
+  // Disable the submit button immediately so a slow network can't be
+  // multi-clicked through.
+  var btn = form.querySelector('button[type="submit"]');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '...';
+  }
+  return true;
+}
+
+// Re-enable submit buttons when modals re-open (for the next operation)
+['adjustmentModal', 'addDebtModal'].forEach(function(id) {
+  var m = document.getElementById(id);
+  if (m) {
+    m.addEventListener('show.bs.modal', function() {
+      var btn = m.querySelector('button[type="submit"]');
+      if (btn) { btn.disabled = false; }
+    });
+  }
+});
+
 </script>
 {% endblock %}

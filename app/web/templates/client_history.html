@@ -18,6 +18,16 @@
     <a class="btn btn-sm btn-outline-secondary" href="/clients">{{ t.btn_back }}</a>
   </div>
 
+  {% if request.query_params.get('msg') == 'ledger_deleted' %}
+    <div class="alert alert-success py-2 small">{{ t.client_history_deleted_ok | default('Entry deleted.') }}</div>
+  {% elif request.query_params.get('msg') == 'ledger_not_found' %}
+    <div class="alert alert-warning py-2 small">{{ t.client_history_deleted_not_found | default('Entry not found.') }}</div>
+  {% elif request.query_params.get('msg') == 'ledger_wrong_client' %}
+    <div class="alert alert-danger py-2 small">{{ t.client_history_deleted_wrong | default('Wrong client.') }}</div>
+  {% elif request.query_params.get('msg', '').startswith('ledger_delete_error:') %}
+    <div class="alert alert-danger py-2 small">{{ t.client_history_deleted_error | default('Delete error: ') }}{{ request.query_params.get('msg')[20:] | e }}</div>
+  {% endif %}
+
   <div class="mb-3">
     <strong>{{ t.clients_current_balance }}</strong>
     {% if balance > 0 %}
@@ -95,6 +105,15 @@
           {% elif ev.get('kind') == 'RETURN' and ev.get('view_url') and ev.get('download_url') %}
             <a class="btn btn-sm btn-outline-primary" href="{{ ev.get('view_url') }}" target="_blank">{{ t.btn_view }}</a>
             <a class="btn btn-sm btn-outline-warning" href="{{ ev.get('download_url') }}">{{ t.btn_download }}</a>
+          {% elif ev.get('kind') == 'LEDGER' and ev.get('ref') %}
+            {% set _amt = ev.get('amount', 0) | float %}
+            {% set _kind_lbl = (t.client_history_payment if _amt > 0 else t.client_history_debt_added) | default('') %}
+            <form method="post"
+                  action="/clients/{{ client.id }}/ledger/{{ ev.get('ref') }}/delete"
+                  class="d-inline"
+                  onsubmit="return confirm({{ ((t.client_history_confirm_delete or 'Delete this entry?\nThis change is irreversible.') ~ '\n\n' ~ (ev.get('dt') or '') ~ '  ' ~ ('%.2f' | format(_amt | abs)) ~ ' USD') | tojson }});">
+              <button type="submit" class="btn btn-sm btn-outline-danger">{{ t.btn_delete | default('Delete') }}</button>
+            </form>
           {% else %}
             —
           {% endif %}

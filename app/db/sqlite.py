@@ -1027,6 +1027,31 @@ def add_client_debt(
         return False, str(exc)
 
 
+def delete_client_ledger_entry(entry_id: int, client_id: int) -> tuple[bool, str]:
+    """
+    Delete a single row from client_ledger by its id.
+
+    Verifies the entry belongs to the given client_id (security: prevents
+    deleting another client's row by guessing the id). Only ledger
+    adjustments are deletable - invoice/return events come from other tables
+    and are not affected by this function.
+    """
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT client_id FROM client_ledger WHERE id = ?", (entry_id,)
+            ).fetchone()
+            if row is None:
+                return False, "not_found"
+            if int(row["client_id"]) != int(client_id):
+                return False, "wrong_client"
+            conn.execute("DELETE FROM client_ledger WHERE id = ?", (entry_id,))
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
 def get_client_balance(client_id: int) -> float:
     """
     Balance = total from done sale invoices - sum(client_ledger.amount).
@@ -1257,6 +1282,24 @@ def add_supplier_debt(
     except Exception as exc:
         return False, str(exc)
 
+
+
+def delete_supplier_ledger_entry(entry_id: int, supplier_id: int) -> tuple[bool, str]:
+    """Delete a single supplier_ledger row by id. Verifies it belongs to supplier_id."""
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT supplier_id FROM supplier_ledger WHERE id = ?", (entry_id,)
+            ).fetchone()
+            if row is None:
+                return False, "not_found"
+            if int(row["supplier_id"]) != int(supplier_id):
+                return False, "wrong_supplier"
+            conn.execute("DELETE FROM supplier_ledger WHERE id = ?", (entry_id,))
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
 
 def get_supplier_balance(supplier_id: int) -> float:
     """

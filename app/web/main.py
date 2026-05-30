@@ -46,6 +46,7 @@ from app.db.sqlite import (
     set_client_archived,
     add_client_adjustment,
     add_client_debt,
+    delete_client_ledger_entry,
     get_client_balance,
     list_clients_with_balance,
     get_client_history,
@@ -57,6 +58,7 @@ from app.db.sqlite import (
     set_supplier_archived,
     add_supplier_adjustment,
     add_supplier_debt,
+    delete_supplier_ledger_entry,
     get_supplier_balance,
     list_suppliers_with_balance,
     get_supplier_history,
@@ -1087,6 +1089,24 @@ def client_debt_add_post(
     return RedirectResponse(url=f"/clients?msg={quote(msg)}&show_archived={show_archived}", status_code=303)
 
 
+@app.post("/clients/{client_id}/ledger/{ledger_id}/delete")
+def client_ledger_delete_post(client_id: int, ledger_id: int):
+    """Delete a single payment/debt ledger entry. Verifies ownership."""
+    ok, err = delete_client_ledger_entry(int(ledger_id), int(client_id))
+    if ok:
+        msg = "ledger_deleted"
+    elif err == "not_found":
+        msg = "ledger_not_found"
+    elif err == "wrong_client":
+        msg = "ledger_wrong_client"
+    else:
+        msg = f"ledger_delete_error:{err}"
+    return RedirectResponse(
+        url=f"/clients/{int(client_id)}/history?msg={quote(msg)}",
+        status_code=303,
+    )
+
+
 @app.get("/clients/{client_id}/history", response_class=HTMLResponse)
 def client_history_get(request: Request, client_id: int):
     c = get_client(int(client_id))
@@ -1178,6 +1198,24 @@ def supplier_debt_add_post(
     ok, err = add_supplier_debt(int(supplier_id), amount, note)
     msg = f"debt_added:{amount:.2f}" if ok else f"debt_add_error:{err}"
     return RedirectResponse(url=f"/suppliers?msg={quote(msg)}&show_archived={show_archived}", status_code=303)
+
+
+@app.post("/suppliers/{supplier_id}/ledger/{ledger_id}/delete")
+def supplier_ledger_delete_post(supplier_id: int, ledger_id: int):
+    """Delete a single supplier ledger entry. Verifies ownership."""
+    ok, err = delete_supplier_ledger_entry(int(ledger_id), int(supplier_id))
+    if ok:
+        msg = "ledger_deleted"
+    elif err == "not_found":
+        msg = "ledger_not_found"
+    elif err == "wrong_supplier":
+        msg = "ledger_wrong_supplier"
+    else:
+        msg = f"ledger_delete_error:{err}"
+    return RedirectResponse(
+        url=f"/suppliers/{int(supplier_id)}/history?msg={quote(msg)}",
+        status_code=303,
+    )
 
 
 @app.get("/suppliers/{supplier_id}/history", response_class=HTMLResponse)
