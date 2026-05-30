@@ -72,6 +72,7 @@
         <td>
           <a class="btn btn-sm btn-outline-primary" href="/sale/xlsx/view?n={{ inv.number }}" target="_blank">{{ t.btn_view_xlsx }}</a>
           <a class="btn btn-sm btn-outline-success" href="/sale/xlsx?n={{ inv.number }}">{{ t.btn_download_xlsx }}</a>
+          <a class="btn btn-sm btn-outline-danger" href="/sale/pdf?n={{ inv.number }}">{{ t.btn_download_pdf }}</a>
           <a class="btn btn-sm btn-outline-warning" href="/invoices/sale/{{ inv.number }}/edit">{{ t.btn_edit_invoice }}</a>
           <form method="post" action="/invoices/sale/{{ inv.number }}/delete" style="display:inline" onsubmit="return confirm('{{ t.confirm_delete_invoice }}')">
             <button type="submit" class="btn btn-sm btn-outline-danger">{{ t.btn_delete_invoice }}</button>

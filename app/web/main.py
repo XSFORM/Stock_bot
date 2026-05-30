@@ -1256,6 +1256,7 @@ def sale_get(request: Request, msg: str = ""):
             "cart_qty": cart_qty,
             "markup_presets": get_sale_markup_presets(),
             "default_markup": get_sale_default_markup(),
+            "last_sale_warehouse": get_setting("last_sale_warehouse", ""),
         },
     )
 
@@ -1265,6 +1266,11 @@ def sale_start(client_id: int = Form(...), warehouse_code: str = Form("1416_SHOP
     ok, err, cart_id = cart_start_by_id(int(client_id), warehouse_code)
     if not ok:
         return RedirectResponse(url=f"/sale?msg={err}", status_code=303)
+    # Remember last chosen warehouse so the form pre-selects it next time.
+    try:
+        set_setting("last_sale_warehouse", warehouse_code.strip())
+    except Exception:
+        pass
     return RedirectResponse(url="/sale?msg=cart_started", status_code=303)
 
 
@@ -1377,6 +1383,25 @@ def sale_xlsx(n: int):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.get("/sale/pdf")
+def sale_pdf(n: int):
+    """Download styled PDF for an existing sale invoice (generated on the fly)."""
+    invoice = get_invoice_by_number(int(n))
+    if not invoice:
+        return RedirectResponse(url="/sale?msg=invoice_not_found", status_code=303)
+    items = get_invoice_items_by_number(int(n))
+    try:
+        pdf_path = generate_invoice_pdf(invoice, items)
+    except Exception:
+        logger.exception("Failed to generate PDF for invoice #%s", n)
+        return RedirectResponse(
+            url=f"/invoices?tab=sale&msg=update_error:pdf",
+            status_code=303,
+        )
+    filename = f"invoice_{int(invoice['number']):06d}.pdf"
+    return FileResponse(pdf_path, filename=filename, media_type="application/pdf")
 
 
 @app.get("/sale/xlsx/view", response_class=HTMLResponse)

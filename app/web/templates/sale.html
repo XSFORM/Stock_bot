@@ -82,8 +82,10 @@
                 {% endfor %}
               </select>
               <select class="form-select form-select-sm" name="warehouse_code" required style="max-width:200px">
+                {# Default: last warehouse used in a sale (saved on /sale/start). Fallback to 1416_SHOP. #}
+                {% set _wh_default = (last_sale_warehouse if last_sale_warehouse else '1416_SHOP') %}
                 {% for w in warehouses %}
-                  <option value="{{ w }}"{% if w == '1416_SHOP' %} selected{% endif %}>{{ warehouse_labels.get(w, w) }} ({{ w }})</option>
+                  <option value="{{ w }}"{% if w == _wh_default %} selected{% endif %}>{{ warehouse_labels.get(w, w) }} ({{ w }})</option>
                 {% endfor %}
               </select>
               <button class="btn btn-sm btn-secondary">{{ t.btn_start }}</button>
@@ -337,7 +339,7 @@
     });
 
     function fetchSuggestions(q) {
-      const wh = {{ (open_cart.warehouse_code if open_cart else '1416_SHOP') | tojson }};
+      const wh = {{ (open_cart.warehouse_code if open_cart else (last_sale_warehouse or '1416_SHOP')) | tojson }};
       fetch('/api/stock-search?warehouse=' + encodeURIComponent(wh) + '&q=' + encodeURIComponent(q))
         .then(r => r.json())
         .then(data => renderSuggestions(data.results || []))
