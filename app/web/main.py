@@ -990,9 +990,69 @@ def move_all_post(
 
 # ---------------- clients --------------------
 
+_CLIENTS_FILTER_COOKIE_MAX_AGE = 365 * 86400  # 1 year
+
+
 @app.get("/clients", response_class=HTMLResponse)
-def clients_get(request: Request, msg: str = "", show_archived: int = 0, q: str = "", sort_by: str = "name_asc"):
+def clients_get(
+    request: Request,
+    msg: str = "",
+    show_archived: Optional[int] = None,
+    q: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    client_type: Optional[str] = None,
+):
+    """
+    The page remembers filter / sort / archived choices across navigation via
+    cookies. When user explicitly sends any of those in the URL (form submit
+    or direct link), the new value is saved and used. When user returns to
+    /clients without query params (e.g. from a client history page or another
+    section), the last saved cookie values are restored.
+    """
+    # Did the user pass each parameter explicitly?
+    qp = request.query_params
+    has_q = "q" in qp
+    has_sort = "sort_by" in qp
+    has_arch = "show_archived" in qp
+    has_type = "client_type" in qp
+
+    # Resolve final values: explicit URL param > cookie > default
+    if not has_q:
+        q = request.cookies.get("clients_q", "")
+    if q is None:
+        q = ""
+
+    if not has_sort:
+        sort_by = request.cookies.get("clients_sort_by", "name_asc")
+    if not sort_by:
+        sort_by = "name_asc"
+
+    if not has_arch:
+        try:
+            show_archived = int(request.cookies.get("clients_show_archived", "0") or "0")
+        except (TypeError, ValueError):
+            show_archived = 0
+    if show_archived is None:
+        show_archived = 0
+
+    # Wholesale / retail filter
+    if not has_type:
+        client_type = request.cookies.get("clients_type", "all")
+    if not client_type:
+        client_type = "all"
+    if client_type not in ("all", "wholesale", "retail"):
+        client_type = "all"
+
     clients = list_clients_with_balance(include_archived=bool(show_archived))
+    # Compute counts per type (over the full archived-filtered list)
+    type_counts = {
+        "all": len(clients),
+        "wholesale": sum(1 for c in clients if (c.get("client_type") or "wholesale") == "wholesale"),
+        "retail":    sum(1 for c in clients if (c.get("client_type") or "wholesale") == "retail"),
+    }
+    # Then narrow by client_type tab
+    if client_type != "all":
+        clients = [c for c in clients if (c.get("client_type") or "wholesale") == client_type]
     # Filter by search query (name, phone, note)
     if q:
         q_lower = q.lower()
@@ -1011,13 +1071,24 @@ def clients_get(request: Request, msg: str = "", show_archived: int = 0, q: str 
         clients = sorted(clients, key=lambda c: c.get("balance") or 0)
     else:  # name_asc (default)
         clients = sorted(clients, key=lambda c: (c.get("name") or "").lower())
-    return _render(request, "clients.html", {
+
+    response = _render(request, "clients.html", {
         "clients": clients,
         "message": msg,
         "show_archived": show_archived,
         "search_q": q,
         "sort_by": sort_by,
+        "client_type": client_type,
+        "type_counts": type_counts,
     })
+    # Persist current filter so navigating away and coming back keeps it.
+    response.set_cookie("clients_q", q, max_age=_CLIENTS_FILTER_COOKIE_MAX_AGE, samesite="lax")
+    response.set_cookie("clients_sort_by", sort_by, max_age=_CLIENTS_FILTER_COOKIE_MAX_AGE, samesite="lax")
+    response.set_cookie("clients_show_archived", str(int(show_archived)),
+                        max_age=_CLIENTS_FILTER_COOKIE_MAX_AGE, samesite="lax")
+    response.set_cookie("clients_type", client_type,
+                        max_age=_CLIENTS_FILTER_COOKIE_MAX_AGE, samesite="lax")
+    return response
 
 
 @app.post("/clients/add")
@@ -1025,8 +1096,9 @@ def clients_add(
     name: str = Form(...),
     phone: str = Form(""),
     note: str = Form(""),
+    client_type: str = Form("wholesale"),
 ):
-    ok, err = add_client(name, phone, note)
+    ok, err = add_client(name, phone, note, client_type)
     msg = "OK" if ok else err
     return RedirectResponse(url=f"/clients?msg={msg}", status_code=303)
 
@@ -1059,8 +1131,9 @@ def client_edit_post(
     name: str = Form(...),
     phone: str = Form(""),
     note: str = Form(""),
+    client_type: str = Form(""),
 ):
-    ok, err = update_client(int(client_id), name, phone, note)
+    ok, err = update_client(int(client_id), name, phone, note, (client_type or None))
     msg = "OK" if ok else err
     return RedirectResponse(url=f"/clients/{int(client_id)}/edit?msg={msg}", status_code=303)
 
@@ -1122,13 +1195,24 @@ def client_history_get(request: Request, client_id: int):
 
 
 @app.get("/suppliers", response_class=HTMLResponse)
-def suppliers_get(request: Request, msg: str = "", show_archived: int = 0):
+def suppliers_get(request: Request, msg: str = "", show_archived: Optional[int] = None):
+    # Remember show_archived across navigation via cookie.
+    if "show_archived" not in request.query_params:
+        try:
+            show_archived = int(request.cookies.get("suppliers_show_archived", "0") or "0")
+        except (TypeError, ValueError):
+            show_archived = 0
+    if show_archived is None:
+        show_archived = 0
     suppliers = list_suppliers_with_balance(include_archived=bool(show_archived))
-    return _render(
+    response = _render(
         request,
         "suppliers.html",
         {"suppliers": suppliers, "message": msg, "show_archived": show_archived},
     )
+    response.set_cookie("suppliers_show_archived", str(int(show_archived)),
+                        max_age=_CLIENTS_FILTER_COOKIE_MAX_AGE, samesite="lax")
+    return response
 
 
 @app.post("/suppliers/add")

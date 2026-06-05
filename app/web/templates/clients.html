@@ -5,6 +5,32 @@
     <div class="bg-white p-3 rounded shadow-sm">
       <h4>{{ t.clients_title }}</h4>
 
+      {# Wholesale / retail tabs #}
+      <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+          <a class="nav-link {% if client_type == 'all' %}active{% endif %}"
+             href="/clients?client_type=all">
+            {{ t.clients_tab_all | default('Все') }}
+            <span class="badge bg-secondary ms-1">{{ type_counts.all }}</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if client_type == 'wholesale' %}active{% endif %}"
+             href="/clients?client_type=wholesale">
+            {{ t.clients_tab_wholesale | default('Оптовики') }}
+            <span class="badge bg-secondary ms-1">{{ type_counts.wholesale }}</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if client_type == 'retail' %}active{% endif %}"
+             href="/clients?client_type=retail">
+            {{ t.clients_tab_retail | default('Штучные') }}
+            <span class="badge bg-secondary ms-1">{{ type_counts.retail }}</span>
+          </a>
+        </li>
+      </ul>
+
+
       {% if request.query_params.get('msg') %}
         {% set _msg = request.query_params.get('msg') %}
         {% set _colon = _msg.find(':') %}
@@ -158,6 +184,13 @@
         <div class="mb-2">
           <label class="form-label">{{ t.lbl_note }}</label>
           <textarea class="form-control" name="note" rows="3"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">{{ t.clients_type_label | default('Тип клиента') }}</label>
+          <select class="form-select" name="client_type">
+            <option value="wholesale" selected>📦 {{ t.clients_tab_wholesale | default('Оптовик') }}</option>
+            <option value="retail">🛒 {{ t.clients_tab_retail | default('Штучный') }}</option>
+          </select>
         </div>
         <button class="btn btn-primary">{{ t.btn_save }}</button>
       </form>

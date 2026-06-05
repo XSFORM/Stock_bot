@@ -55,6 +55,15 @@ def _ensure_clients_archived(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE clients ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
 
 
+def _ensure_clients_client_type_column(conn: sqlite3.Connection) -> None:
+    """Add client_type column: 'wholesale' (default) or 'retail'."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(clients)")}
+    if "client_type" not in cols:
+        conn.execute(
+            "ALTER TABLE clients ADD COLUMN client_type TEXT NOT NULL DEFAULT 'wholesale'"
+        )
+
+
 def _ensure_price_tokens_table(conn: sqlite3.Connection) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS price_tokens (
@@ -247,6 +256,7 @@ def init_db() -> None:
         conn.executescript(_SCHEMA_SQL.read_text())
         _ensure_products_extra_cols(conn)
         _ensure_clients_archived(conn)
+        _ensure_clients_client_type_column(conn)
         _ensure_price_tokens_table(conn)
         _ensure_price_tokens_last_used_column(conn)
         _ensure_price_tokens_mode_column(conn)
@@ -945,13 +955,17 @@ def list_clients(include_archived: bool = False) -> list[dict[str, Any]]:
 
 
 def add_client(
-    name: str, phone: str = "", note: str = ""
+    name: str, phone: str = "", note: str = "", client_type: str = "wholesale"
 ) -> tuple[bool, str]:
+    """Add a client. client_type: 'wholesale' (default) or 'retail'."""
+    ctype = (client_type or "wholesale").strip().lower()
+    if ctype not in ("wholesale", "retail"):
+        ctype = "wholesale"
     try:
         with _connect() as conn:
             conn.execute(
-                "INSERT INTO clients (name, phone, note) VALUES (?, ?, ?)",
-                (name.strip(), phone.strip(), note.strip()),
+                "INSERT INTO clients (name, phone, note, client_type) VALUES (?, ?, ?, ?)",
+                (name.strip(), phone.strip(), note.strip(), ctype),
             )
             conn.commit()
         return True, ""
@@ -968,14 +982,25 @@ def get_client(client_id: int) -> Optional[dict[str, Any]]:
 
 
 def update_client(
-    client_id: int, name: str, phone: str, note: str
+    client_id: int, name: str, phone: str, note: str,
+    client_type: str | None = None,
 ) -> tuple[bool, str]:
+    """Update client. If client_type is None - keep current value."""
     try:
         with _connect() as conn:
-            conn.execute(
-                "UPDATE clients SET name = ?, phone = ?, note = ? WHERE id = ?",
-                (name.strip(), phone.strip(), note.strip(), client_id),
-            )
+            if client_type is not None:
+                ctype = (client_type or "wholesale").strip().lower()
+                if ctype not in ("wholesale", "retail"):
+                    ctype = "wholesale"
+                conn.execute(
+                    "UPDATE clients SET name = ?, phone = ?, note = ?, client_type = ? WHERE id = ?",
+                    (name.strip(), phone.strip(), note.strip(), ctype, client_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE clients SET name = ?, phone = ?, note = ? WHERE id = ?",
+                    (name.strip(), phone.strip(), note.strip(), client_id),
+                )
             conn.commit()
         return True, ""
     except Exception as exc:

@@ -207,10 +207,23 @@
   {# 10. Clients #}
   <h4 id="ru-clients" class="mt-4">10. Клиенты</h4>
   <p>Справочник покупателей. Раздел доступен из меню <strong>«Справочники»</strong>. Здесь хранится информация о каждом клиенте и его текущий долг.</p>
+
+  <p><strong>Типы клиентов и табы.</strong> Клиенты делятся на две категории, которые видны как вкладки наверху страницы:</p>
   <ul>
-    <li>Добавить клиента: имя и номер телефона.</li>
-    <li>Редактировать: изменить имя, телефон.</li>
+    <li><strong>📦 Оптовики</strong> — компании, магазины, перекупщики, которые закупают товар крупными партиями.</li>
+    <li><strong>🛒 Штучные</strong> — соседи, знакомые, частные покупатели, которые берут товар поштучно «до зарплаты».</li>
+    <li><strong>Все</strong> — общий список с обоими типами. Рядом с именем виден бейдж 📦 или 🛒.</li>
+  </ul>
+  <p>При создании нового клиента выберите тип в форме «Добавить клиента». Поменять тип можно в любой момент через «Изменить». Тип никак не влияет на ценообразование — это просто способ организовать список.</p>
+  <p><strong>Запоминание фильтра.</strong> Выбранная вкладка, сортировка и строка поиска запоминаются в браузере на год. Когда заходите в историю клиента и возвращаетесь — фильтр восстанавливается.</p>
+
+  <p><strong>Действия:</strong></p>
+  <ul>
+    <li>Добавить клиента: имя, номер телефона, заметка, тип.</li>
+    <li>Редактировать: изменить имя, телефон, заметку, тип.</li>
     <li>Долг клиента (Debt USD) — сумма неоплаченных накладных. Изменяется автоматически при продаже и возврате.</li>
+    <li>«Снять с долга» / «Добавить долг» — ручная корректировка баланса с подтверждением.</li>
+    <li>История — все продажи, возвраты и корректировки. Записи типа «Оплата» можно удалить (например, если случайно нажали два раза).</li>
     <li>Архивировать клиента — скрыть неактивного клиента, не удаляя историю.</li>
   </ul>
 
@@ -614,11 +627,24 @@
   {# 10. Clients #}
   <h4 id="tm-clients" class="mt-4">10. Müşderiler</h4>
   <p>Alyjylaryň sanawy. Bölüm <strong>«Salgylanmalar»</strong> menýusyndan açylýar. Bu ýerde her müşderiniň maglumaty we häzirki bergisi saklanýar.</p>
+
+  <p><strong>Müşderiniň görnüşleri.</strong> Müşderiler iki bölege bölünýär — sahypanyň üstünde tablar görnüşinde:</p>
   <ul>
-    <li>Müşderi goşmak: at we telefon belgisi.</li>
-    <li>Redaktirlemek: ady, telefony üýtgetmek.</li>
-    <li>Bergisi (Debt USD) — tölenmedik hasap-fakturaların jemi. Satyş we yzyna gaýtarmada awtomatik üýtgeýär.</li>
-    <li>Müşderi arhiwlemek — taryhy pozmadan işjeň däl müşderini gizlemek.</li>
+    <li><strong>📦 Optçular</strong> — kompaniýalar, magaziniler, uly mukdarda alýanlar.</li>
+    <li><strong>🛒 Bölek</strong> — goňşular, tanyşlar, hususy alyjylar — birki sany alyp gidýänler.</li>
+    <li><strong>Hemmesi</strong> — iki görnüş bir sanawda. Adyň ýanynda 📦 ýa-da 🛒 belligi.</li>
+  </ul>
+  <p>Täze müşderi goşanyňyzda görnüşi saýlaň. Görnüşi soň «Üýtgetmek» arkaly üýtgedip bilersiňiz. Görnüş bahasyna täsir etmeýär — diňe sanawy tertiplemek üçin.</p>
+  <p>Saýlanan tabyň, tertibiň we gözleg setiriň brauzerde 1 ýyl ýatda saklanýar.</p>
+
+  <p><strong>Hereketler:</strong></p>
+  <ul>
+    <li>Müşderi goşmak: at, telefon, bellik, görnüş.</li>
+    <li>Redaktirlemek: at, telefon, bellik, görnüş.</li>
+    <li>Bergi (Debt USD) — tölenmedik hasap-fakturalaryň jemi.</li>
+    <li>«Bergi azaltmak» / «Bergi goşmak» — tassyklama bilen el bilen düzediş.</li>
+    <li>Taryhy — ähli satyş we düzeldişler. «Töleg» ýazgylaryny pozup bolýar.</li>
+    <li>Arhiwe geçirmek — işjeň däl müşderini taryhdan pozman gizlemek.</li>
   </ul>
 
   {# 11. Suppliers #}
@@ -1030,10 +1056,23 @@
   {# 10. Clients #}
   <h4 id="en-clients" class="mt-4">10. Clients</h4>
   <p>A directory of buyers. This section is available from the <strong>Directories</strong> dropdown and stores each client's details and their current outstanding debt.</p>
+
+  <p><strong>Client types and tabs.</strong> Clients are split into two categories visible as tabs at the top:</p>
   <ul>
-    <li>Add a client: name and phone number.</li>
-    <li>Edit: change name, phone.</li>
-    <li>Debt USD — the sum of unpaid invoices. Automatically changes on sale and return.</li>
+    <li><strong>📦 Wholesale</strong> — businesses, shops, resellers who buy in bulk.</li>
+    <li><strong>🛒 Retail</strong> — neighbours, friends, individual customers who buy small quantities «until next paycheck».</li>
+    <li><strong>All</strong> — combined list. A 📦 or 🛒 badge appears next to each name.</li>
+  </ul>
+  <p>Pick the type when adding a new client. You can change it any time via «Edit». Type does not affect pricing — it is purely an organisational tag.</p>
+  <p>The selected tab, sort and search text are remembered in your browser for a year, so you don't lose your filter when navigating in and out of the section.</p>
+
+  <p><strong>Actions:</strong></p>
+  <ul>
+    <li>Add a client: name, phone, note, type.</li>
+    <li>Edit: change name, phone, note, type.</li>
+    <li>Debt USD — sum of unpaid invoices. Updates automatically on sale and return.</li>
+    <li>«Remove debt» / «Add debt» — manual balance adjustments with confirmation.</li>
+    <li>History — sales, returns and adjustments. «Payment» entries can be deleted (e.g. an accidental double-click).</li>
     <li>Archive a client — hide an inactive client without deleting history.</li>
   </ul>
 

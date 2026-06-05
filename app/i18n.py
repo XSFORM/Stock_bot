@@ -214,6 +214,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "brands_add_title": "Add brand",
         # Clients page
         "clients_title": "Clients",
+        "clients_tab_all": "All",
+        "clients_tab_wholesale": "Wholesale",
+        "clients_tab_retail": "Retail",
+        "clients_type_label": "Client type",
         "clients_col_balance": "Balance (Debt)",
         "clients_search_placeholder": "Name, phone, note…",
         "clients_sort_name_asc": "Name A→Z",
@@ -702,6 +706,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "brands_add_title": "Добавить бренд",
         # Clients page
         "clients_title": "Клиенты",
+        "clients_tab_all": "Все",
+        "clients_tab_wholesale": "Оптовики",
+        "clients_tab_retail": "Штучные",
+        "clients_type_label": "Тип клиента",
         "clients_col_balance": "Баланс (Долг)",
         "clients_search_placeholder": "Имя, телефон, заметка…",
         "clients_sort_name_asc": "Имя A→Z",
@@ -1191,6 +1199,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "brands_add_title": "Brend goş",
         # Clients page
         "clients_title": "Müşderiler",
+        "clients_tab_all": "Hemmesi",
+        "clients_tab_wholesale": "Optçular",
+        "clients_tab_retail": "Bölek",
+        "clients_type_label": "Müşderiniň görnüşi",
         "clients_col_balance": "Balans (Bergisi)",
         "clients_search_placeholder": "At, telefon, bellik…",
         "clients_sort_name_asc": "At A→Z",
