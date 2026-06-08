@@ -132,13 +132,45 @@
             </td>
           </tr>
 
+          {# ── Add free / off-stock item row (mirror of sale) ── #}
+          <tr class="table-warning">
+            <td colspan="7">
+              <form method="post" action="/return/add-free" id="add-free-form" class="d-flex flex-wrap gap-2 align-items-end p-1">
+                <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
+                <div style="flex:1;min-width:220px">
+                  <label class="form-label form-label-sm mb-1">{{ t.sale_free_item_label }} <span class="badge bg-warning text-dark ms-1">{{ t.sale_free_item_badge }}</span></label>
+                  <input type="text" class="form-control form-control-sm" name="free_name" id="return-free-name-input"
+                    placeholder="{{ t.sale_free_item_placeholder }}" autocomplete="off">
+                </div>
+                <div>
+                  <label class="form-label form-label-sm mb-1">{{ t.lbl_qty }}</label>
+                  <input class="form-control form-control-sm" name="qty" id="return-free-qty" type="number" step="1" min="1" style="width:80px">
+                </div>
+                <div>
+                  <label class="form-label form-label-sm mb-1">{{ t.lbl_unit_price }}</label>
+                  <input class="form-control form-control-sm" name="unit_price" id="return-free-unit-price" type="number" step="0.01" min="0" style="width:100px" placeholder="0.00">
+                </div>
+                <div class="d-flex align-items-end">
+                  <button class="btn btn-warning btn-sm" id="return-free-add-btn">{{ t.sale_free_item_btn }}</button>
+                </div>
+              </form>
+            </td>
+          </tr>
+
           {# ── Existing items ── #}
           {% if inv_items %}
             {% for item in inv_items %}
             <tr>
               <td class="text-center align-middle">{{ loop.index }}</td>
-              <td class="align-middle">{{ item.brand }} {{ item.model }}</td>
-              <td class="align-middle">{{ item.name }}</td>
+              {% if item.free_line %}
+                <td class="align-middle" colspan="2">
+                  {{ item.free_name or item.name or '—' }}
+                  <span class="badge bg-warning text-dark ms-1">{{ t.sale_free_item_badge | default('вне склада') }}</span>
+                </td>
+              {% else %}
+                <td class="align-middle">{{ item.brand }} {{ item.model }}</td>
+                <td class="align-middle">{{ item.name }}</td>
+              {% endif %}
               <td class="edit-inline">
                 <form method="post" action="/return/item/update" class="d-flex gap-1 align-items-center">
                   <input type="hidden" name="item_id" value="{{ item.id }}">

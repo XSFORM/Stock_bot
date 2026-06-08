@@ -59,8 +59,9 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
         row_idx = header_row + row_num
         values = [
             row_num,
-            f"{item['brand']} {item['model']}",
-            item["name"],
+            (str(item.get('free_name') or item.get('name') or '') if item.get('free_line')
+             else f"{item.get('brand','')} {item.get('model','')}".strip()),
+            ("" if item.get('free_line') else (item.get('name') or '')),
             item.get("barcode") or "",
             float(item["qty"]),
             round_money(item["unit_price"]),

@@ -115,6 +115,7 @@ from app.db.sqlite import (
     return_item_update,
     return_item_delete,
     return_invoice_finish,
+    return_invoice_add_free_item,
     return_invoice_get,
     return_invoice_get_items,
     list_return_invoices_done,
@@ -1846,6 +1847,21 @@ def return_item_add_post(
     ok, err = return_item_add(int(invoice_id), int(product_id), float(qty), float(unit_price))
     msg = "item_added" if ok else f"add_error:{err}"
     return RedirectResponse(url=f"/return?msg={msg}", status_code=303)
+
+
+@app.post("/return/add-free")
+def return_add_free(
+    invoice_id: int = Form(...),
+    free_name: str = Form(...),
+    qty: float = Form(...),
+    unit_price: float = Form(...),
+):
+    """Add a free-line (off-stock) item to an open return invoice."""
+    ok, err = return_invoice_add_free_item(
+        int(invoice_id), free_name.strip(), float(qty), float(unit_price)
+    )
+    msg = "OK" if ok else err
+    return RedirectResponse(url=f"/return?msg=add:{msg}", status_code=303)
 
 
 @app.post("/return/item/update")

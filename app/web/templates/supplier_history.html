@@ -88,8 +88,9 @@
             {% set _amt = ev.get('amount', 0) | float %}
             <form method="post"
                   action="/suppliers/{{ supplier.id }}/ledger/{{ ev.get('ref') }}/delete"
-                  class="d-inline"
-                  onsubmit="return confirm({{ ((t.client_history_confirm_delete or 'Delete this entry?\nThis change is irreversible.') ~ '\n\n' ~ (ev.get('dt') or '') ~ '  ' ~ ('%.2f' | format(_amt | abs)) ~ ' USD') | tojson }});">
+                  class="d-inline ledger-del-form"
+                  data-dt="{{ ev.get('dt') or '' }}"
+                  data-amount="{{ '%.2f' | format(_amt | abs) }}">
               <button type="submit" class="btn btn-sm btn-outline-danger">{{ t.btn_delete | default('Delete') }}</button>
             </form>
           {% else %}
@@ -105,4 +106,17 @@
     </tbody>
   </table>
 </div>
+
+<script>
+(function() {
+  document.querySelectorAll('form.ledger-del-form').forEach(function(f) {
+    f.addEventListener('submit', function(e) {
+      var dt = f.getAttribute('data-dt') || '';
+      var amt = f.getAttribute('data-amount') || '';
+      var msg = "Удалить эту запись?\n" + dt + " — " + amt + " USD\n\nДействие необратимо.";
+      if (!confirm(msg)) { e.preventDefault(); return false; }
+    });
+  });
+})();
+</script>
 {% endblock %}

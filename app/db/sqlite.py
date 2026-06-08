@@ -190,6 +190,38 @@ def _ensure_receive_invoices_supplier_id_column(conn: sqlite3.Connection) -> Non
         conn.execute("ALTER TABLE receive_invoices ADD COLUMN supplier_id INTEGER")
 
 
+def _ensure_return_items_free_columns(conn: sqlite3.Connection) -> None:
+    """Migrate return_items to support free/manual line items (product_id nullable)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(return_items)")}
+    if "free_line" in cols:
+        return  # already migrated
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS return_items_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_id INTEGER NOT NULL,
+            product_id INTEGER,
+            free_line INTEGER NOT NULL DEFAULT 0,
+            free_name TEXT NOT NULL DEFAULT '',
+            qty REAL NOT NULL,
+            unit_price REAL NOT NULL,
+            total REAL NOT NULL,
+            FOREIGN KEY (invoice_id) REFERENCES return_invoices(id) ON DELETE CASCADE,
+            FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+        )
+    """)
+    conn.execute("""
+        INSERT INTO return_items_new (id, invoice_id, product_id,
+                                       free_line, free_name,
+                                       qty, unit_price, total)
+        SELECT id, invoice_id, product_id, 0, '', qty, unit_price, total
+        FROM return_items
+    """)
+    conn.execute("DROP TABLE return_items")
+    conn.execute("ALTER TABLE return_items_new RENAME TO return_items")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_return_items_invoice ON return_items(invoice_id)")
+
+
 def _ensure_cart_items_free_columns(conn: sqlite3.Connection) -> None:
     """Migrate cart_items to support free/manual line items (product_id nullable)."""
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(cart_items)")}
@@ -271,6 +303,7 @@ def init_db() -> None:
         _ensure_receive_invoices_supplier_id_column(conn)
         _backfill_suppliers_from_receive_invoices(conn)
         _ensure_cart_items_free_columns(conn)
+        _ensure_return_items_free_columns(conn)
         conn.commit()
 
 
@@ -3001,6 +3034,9 @@ def return_invoice_finish(invoice_id: int) -> tuple[bool, str]:
                 return False, "no_items"
             warehouse = inv["warehouse_code"]
             for item in items:
+                # Free-line items have no product_id and don't live in stock - skip.
+                if item["product_id"] is None or item["free_line"]:
+                    continue
                 conn.execute(
                     """
                     INSERT INTO stock (warehouse_code, product_id, qty)
@@ -3056,9 +3092,10 @@ def return_invoice_get_items(invoice_id: int) -> list[dict[str, Any]]:
         rows = conn.execute(
             """
             SELECT ri.id, ri.qty, ri.unit_price, ri.total,
+                   ri.free_line, ri.free_name,
                    p.brand, p.model, p.name, p.barcode, p.id AS product_id
             FROM return_items ri
-            JOIN products p ON p.id = ri.product_id
+            LEFT JOIN products p ON p.id = ri.product_id
             WHERE ri.invoice_id = ?
             ORDER BY ri.id
             """,
@@ -3067,9 +3104,52 @@ def return_invoice_get_items(invoice_id: int) -> list[dict[str, Any]]:
         items = []
         for row in rows:
             item = _row_to_dict(row)
+            item["free_line"] = bool(item.get("free_line"))
+            item["free_name"] = item.get("free_name") or ""
             item["total"] = calc_line_total(item.get("unit_price"), item.get("qty"))
             items.append(item)
         return items
+
+
+def return_invoice_add_free_item(
+    invoice_id: int,
+    free_name: str,
+    qty: float,
+    unit_price: float,
+) -> tuple[bool, str]:
+    """Add a free/manual line item to a return invoice (no stock product)."""
+    try:
+        free_name = free_name.strip()
+        if not free_name:
+            return False, "free_name_required"
+        if qty <= 0:
+            return False, "qty_must_be_positive"
+        if unit_price < 0:
+            return False, "price_must_be_non_negative"
+        unit_price = _normalize_unit_price(unit_price)
+        total = calc_line_total(unit_price, qty)
+        with _connect() as conn:
+            inv = conn.execute(
+                "SELECT id FROM return_invoices WHERE id = ? AND status = 'OPEN'",
+                (invoice_id,),
+            ).fetchone()
+            if not inv:
+                return False, "invoice_not_open"
+            conn.execute(
+                "INSERT INTO return_items"
+                " (invoice_id, product_id, free_line, free_name, qty, unit_price, total)"
+                " VALUES (?, NULL, 1, ?, ?, ?, ?)",
+                (invoice_id, free_name, qty, unit_price, total),
+            )
+            # Keep invoice total in sync
+            conn.execute(
+                "UPDATE return_invoices SET total = COALESCE((SELECT SUM(total) FROM return_items WHERE invoice_id = ?), 0) WHERE id = ?",
+                (invoice_id, invoice_id),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
 
 
 def list_return_invoices_done(q: str = "") -> list[dict[str, Any]]:
