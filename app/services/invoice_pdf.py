@@ -226,7 +226,8 @@ def generate_invoice_pdf(invoice: dict[str, Any],
     table.setStyle(style)
     story.append(table)
 
-    doc.build(story, onFirstPage=_draw_stamp, onLaterPages=_draw_stamp)
+    # Stamp is drawn ONLY on page 1 — on continuation pages it would overlap the table.
+    doc.build(story, onFirstPage=_draw_stamp)
     return str(filename)
 
 
