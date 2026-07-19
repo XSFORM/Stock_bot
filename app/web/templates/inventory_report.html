@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h4 class="mb-0">📊 {{ t.inventory_report_title | default('Расхождения по инвентаризации') }}</h4>
+    <a href="/inventory" class="btn btn-sm btn-outline-secondary">📋 {{ t.inventory_do | default('Провести инвентаризацию') }}</a>
+  </div>
+
+  <form method="get" action="/reports/inventory" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.reports_from | default('С') }}</label>
+      <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.reports_to | default('По') }}</label>
+      <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.reports_warehouse | default('Склад') }}</label>
+      <select name="warehouses" class="form-select form-select-sm">
+        <option value="">{{ t.reports_all_warehouses | default('Все склады') }}</option>
+        {% for w in warehouse_options %}
+          <option value="{{ w.code }}"{% if w.code in selected_warehouses %} selected{% endif %}>{{ w.title }} ({{ w.code }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sm btn-primary">{{ t.btn_apply | default('Применить') }}</button>
+    </div>
+  </form>
+
+  {# ─── KPI ─── #}
+  <div class="row g-2 mb-3">
+    {% set _t = report.totals %}
+    <div class="col-sm-3">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted small">{{ t.inventory_kpi_surplus | default('Оприходовано') }}</div>
+        <div class="fs-5 fw-semibold text-success">+{{ "%.2f"|format(_t.surplus) }}</div>
+      </div>
+    </div>
+    <div class="col-sm-3">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted small">{{ t.inventory_kpi_shortage | default('Списано') }}</div>
+        <div class="fs-5 fw-semibold text-danger">-{{ "%.2f"|format(_t.shortage) }}</div>
+      </div>
+    </div>
+    <div class="col-sm-3">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted small">{{ t.inventory_kpi_net | default('Чистый эффект') }}</div>
+        <div class="fs-5 fw-bold {% if _t.net > 0 %}text-success{% elif _t.net < 0 %}text-danger{% endif %}">
+          {{ "%+.2f"|format(_t.net) }}
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-3">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted small">{{ t.inventory_kpi_ops | default('Операций') }}</div>
+        <div class="fs-5 fw-semibold">{{ _t.n_ops }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-md-6">
+      <h6 class="mb-2">{{ t.inventory_by_warehouse | default('По складам') }}</h6>
+      {% if report.by_warehouse %}
+        <table class="table table-sm table-striped">
+          <thead class="table-light">
+            <tr>
+              <th>{{ t.reports_warehouse | default('Склад') }}</th>
+              <th class="text-end">{{ t.inventory_kpi_surplus | default('Оприх.') }}</th>
+              <th class="text-end">{{ t.inventory_kpi_shortage | default('Списано') }}</th>
+              <th class="text-end">{{ t.inventory_kpi_ops | default('Операц.') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for w in report.by_warehouse %}
+              <tr>
+                <td>{{ w.warehouse_code }}</td>
+                <td class="text-end text-success">+{{ "%.2f"|format(w.surplus) }}</td>
+                <td class="text-end text-danger">-{{ "%.2f"|format(w.shortage) }}</td>
+                <td class="text-end">{{ w.n_ops }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="text-muted small">{{ t.inventory_report_empty | default('Нет операций за период.') }}</div>
+      {% endif %}
+    </div>
+
+    <div class="col-md-6">
+      <h6 class="mb-2">{{ t.inventory_by_product | default('Товары с расхождениями') }}</h6>
+      {% if report.by_product %}
+        <div class="table-responsive">
+          <table class="table table-sm table-striped">
+            <thead class="table-light">
+              <tr>
+                <th>{{ t.th_brand | default('Бренд') }}</th>
+                <th>{{ t.th_model | default('Модель') }}</th>
+                <th class="text-end">{{ t.inventory_kpi_net | default('Итого') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in report.by_product %}
+                <tr>
+                  <td>{{ p.brand or '—' }}</td>
+                  <td>{{ p.model or '' }}</td>
+                  <td class="text-end fw-semibold {% if p.net > 0 %}text-success{% elif p.net < 0 %}text-danger{% endif %}">
+                    {{ "%+.2f"|format(p.net) }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-muted small">{{ t.inventory_report_empty | default('Нет операций за период.') }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ─── Full journal (last 200) ─── #}
+  {% if report.ops %}
+    <h6 class="mt-4 mb-2">{{ t.inventory_journal | default('Журнал (последние 200 операций)') }}</h6>
+    <div class="table-responsive">
+      <table class="table table-sm table-striped">
+        <thead class="table-light">
+          <tr>
+            <th>{{ t.lbl_date_time | default('Дата/Время') }}</th>
+            <th>{{ t.reports_warehouse | default('Склад') }}</th>
+            <th>{{ t.th_brand | default('Бренд') }}</th>
+            <th>{{ t.th_model | default('Модель') }}</th>
+            <th class="text-end">{{ t.inventory_diff | default('Разница') }}</th>
+            <th>{{ t.inventory_note | default('Комментарий') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for op in report.ops %}
+            <tr>
+              <td class="small text-muted">{{ op.created_at[:16] }}</td>
+              <td>{{ op.warehouse_code }}</td>
+              <td>{{ op.brand or '—' }}</td>
+              <td>{{ op.model or '' }}</td>
+              <td class="text-end fw-semibold {% if op.qty > 0 %}text-success{% elif op.qty < 0 %}text-danger{% endif %}">
+                {{ "%+.2f"|format(op.qty) }}
+              </td>
+              <td class="small">{{ op.note }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

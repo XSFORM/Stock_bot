@@ -66,6 +66,7 @@
             <option value="name_desc" {% if sort_by == "name_desc" %}selected{% endif %}>{{ t.clients_sort_name_desc }}</option>
             <option value="debt_desc" {% if sort_by == "debt_desc" %}selected{% endif %}>{{ t.clients_sort_debt_desc }}</option>
             <option value="debt_asc" {% if sort_by == "debt_asc" %}selected{% endif %}>{{ t.clients_sort_debt_asc }}</option>
+            <option value="silent_desc" {% if sort_by == "silent_desc" %}selected{% endif %}>{{ t.clients_sort_silent_desc | default('Давно не платили') }}</option>
           </select>
         </div>
         <div class="col-auto">
@@ -100,6 +101,7 @@
             <th>{{ t.lbl_phone }}</th>
             <th>{{ t.lbl_note }}</th>
             <th class="text-end">{{ t.clients_col_balance }}</th>
+            <th class="text-end small">{{ t.clients_col_last_payment | default('Последняя оплата') }}</th>
             <th></th>
           </tr>
         </thead>
@@ -119,6 +121,28 @@
                 <span class="text-success fw-semibold">{{ "%.2f"|format(c.balance) }} USD</span>
               {% else %}
                 <span class="text-muted">0.00 USD</span>
+              {% endif %}
+            </td>
+            {# Phase 3: last-payment info + colour hint if client owes money and has been silent #}
+            <td class="text-end small">
+              {% set _ps = c.payment_stats or {} %}
+              {% set _dl = _ps.get('days_since_last') %}
+              {% if _dl is none %}
+                {% if c.balance > 0 %}
+                  <span class="badge bg-danger">{{ t.clients_never_paid | default('никогда') }}</span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              {% else %}
+                {% set _lp_short = _ps.get('last_payment_at', '')[:10] %}
+                <div class="text-muted" style="line-height:1.1">{{ _lp_short }}</div>
+                {% if c.balance > 0 and _dl > 30 %}
+                  <span class="badge bg-danger">{{ _dl }} {{ t.clients_days_ago | default('дн.') }}</span>
+                {% elif c.balance > 0 and _dl > 14 %}
+                  <span class="badge bg-warning text-dark">{{ _dl }} {{ t.clients_days_ago | default('дн.') }}</span>
+                {% else %}
+                  <span class="text-muted">{{ _dl }} {{ t.clients_days_ago | default('дн.') }}</span>
+                {% endif %}
               {% endif %}
             </td>
             <td class="text-end">

@@ -25,9 +25,19 @@
         <ul class="mt-1"><li><a href="#ru-free-item">Свободная позиция вне склада</a></li></ul>
       </li>
       <li><a href="#ru-return">Возврат</a></li>
-      <li><a href="#ru-reports">Отчёты</a></li>
+      <li><a href="#ru-reports">Отчёты</a>
+        <ul class="mt-1">
+          <li><a href="#ru-profit">Отчёт по прибыли</a></li>
+          <li><a href="#ru-cost-snapshots">Как считается себестоимость</a></li>
+        </ul>
+      </li>
+      <li><a href="#ru-inventory">Инвентаризация</a>
+        <ul class="mt-1"><li><a href="#ru-inv-report">Отчёт расхождений</a></li></ul>
+      </li>
       <li><a href="#ru-brands">Бренды</a></li>
-      <li><a href="#ru-clients">Клиенты</a></li>
+      <li><a href="#ru-clients">Клиенты</a>
+        <ul class="mt-1"><li><a href="#ru-payments">Дисциплина платежей</a></li></ul>
+      </li>
       <li><a href="#ru-suppliers">Поставщики</a></li>
       <li><a href="#ru-invoices">Накладные</a></li>
       <li><a href="#ru-history">История</a></li>
@@ -192,7 +202,88 @@
   <p>Он показывает выручку, возвраты, чистую выручку, количество продаж, проданные товары, средний чек, количество товаров на складе, позиции с остатком, топ товаров, низкие остатки и выручку по дням за выбранный период.</p>
   <p>Готовые периоды в фильтре автоматически заполняют даты <strong>С/По</strong>; если даты изменить вручную, период переключается на <strong>«Произвольный период»</strong>. Вариант <strong>«За всё время»</strong> показывает отчёты от начала данных системы до текущей даты.</p>
   <p>Фильтр <strong>«Склад»</strong> позволяет смотреть складские показатели и низкие остатки по всем складам, одному складу или нескольким выбранным складам. Выбор складов сохраняется в URL после применения фильтра и не сбрасывается при обновлении страницы. Фильтр склада применяется только к складским показателям и блоку низких остатков.</p>
-  <p class="mb-0">Сложные расчёты прибыли, расходов и маржи запланированы отдельным этапом — текущий раздел только читает существующие данные без изменения бизнес-логики операций.</p>
+  <p class="mb-0">Раздел <strong>«Отчёты»</strong> ведёт к двум специализированным подотчётам: <a href="#ru-profit">Отчёт по прибыли</a> и <a href="#ru-inv-report">Расхождения по инвентаризации</a>. Ссылки на них также вынесены на страницу /reports.</p>
+
+  {# 8b. Profit report #}
+  <h4 id="ru-profit" class="mt-4">8b. Отчёт по прибыли (/reports/profit)</h4>
+  <p>Отдельная страница, показывающая, сколько бизнес заработал за период. Открывается по кнопке 📈 <strong>«Отчёт по прибыли»</strong> в разделе Отчёты или из верхнего меню.</p>
+
+  <p><strong>Что показывает.</strong> Четыре KPI-карточки сверху:</p>
+  <ul>
+    <li><strong>Чистая выручка</strong> — продажи минус возвраты за выбранный период.</li>
+    <li><strong>Себестоимость</strong> — сумма закупочных цен проданных товаров (без товаров, для которых цена закупки неизвестна — см. ниже).</li>
+    <li><strong>Валовая прибыль</strong> = Чистая выручка − Себестоимость.</li>
+    <li><strong>Маржа %</strong> = Валовая прибыль ÷ Чистая выручка × 100.</li>
+  </ul>
+
+  <p>Затем идут три таблицы аналитики:</p>
+  <ul>
+    <li><strong>По брендам</strong> — выручка, себестоимость, прибыль и маржа по каждому бренду. Помогает понять, какие бренды приносят больше прибыли, а какие только выручку.</li>
+    <li><strong>По клиентам</strong> — то же по клиентам. Показывает, какие клиенты приносят реальную прибыль, а не просто оборот.</li>
+    <li><strong>Топ 20 товаров</strong> — самые прибыльные позиции за период.</li>
+  </ul>
+
+  <p><strong>Фильтры:</strong> период (С/По) и склад — можно смотреть прибыль по одному конкретному складу или по всем сразу.</p>
+
+  <div class="alert alert-warning">
+    <strong>⚠️ Жёлтая плашка «Нераскрытая себестоимость».</strong> Если в отчёте видите жёлтое предупреждение — оно указывает, на сколько строк и какую сумму выручки система <em>не смогла</em> посчитать себестоимость. Это <strong>нормально</strong> для старых продаж, сделанных до внедрения снимков цен закупки.
+    <br><br>
+    Такие строки <strong>исключены</strong> из расчёта себестоимости и прибыли — иначе они бы «завышали» валовую прибыль (казалось бы, товар продали, а закупки как будто не было). Со временем, по мере новых продаж, эта «нераскрытая» полоса будет уменьшаться.
+  </div>
+
+  {# 8b-1. Cost snapshots explanation #}
+  <h5 id="ru-cost-snapshots" class="mt-3">Как считается себестоимость (Cost snapshots)</h5>
+  <p>
+    При каждой <strong>новой</strong> продаже и возврате система запоминает <em>цену закупки на момент операции</em> — этот снимок хранится в самой строке накладной. Даже если позже цена закупки на карточке товара изменится (например, следующая партия пришла дороже), <strong>старая продажа сохранит свою историческую цену</strong>.
+  </p>
+  <p>
+    Это работает и при <strong>редактировании</strong> уже созданной накладной: если правите старую продажу, себестоимость её строк <em>не</em> перезаписывается новой ценой — она остаётся такой, какой была в день продажи. Только для <em>новых</em> позиций, добавленных при редактировании, берётся текущая цена закупки.
+  </p>
+  <p>
+    <strong>Почему часть строк с cost=0.</strong> Продажи, сделанные <em>до</em> внедрения снимков, не имеют записанной себестоимости — там 0. Мы намеренно <em>не</em> подставляем туда текущую цену закупки (это было бы неправдой). Такие строки видны как отдельная «нераскрытая» сумма на жёлтой плашке отчёта.
+  </p>
+
+  {# 8c. Inventory #}
+  <h4 id="ru-inventory" class="mt-4">8c. Инвентаризация (/inventory)</h4>
+  <p>
+    Раздел для сверки того, что <strong>реально лежит на складе</strong>, с тем, что <strong>показывает система</strong>. Если во время физического пересчёта нашлись расхождения (недостача или излишек) — они фиксируются отдельными операциями <strong>ADJUST</strong> в журнале движений товара. История прошлых приходов, продаж и возвратов <strong>не меняется</strong> — только добавляются новые строки-корректировки.
+  </p>
+
+  <p><strong>Пошагово:</strong></p>
+  <ol>
+    <li>Меню → <strong>Инвентаризация</strong>.</li>
+    <li>Выберите <strong>склад</strong>.</li>
+    <li>Выберите <strong>режим</strong>:
+      <ul>
+        <li><strong>Полная сверка</strong> — таблица со всеми позициями склада для сплошного пересчёта.</li>
+        <li><strong>Точечная сверка</strong> — та же таблица, но с полем поиска сверху для быстрого фильтра по бренду / модели / штрихкоду. Удобно, если пересчитываете только определённые товары.</li>
+      </ul>
+    </li>
+    <li>Для нужных строк впишите в колонку <strong>«Факт»</strong> реальное количество (то, что видите на полках). Пустые поля игнорируются — не обязательно проверять все позиции.</li>
+    <li>Колонка <strong>«Разница»</strong> считается автоматически: зелёная +N (излишек), красная −N (недостача). Внизу таблицы появляется сводка «Заполнено строк / Оприходовано / Списано».</li>
+    <li>Впишите <strong>комментарий</strong> (обязательно — например, «Ежемесячная инвентаризация 07.2026»).</li>
+    <li>Нажмите <strong>«Применить корректировки»</strong> — подтвердите. Система создаст по одной ADJUST-операции на каждую строку с расхождением.</li>
+  </ol>
+
+  <p><strong>Сортировка колонок.</strong> Клик по заголовку — сортировка по возрастанию; повторный клик — по убыванию. Стрелка ▲/▼ показывает направление. Введённые в «Факт» значения сохраняются при пересортировке.</p>
+
+  <div class="alert alert-info">
+    <strong>Аудит-корректно.</strong> Инвентаризация <em>никогда</em> не удаляет и не переписывает прошлые операции. Даже если случайно вписали не ту цифру и сохранили — правильный путь исправить это через <em>повторную</em> инвентаризацию с обратной корректировкой (с комментарием «откат ошибки»). В журнале останутся обе строки — это правильно и защищает от «зачистки следов».
+  </div>
+
+  {# 8c-1. Inventory discrepancies report #}
+  <h5 id="ru-inv-report" class="mt-3">Отчёт расхождений (/reports/inventory)</h5>
+  <p>
+    Показывает, что происходило с инвентаризацией за выбранный период. Открывается кнопкой <strong>«Отчёт расхождений»</strong> на странице /inventory или через раздел Отчёты.
+  </p>
+  <p><strong>Что показывает:</strong></p>
+  <ul>
+    <li><strong>4 KPI-карточки:</strong> сумма оприходованного (+), сумма списанного (−), чистый эффект и общее количество ADJUST-операций.</li>
+    <li><strong>По складам</strong> — сколько излишков/недостач и операций на каждом складе.</li>
+    <li><strong>Товары с расхождениями</strong> — какие конкретно позиции чаще всего «уходят в ноль» или наоборот появляются лишними. Позволяет выявить проблемные товары (кражи, ошибки при отгрузке и т.п.).</li>
+    <li><strong>Журнал</strong> — последние 200 ADJUST-операций с датой, складом, товаром, разницей и комментарием.</li>
+  </ul>
+  <p><strong>Фильтры:</strong> период (С/По) и склад.</p>
 
   {# 9. Brands #}
   <h4 id="ru-brands" class="mt-4">9. Бренды</h4>
@@ -225,6 +316,30 @@
     <li>«Снять с долга» / «Добавить долг» — ручная корректировка баланса с подтверждением.</li>
     <li>История — все продажи, возвраты и корректировки. Записи типа «Оплата» можно удалить (например, если случайно нажали два раза).</li>
     <li>Архивировать клиента — скрыть неактивного клиента, не удаляя историю.</li>
+  </ul>
+
+  {# 10a. Payment discipline #}
+  <h5 id="ru-payments" class="mt-3">Дисциплина платежей</h5>
+  <p>
+    Чтобы не приходилось помнить, кто и когда платил в последний раз, система показывает подсказки прямо в списке клиентов и в истории каждого клиента.
+  </p>
+
+  <p><strong>Бейджи в списке клиентов.</strong> В колонке <strong>«Последняя оплата»</strong> у каждого клиента с долгом виден бейдж:</p>
+  <ul>
+    <li>🟥 <strong>Красный</strong> — последняя оплата более <strong>30 дней</strong> назад (или её вообще не было при наличии долга).</li>
+    <li>🟨 <strong>Жёлтый</strong> — последняя оплата от <strong>14 до 30 дней</strong> назад.</li>
+    <li>Без бейджа — платят регулярно (≤14 дней) или долга нет.</li>
+  </ul>
+  <p>Цвет учитывает <em>только</em> клиентов с текущим долгом — если клиент не должен, красный/жёлтый бейдж не появится.</p>
+
+  <p><strong>Сортировка «Давно не платили».</strong> В сортировке списка появился вариант <em>«Давно не платили»</em> — клиенты, у которых больше всего дней тишины при наличии долга, поднимаются наверх. Удобно для утреннего обхода/обзвона.</p>
+
+  <p><strong>4 карточки в истории клиента.</strong> Открыв историю конкретного клиента, сверху увидите:</p>
+  <ul>
+    <li><strong>Последняя оплата</strong> — дата последнего платежа (или «не было»).</li>
+    <li><strong>Дней тишины</strong> — сколько дней прошло с последней оплаты. У честного плательщика — маленькое число, у «зависшего» — большое.</li>
+    <li><strong>Оплачено за 30 дней</strong> — сколько клиент внёс за последний месяц. Показывает недавнюю активность.</li>
+    <li><strong>Средний платёж за 90 дней</strong> — средний размер оплаты по последним 3 месяцам. Понимание, каким кусочком клиент обычно закрывает долг.</li>
   </ul>
 
   {# 11. Suppliers #}
@@ -458,9 +573,19 @@
         <ul class="mt-1"><li><a href="#tm-free-item">Ammardan daşary erkin pozisiýa</a></li></ul>
       </li>
       <li><a href="#tm-return">Yzyna gaýtarmak</a></li>
-      <li><a href="#tm-reports">Hasabatlar</a></li>
+      <li><a href="#tm-reports">Hasabatlar</a>
+        <ul class="mt-1">
+          <li><a href="#tm-profit">Peýda hasabaty</a></li>
+          <li><a href="#tm-cost-snapshots">Özüne düşýän gymmat</a></li>
+        </ul>
+      </li>
+      <li><a href="#tm-inventory">Inwentarizasiýa</a>
+        <ul class="mt-1"><li><a href="#tm-inv-report">Tapawut hasabaty</a></li></ul>
+      </li>
       <li><a href="#tm-brands">Brendler</a></li>
-      <li><a href="#tm-clients">Müşderiler</a></li>
+      <li><a href="#tm-clients">Müşderiler</a>
+        <ul class="mt-1"><li><a href="#tm-payments">Töleg düzgün-nyzamy</a></li></ul>
+      </li>
       <li><a href="#tm-suppliers">Üpjün edijiler</a></li>
       <li><a href="#tm-invoices">Hasap-fakturalar</a></li>
       <li><a href="#tm-history">Taryh</a></li>
@@ -613,7 +738,88 @@
   <p>Bu ýerde saýlanan döwür boýunça düşewünt, yzyna gaýtaryş, arassa düşewünt, satyş sany, satylan birlikler, orta çek, ammardaky haryt sany, galyndyly pozisiýalar, iň köp satylan harytlar, pes galyndylar we günler boýunça düşewünt görkezilýär.</p>
   <p>Taýýar döwür saýlanylanda <strong>Başlangyç/Sonky</strong> seneler awtomatik doldurylýar; seneleri el bilen üýtgedeniňizde döwür <strong>«Erkin döwür»</strong> ýagdaýyna geçýär. <strong>«Tutuş döwür»</strong> saýlanylanda ulgamyň başlangyjyndan şu güne çenli hasabat görkezilýär.</p>
   <p><strong>«Ammar»</strong> süzgüji bilen ammar görkezijilerini we pes galyndylary ähli ammarlar, bir ammar ýa-da birnäçe saýlanan ammar boýunça görüp bolýar. Saýlaw URL-de saklanýar we sahypa täzelenende ýitmeýär. Ammar süzgüji diňe ammar görkezijilerine we pes galyndylar bölümine ulanylýar.</p>
-  <p class="mb-0">Çylşyrymly peýda/çykdajy/marja hasaplamalary soňky tapgyrda goşular — häzirki bölüm diňe bar bolan maglumatlary okaýar we amallaryň biznes logikasyny üýtgetmeýär.</p>
+  <p class="mb-0"><strong>«Hasabatlar»</strong> bölüminden iki ýörite kiçi hasabata geçip bolýar: <a href="#tm-profit">Peýda hasabaty</a> we <a href="#tm-inv-report">Inwentar tapawutlary</a>.</p>
+
+  {# 8b. Profit report #}
+  <h4 id="tm-profit" class="mt-4">8b. Peýda hasabaty (/reports/profit)</h4>
+  <p>Işewürligiň saýlanan döwürde näçe gazanandygyny görkezýän aýratyn sahypa. Hasabatlar bölümindäki 📈 <strong>«Peýda hasabaty»</strong> düwmesi arkaly açylýar.</p>
+
+  <p><strong>Näme görkezýär.</strong> Ýokarda 4 KPI-kart:</p>
+  <ul>
+    <li><strong>Arassa girdeji</strong> — döwrüň satyşlary minus yzyna gaýtarmalar.</li>
+    <li><strong>Özüne düşýän gymmat</strong> — satylan harytlaryň satyn alyş bahalarynyň jemi (satyn alyş bahasy näbelli bolan harytlar hasaba alynmaýar — aşakda düşündirilýär).</li>
+    <li><strong>Umumy peýda</strong> = Arassa girdeji − Özüne düşýän gymmat.</li>
+    <li><strong>Marja %</strong> = Umumy peýda ÷ Arassa girdeji × 100.</li>
+  </ul>
+
+  <p>Soň üç analitika tablisasy:</p>
+  <ul>
+    <li><strong>Brendler boýunça</strong> — her brendiň girdejisi, özüne düşýän gymmaty, peýdasy we marjasy. Haýsy brendleriň diňe aýlanyşyk däl, hakyky peýda getirýändigini görkezýär.</li>
+    <li><strong>Müşderiler boýunça</strong> — şol bir zat müşderiler boýunça. Kim hakyky peýda getirýär, kim diňe dolanyşyk.</li>
+    <li><strong>Iň gowy 20 haryt</strong> — döwrüň iň girdejili harytlary.</li>
+  </ul>
+
+  <p><strong>Süzgüçler:</strong> döwür (Başlangyç/Sonky) we ammar — bir belli ammar boýunça ýa-da hemmesi boýunça peýda görüp bolýar.</p>
+
+  <div class="alert alert-warning">
+    <strong>⚠️ Sary duýduryş «Näbelli özüne düşýän gymmat».</strong> Hasabatda sary duýduryş görseňiz — ol näçe setire we näçe girdejä ulgamyň özüne düşýän gymmaty <em>hasaplap bilmedigini</em> görkezýär. Bu satyn alyş bahasy snapshotlary girizilmezden öňki köne satyşlar üçin <strong>adaty</strong> ýagdaý.
+    <br><br>
+    Şeýle setirler hasaplamalardan <strong>çykarylýar</strong> — bolmasa umumy peýdany «göterip» galdyrardylar (haryt satyldy, satyn alyş ýok ýaly bolar). Wagt geçdigiçe, täze satyşlar bilen «näbelli» zolak kiçelýär.
+  </div>
+
+  {# 8b-1. Cost snapshots explanation #}
+  <h5 id="tm-cost-snapshots" class="mt-3">Özüne düşýän gymmat nähili hasaplanýar (Cost snapshots)</h5>
+  <p>
+    Her <strong>täze</strong> satyş we yzyna gaýtarmada ulgam <em>şol wagtky satyn alyş bahasyny</em> ýatda saklaýar — bu snapshot hasap-fakturanyň setiriniň özünde saklanýar. Soňra harytdaky satyn alyş bahasy üýtgese-de (meselem, indiki tapgyr gymmatrak geldi), <strong>köne satyş öz taryhy bahasyny saklaýar</strong>.
+  </p>
+  <p>
+    Bu köne hasap-fakturany <strong>redaktirlemekde</strong>-de işleýär: köne satyşy düzedeniňizde, onuň setirleriniň özüne düşýän gymmaty <em>üýtgemeýär</em> — satyş gününde nähili bolan bolsa, şeýle galýar. Diňe redaktirlemede <em>täze</em> goşulan setirler üçin häzirki satyn alyş bahasy alynýar.
+  </p>
+  <p>
+    <strong>Näme üçin käbir setirlerde cost=0.</strong> Snapshotlar girizilmezden <em>öň</em> edilen satyşlarda özüne düşýän gymmat ýazylmadyk — ol 0. Biz oňa häzirki satyn alyş bahasyny goýmaýarys (bu ýalan bolardy). Şeýle setirler hasabatdaky sary duýduryşda «näbelli» jem hökmünde görkezilýär.
+  </p>
+
+  {# 8c. Inventory #}
+  <h4 id="tm-inventory" class="mt-4">8c. Inwentarizasiýa (/inventory)</h4>
+  <p>
+    <strong>Ammarda hakyky bar zady</strong> bilen <strong>ulgamda görkezilýän zady</strong> deňeşdirmek üçin bölüm. Fiziki hasap wagtynda tapawut ýüze çyksa (kem ýa-da artyk), olar haryt hereketiniň žurnalyna <strong>ADJUST</strong> operasiýalary görnüşinde ýazylýar. Öňki kabul etmek, satyş we yzyna gaýtarmalaryň taryhy <strong>üýtgemeýär</strong> — diňe täze düzediş setirleri goşulýar.
+  </p>
+
+  <p><strong>Ädim-ädim:</strong></p>
+  <ol>
+    <li>Menýu → <strong>Inwentarizasiýa</strong>.</li>
+    <li><strong>Ammar</strong> saýlaň.</li>
+    <li><strong>Görnüşi</strong> saýlaň:
+      <ul>
+        <li><strong>Doly barlag</strong> — hemme pozisiýalary görkezýän tablisa, tutuş hasap üçin.</li>
+        <li><strong>Nokat barlag</strong> — şol tablisa, ýöne brend/model/ştrih boýunça çalt süzgüç bilen. Diňe belli harytlary hasaplanyňyzda amatly.</li>
+      </ul>
+    </li>
+    <li>Gerekli setirlerde <strong>«Fakt»</strong> setirine hakyky mukdary ýazyň (tekjelerde görýän zadyňyz). Boş setirler äsgerilmeýär — hemme pozisiýany barlamak hökman däl.</li>
+    <li><strong>«Tapawut»</strong> awtomatik hasaplanýar: ýaşyl +N (artyk), gyzyl −N (kem). Aşakda «Doldurylan setirler / Girdi / Çykdy» jemi çykýar.</li>
+    <li><strong>Bellik</strong> ýazyň (hökman — meselem, «07/2026 aý inwentarizasiýa»).</li>
+    <li><strong>«Düzedişleri ulan»</strong> düwmesine basyň — tassyklaň. Ulgam her tapawutly setir üçin bir ADJUST-operasiýa döreder.</li>
+  </ol>
+
+  <p><strong>Sütünleri tertiplemek.</strong> Sütün başlygyna basyň — ösüşli tertip; ýene basyň — azalyşly. ▲/▼ tarapyň belligini görkezýär. «Fakt» meýdanlaryna ýazylan sanlar tertiplemede saklanýar.</p>
+
+  <div class="alert alert-info">
+    <strong>Audit-taýdan dogry.</strong> Inwentarizasiýa <em>hiç haçan</em> öňki operasiýalary pozmaýar we üýtgetmeýär. Ýalňyş san girizip saklanyňyzda hem — dogry ýol <em>gaýtadan</em> inwentarizasiýa etmek, ters düzediş bilen («ýalňyşyň yzyna gaýtarylyşy» belligi bilen). Žurnalda iki setir hem galýar — bu dogry we «yzyňy ýaşyrmakdan» goraýar.
+  </div>
+
+  {# 8c-1. Inventory discrepancies report #}
+  <h5 id="tm-inv-report" class="mt-3">Tapawut hasabaty (/reports/inventory)</h5>
+  <p>
+    Saýlanan döwürde inwentarizasiýa boýunça näme bolandygyny görkezýär. /inventory sahypasyndaky <strong>«Tapawut hasabaty»</strong> düwmesi bilen ýa-da Hasabatlar bölüminden açylýar.
+  </p>
+  <p><strong>Näme görkezýär:</strong></p>
+  <ul>
+    <li><strong>4 KPI-kart:</strong> girdi (+) jemi, çykdy (−) jemi, arassa netije we ADJUST-operasiýalaryň umumy sany.</li>
+    <li><strong>Ammarlar boýunça</strong> — her ammarda näçe artyk/kem we operasiýa.</li>
+    <li><strong>Tapawutly harytlar</strong> — haýsy pozisiýalar has köp «ýitýär» ýa-da tersine artyk çykýar. Kynçylykly harytlary tapmaga kömek edýär (ogurlyk, ýalňyşlyklar we ş.m.).</li>
+    <li><strong>Žurnal</strong> — soňky 200 ADJUST-operasiýa: sene, ammar, haryt, tapawut we bellik.</li>
+  </ul>
+  <p><strong>Süzgüçler:</strong> döwür (Başlangyç/Sonky) we ammar.</p>
 
   {# 9. Brands #}
   <h4 id="tm-brands" class="mt-4">9. Brendler</h4>
@@ -645,6 +851,30 @@
     <li>«Bergi azaltmak» / «Bergi goşmak» — tassyklama bilen el bilen düzediş.</li>
     <li>Taryhy — ähli satyş we düzeldişler. «Töleg» ýazgylaryny pozup bolýar.</li>
     <li>Arhiwe geçirmek — işjeň däl müşderini taryhdan pozman gizlemek.</li>
+  </ul>
+
+  {# 10a. Payment discipline #}
+  <h5 id="tm-payments" class="mt-3">Töleg düzgün-nyzamy</h5>
+  <p>
+    Kimin haçan tölän bolandygyny ýatda saklamak zerurlygyny aýyrmak üçin, ulgam maglumaty müşderi sanawynda we her müşderiniň taryhynda görkezýär.
+  </p>
+
+  <p><strong>Müşderi sanawyndaky bellikler.</strong> Bergisi bolan her müşderi üçin <strong>«Soňky töleg»</strong> sütüninde bellik bar:</p>
+  <ul>
+    <li>🟥 <strong>Gyzyl</strong> — soňky töleg <strong>30 günden</strong> öň (ýa-da bergi bar, ýöne töleg hiç haçan bolmady).</li>
+    <li>🟨 <strong>Sary</strong> — soňky töleg <strong>14–30 gün</strong> aralygynda öň.</li>
+    <li>Belliksiz — yzygiderli tölemek (≤14 gün) ýa-da bergi ýok.</li>
+  </ul>
+  <p>Reňk <em>diňe</em> häzirki bergisi bolan müşderiler üçin görkezilýär.</p>
+
+  <p><strong>«Köp wagt tölemedik» tertibi.</strong> Sanawyň tertibinde <em>«Köp wagt tölemedik»</em> warianty peýda boldy — bergisi bilen iň köp gün dymýan müşderiler ýokary çykýar. Ertirki gözegçilik/jaň üçin amatly.</p>
+
+  <p><strong>Müşderi taryhyndaky 4 kart.</strong> Belli müşderiniň taryhyny açsaňyz, ýokarda görersiňiz:</p>
+  <ul>
+    <li><strong>Soňky töleg</strong> — soňky tölegin senesi (ýa-da «bolmady»).</li>
+    <li><strong>Dymýan günleri</strong> — soňky tölegden näçe gün geçdi. Dogry tölejide — kiçi san, «asylan» müşderide — uly.</li>
+    <li><strong>30 günde tölenen</strong> — soňky aý müşderi näçe töledi. Ýakynda hereketi görkezýär.</li>
+    <li><strong>90 günde orta töleg</strong> — soňky 3 aý boýunça ortaça töleg möçberi. Müşderiniň adatça näçelik bilen bergini ýapýandygyny bilmek.</li>
   </ul>
 
   {# 11. Suppliers #}
@@ -873,9 +1103,19 @@
         <ul class="mt-1"><li><a href="#en-free-item">Free position (non-stock item)</a></li></ul>
       </li>
       <li><a href="#en-return">Return</a></li>
-      <li><a href="#en-reports">Reports</a></li>
+      <li><a href="#en-reports">Reports</a>
+        <ul class="mt-1">
+          <li><a href="#en-profit">Profit report</a></li>
+          <li><a href="#en-cost-snapshots">How cost is computed</a></li>
+        </ul>
+      </li>
+      <li><a href="#en-inventory">Inventory</a>
+        <ul class="mt-1"><li><a href="#en-inv-report">Discrepancy report</a></li></ul>
+      </li>
       <li><a href="#en-brands">Brands</a></li>
-      <li><a href="#en-clients">Clients</a></li>
+      <li><a href="#en-clients">Clients</a>
+        <ul class="mt-1"><li><a href="#en-payments">Payment discipline</a></li></ul>
+      </li>
       <li><a href="#en-suppliers">Suppliers</a></li>
       <li><a href="#en-invoices">Invoices</a></li>
       <li><a href="#en-history">History</a></li>
@@ -1041,7 +1281,88 @@
   <p>It shows revenue, returns, net revenue, sales count, sold units, average receipt, units in stock, positions in stock, top products, low stock, and daily revenue for the selected period.</p>
   <p>Preset periods automatically fill the <strong>From/To</strong> dates; if you edit either date manually, the period switches to <strong>Custom period</strong>. The <strong>All time</strong> option shows reports from the beginning of system data to the current date.</p>
   <p>The <strong>Warehouse</strong> filter lets you review stock metrics and low stock for all warehouses, one warehouse, or multiple selected warehouses. The selection is persisted in the URL after applying the filter and stays selected after page refresh. The warehouse filter applies only to stock metrics and low-stock data.</p>
-  <p class="mb-0">Complex profit/expense/margin calculations are planned for a separate stage; this page only reads existing data and does not change operational business logic.</p>
+  <p class="mb-0">The <strong>Reports</strong> section leads to two specialised sub-reports: <a href="#en-profit">Profit report</a> and <a href="#en-inv-report">Inventory discrepancies</a>. Direct links are also placed on /reports.</p>
+
+  {# 8b. Profit report #}
+  <h4 id="en-profit" class="mt-4">8b. Profit report (/reports/profit)</h4>
+  <p>A dedicated page that shows how much the business earned over a period. Opens via the 📈 <strong>«Profit report»</strong> button in the Reports section or from the top menu.</p>
+
+  <p><strong>What it shows.</strong> Four KPI cards at the top:</p>
+  <ul>
+    <li><strong>Net revenue</strong> — sales minus returns for the selected period.</li>
+    <li><strong>Cost</strong> — total purchase price of sold items (excluding items whose purchase price is unknown — see below).</li>
+    <li><strong>Gross profit</strong> = Net revenue − Cost.</li>
+    <li><strong>Margin %</strong> = Gross profit ÷ Net revenue × 100.</li>
+  </ul>
+
+  <p>Then three analytical tables:</p>
+  <ul>
+    <li><strong>By brand</strong> — revenue, cost, profit and margin per brand. Reveals which brands generate real profit versus just turnover.</li>
+    <li><strong>By client</strong> — the same broken down per client. Shows who brings real profit rather than volume.</li>
+    <li><strong>Top 20 products</strong> — the most profitable positions for the period.</li>
+  </ul>
+
+  <p><strong>Filters:</strong> period (From/To) and warehouse — you can look at profit for a single warehouse or all of them combined.</p>
+
+  <div class="alert alert-warning">
+    <strong>⚠️ Yellow «Unknown cost» notice.</strong> If the report shows a yellow warning — it tells you how many lines and how much revenue the system <em>could not</em> compute cost for. This is <strong>normal</strong> for old sales made before cost snapshots were introduced.
+    <br><br>
+    Those lines are <strong>excluded</strong> from the cost and profit calculation — otherwise they would inflate the gross profit (revenue with no matching purchase cost). Over time, as new sales are made, this «unknown» band shrinks.
+  </div>
+
+  {# 8b-1. Cost snapshots explanation #}
+  <h5 id="en-cost-snapshots" class="mt-3">How cost is computed (cost snapshots)</h5>
+  <p>
+    On every <strong>new</strong> sale and return the system freezes the <em>purchase price at the moment of the operation</em> — this snapshot is stored on the invoice line itself. Even if the product's purchase price later changes on the product card (e.g. the next batch arrives at a higher price), <strong>the old sale keeps its historical cost</strong>.
+  </p>
+  <p>
+    This also works when <strong>editing</strong> an already-created invoice: when you fix an old sale, the cost on its existing lines is <em>not</em> overwritten with the new price — it stays as it was on the day of the sale. Only <em>newly added</em> lines during editing pick up the current purchase price.
+  </p>
+  <p>
+    <strong>Why some lines have cost=0.</strong> Sales made <em>before</em> snapshots were introduced don't have a recorded cost — it is 0. We deliberately do <em>not</em> backfill them with the current purchase price (that would be untrue). Such rows are shown as the separate «unknown» sum in the yellow banner of the report.
+  </p>
+
+  {# 8c. Inventory #}
+  <h4 id="en-inventory" class="mt-4">8c. Inventory (/inventory)</h4>
+  <p>
+    A section for reconciling <strong>what is physically in the warehouse</strong> with <strong>what the system says</strong>. If discrepancies are found during a physical count (shortage or surplus), they are recorded as separate <strong>ADJUST</strong> operations in the stock movement journal. Past receive, sale and return history is <strong>not modified</strong> — only new adjustment rows are appended.
+  </p>
+
+  <p><strong>Step by step:</strong></p>
+  <ol>
+    <li>Menu → <strong>Inventory</strong>.</li>
+    <li>Select a <strong>warehouse</strong>.</li>
+    <li>Select a <strong>mode</strong>:
+      <ul>
+        <li><strong>Full count</strong> — a table with every position on the warehouse for a complete recount.</li>
+        <li><strong>Spot check</strong> — the same table but with a search field on top for quick filtering by brand / model / barcode. Handy if you're only recounting certain items.</li>
+      </ul>
+    </li>
+    <li>For the rows you want, type the real quantity into the <strong>«Actual»</strong> column (what you see on the shelves). Empty fields are ignored — you don't have to check every position.</li>
+    <li>The <strong>«Δ»</strong> column is computed automatically: green +N (surplus), red −N (shortage). A summary line «Filled rows / Surplus / Shortage» appears below the table.</li>
+    <li>Enter a <strong>comment</strong> (required — e.g. «Monthly inventory 07/2026»).</li>
+    <li>Click <strong>«Apply adjustments»</strong> — confirm. The system creates one ADJUST operation per discrepancy row.</li>
+  </ol>
+
+  <p><strong>Column sorting.</strong> Click a header to sort ascending; click again for descending. The ▲/▼ arrow shows the direction. Values already entered into «Actual» are preserved when the rows are re-ordered.</p>
+
+  <div class="alert alert-info">
+    <strong>Audit-safe.</strong> Inventory <em>never</em> deletes or overwrites past operations. Even if you accidentally save the wrong number — the correct way to fix it is a <em>second</em> inventory with a reverse adjustment (comment: «rollback of error»). Both rows will remain in the journal — that is correct and protects against covering up mistakes.
+  </div>
+
+  {# 8c-1. Inventory discrepancies report #}
+  <h5 id="en-inv-report" class="mt-3">Discrepancy report (/reports/inventory)</h5>
+  <p>
+    Shows what happened during inventory over a chosen period. Opens via the <strong>«Discrepancy report»</strong> button on the /inventory page or through the Reports section.
+  </p>
+  <p><strong>What it shows:</strong></p>
+  <ul>
+    <li><strong>4 KPI cards:</strong> total surplus (+), total shortage (−), net effect and total number of ADJUST operations.</li>
+    <li><strong>By warehouse</strong> — how much surplus/shortage and how many operations per warehouse.</li>
+    <li><strong>Products with discrepancies</strong> — which positions most often «disappear» or, conversely, come up as extras. Helps identify problem items (theft, shipping errors, etc.).</li>
+    <li><strong>Journal</strong> — last 200 ADJUST operations with date, warehouse, product, delta and comment.</li>
+  </ul>
+  <p><strong>Filters:</strong> period (From/To) and warehouse.</p>
 
   {# 9. Brands #}
   <h4 id="en-brands" class="mt-4">9. Brands</h4>
@@ -1074,6 +1395,30 @@
     <li>«Remove debt» / «Add debt» — manual balance adjustments with confirmation.</li>
     <li>History — sales, returns and adjustments. «Payment» entries can be deleted (e.g. an accidental double-click).</li>
     <li>Archive a client — hide an inactive client without deleting history.</li>
+  </ul>
+
+  {# 10a. Payment discipline #}
+  <h5 id="en-payments" class="mt-3">Payment discipline</h5>
+  <p>
+    So you don't have to remember who last paid and when, the system surfaces this right in the client list and in each client's history.
+  </p>
+
+  <p><strong>Badges in the client list.</strong> In the <strong>«Last payment»</strong> column each client with an outstanding debt shows a badge:</p>
+  <ul>
+    <li>🟥 <strong>Red</strong> — last payment more than <strong>30 days</strong> ago (or no payment at all while a debt exists).</li>
+    <li>🟨 <strong>Yellow</strong> — last payment <strong>14–30 days</strong> ago.</li>
+    <li>No badge — pays regularly (≤14 days) or has no debt.</li>
+  </ul>
+  <p>The colour is applied <em>only</em> to clients with a current debt — clients with no debt never get a red/yellow badge.</p>
+
+  <p><strong>«Silent for longest» sort.</strong> A new sort option <em>«Silent for longest»</em> pushes clients with the largest gap since last payment (and a non-zero debt) to the top. Handy for a morning call-round.</p>
+
+  <p><strong>4 cards on the client history.</strong> Opening a specific client's history you'll see at the top:</p>
+  <ul>
+    <li><strong>Last payment</strong> — date of the last payment (or «none»).</li>
+    <li><strong>Days silent</strong> — how many days since the last payment. Small for a good payer, large for a stuck one.</li>
+    <li><strong>Paid in 30 days</strong> — how much the client paid over the last month. Shows recent activity.</li>
+    <li><strong>Average payment in 90 days</strong> — average payment size over the last 3 months. Gives a sense of the typical instalment the client makes.</li>
   </ul>
 
   {# 11. Suppliers #}

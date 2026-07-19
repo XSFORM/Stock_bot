@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h4 class="mb-0">📋 {{ t.inventory_title | default('Инвентаризация') }}</h4>
+  </div>
+  <p class="text-muted small mb-3">
+    {{ t.inventory_subtitle | default('Сверка остатков в системе с физическим пересчётом. Отличия пишутся отдельными операциями ADJUST в журнал stock_ops — история приходов и продаж не меняется.') }}
+  </p>
+
+  {# ─── Alerts ─── #}
+  {% set _msg = request.query_params.get('msg', '') %}
+  {% if _msg.startswith('applied:') %}
+    <div class="alert alert-success py-2 small">
+      ✅ {{ t.inventory_applied | default('Применено:') }} {{ _msg[8:] }} {{ t.inventory_ops_word | default('операций') }}.
+    </div>
+  {% elif _msg == 'note_required' %}
+    <div class="alert alert-danger py-2 small">
+      ❗ {{ t.inventory_err_note | default('Комментарий обязателен.') }}
+    </div>
+  {% elif _msg == 'no_changes' %}
+    <div class="alert alert-warning py-2 small">
+      ℹ️ {{ t.inventory_err_no_changes | default('Нет расхождений — ничего не применено.') }}
+    </div>
+  {% elif _msg.startswith('error:') %}
+    <div class="alert alert-danger py-2 small">
+      ❗ {{ _msg[6:] | e }}
+    </div>
+  {% endif %}
+
+  {# ─── Warehouse + mode selector ─── #}
+  <form method="get" action="/inventory" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.reports_warehouse | default('Склад') }}</label>
+      <select name="warehouse" class="form-select form-select-sm">
+        {% for w in warehouse_options %}
+          <option value="{{ w.code }}"{% if w.code == warehouse %} selected{% endif %}>{{ w.title }} ({{ w.code }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.inventory_mode | default('Режим') }}</label>
+      <select name="mode" class="form-select form-select-sm">
+        <option value="full"{% if mode == 'full' %} selected{% endif %}>{{ t.inventory_mode_full | default('Полная сверка') }}</option>
+        <option value="spot"{% if mode == 'spot' %} selected{% endif %}>{{ t.inventory_mode_spot | default('Точечная сверка') }}</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sm btn-outline-primary">{{ t.btn_apply | default('Показать') }}</button>
+    </div>
+    <div class="col-auto">
+      <a href="/reports/inventory" class="btn btn-sm btn-outline-secondary">📊 {{ t.inventory_report_link | default('Отчёт расхождений') }}</a>
+    </div>
+  </form>
+
+  {% if not items %}
+    <div class="text-muted small">{{ t.inventory_empty | default('На выбранном складе нет товаров.') }}</div>
+  {% else %}
+    <form method="post" action="/inventory/apply" id="invForm">
+      <input type="hidden" name="warehouse" value="{{ warehouse }}">
+
+      {# ─── Spot mode: search input ─── #}
+      {% if mode == 'spot' %}
+        <div class="mb-2">
+          <label class="form-label form-label-sm mb-1">{{ t.inventory_spot_search | default('Поиск товара (бренд / модель / штрихкод)') }}</label>
+          <input type="text" id="spotSearch" class="form-control form-control-sm"
+                 placeholder="{{ t.inventory_spot_placeholder | default('начните вводить…') }}" autocomplete="off">
+        </div>
+      {% endif %}
+
+      <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th class="inv-sort" data-sort="brand"    style="cursor:pointer;user-select:none">{{ t.th_brand | default('Бренд') }} <span class="inv-arrow"></span></th>
+              <th class="inv-sort" data-sort="model"    style="cursor:pointer;user-select:none">{{ t.th_model | default('Модель') }} <span class="inv-arrow"></span></th>
+              <th class="inv-sort" data-sort="name"     style="cursor:pointer;user-select:none">{{ t.th_name | default('Название') }} <span class="inv-arrow"></span></th>
+              <th class="inv-sort" data-sort="barcode"  style="cursor:pointer;user-select:none">{{ t.th_barcode | default('Штрихкод') }} <span class="inv-arrow"></span></th>
+              <th class="inv-sort text-end" data-sort="current" style="cursor:pointer;user-select:none;min-width:80px">{{ t.inventory_system_qty | default('В системе') }} <span class="inv-arrow"></span></th>
+              <th class="text-end" style="min-width:110px">{{ t.inventory_actual_qty | default('Факт') }}</th>
+              <th class="inv-sort text-end" data-sort="delta" style="cursor:pointer;user-select:none;min-width:80px">{{ t.inventory_diff | default('Разница') }} <span class="inv-arrow"></span></th>
+            </tr>
+          </thead>
+          <tbody id="invBody">
+            {% for it in items %}
+              <tr class="inv-row" data-brand="{{ it.brand|lower }}" data-model="{{ it.model|lower }}"
+                  data-name="{{ (it.name or '')|lower }}" data-barcode="{{ it.barcode or '' }}"
+                  data-current="{{ it.qty }}">
+                <td class="text-muted small">{{ loop.index }}</td>
+                <td>{{ it.brand }}</td>
+                <td>{{ it.model }}</td>
+                <td>{{ it.name or '' }}</td>
+                <td class="text-muted small">{{ it.barcode or '' }}</td>
+                <td class="text-end">{{ "%.0f"|format(it.qty) }}</td>
+                <td>
+                  <input type="number" step="0.01" min="0"
+                         name="actual_{{ it.product_id }}"
+                         class="form-control form-control-sm text-end inv-actual"
+                         data-current="{{ it.qty }}"
+                         placeholder="—" style="min-width:100px">
+                </td>
+                <td class="text-end inv-delta small text-muted">—</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div id="invSummary" class="alert alert-info py-2 small d-none mb-3"></div>
+
+      <div class="mb-3">
+        <label class="form-label form-label-sm mb-1">
+          {{ t.inventory_note | default('Комментарий') }} <span class="text-danger">*</span>
+        </label>
+        <input type="text" name="note" class="form-control form-control-sm"
+               placeholder="{{ t.inventory_note_placeholder | default('напр. Ежемесячная инвентаризация 07.2026') }}" required>
+      </div>
+
+      <button type="submit" class="btn btn-danger btn-sm" id="invSubmit" onclick="return confirmInv()">
+        {{ t.inventory_apply_btn | default('Применить корректировки') }}
+      </button>
+      <a href="/inventory?warehouse={{ warehouse }}&mode={{ mode }}" class="btn btn-outline-secondary btn-sm">
+        {{ t.btn_cancel | default('Отмена') }}
+      </a>
+    </form>
+  {% endif %}
+</div>
+
+<script>
+(function() {
+  // Live delta computation
+  var body = document.getElementById('invBody');
+  if (!body) return;
+
+  function recalc() {
+    var surplus = 0, shortage = 0, n = 0;
+    body.querySelectorAll('.inv-row').forEach(function(row) {
+      var current = parseFloat(row.getAttribute('data-current')) || 0;
+      var input = row.querySelector('.inv-actual');
+      var deltaCell = row.querySelector('.inv-delta');
+      var raw = input.value.trim();
+      if (raw === '') {
+        deltaCell.textContent = '—';
+        deltaCell.className = 'text-end inv-delta small text-muted';
+        return;
+      }
+      var actual = parseFloat(raw);
+      if (isNaN(actual)) {
+        deltaCell.textContent = '?';
+        deltaCell.className = 'text-end inv-delta small text-warning';
+        return;
+      }
+      var d = actual - current;
+      n++;
+      if (d > 0) surplus += d;
+      if (d < 0) shortage += -d;
+      deltaCell.textContent = (d > 0 ? '+' : '') + d;
+      deltaCell.className = 'text-end inv-delta small fw-semibold ' +
+        (d > 0 ? 'text-success' : d < 0 ? 'text-danger' : 'text-muted');
+    });
+    var s = document.getElementById('invSummary');
+    if (n === 0) {
+      s.classList.add('d-none');
+    } else {
+      s.classList.remove('d-none');
+      s.innerHTML =
+        '📦 Заполнено строк: <strong>' + n + '</strong> · ' +
+        '➕ Оприходовано: <strong class="text-success">' + surplus.toFixed(2) + '</strong> · ' +
+        '➖ Списано: <strong class="text-danger">' + shortage.toFixed(2) + '</strong>';
+    }
+  }
+  body.addEventListener('input', function(e) {
+    if (e.target && e.target.classList.contains('inv-actual')) recalc();
+  });
+
+  // ─── Column sorting ─────────────────────────────────────
+  // Click a header to sort; click again to reverse. Preserves entered
+  // "Факт" values because we move whole <tr> nodes (inputs go with them).
+  var sortState = { key: null, dir: 1 };
+
+  function renumber() {
+    var i = 1;
+    body.querySelectorAll('.inv-row').forEach(function(row) {
+      if (row.style.display === 'none') return;
+      var cell = row.querySelector('td:first-child');
+      if (cell) cell.textContent = i++;
+    });
+  }
+
+  function sortRows(key) {
+    if (sortState.key === key) sortState.dir = -sortState.dir;
+    else { sortState.key = key; sortState.dir = 1; }
+
+    var rows = Array.prototype.slice.call(body.querySelectorAll('.inv-row'));
+    rows.sort(function(a, b) {
+      var va, vb;
+      if (key === 'current') {
+        va = parseFloat(a.getAttribute('data-current')) || 0;
+        vb = parseFloat(b.getAttribute('data-current')) || 0;
+      } else if (key === 'delta') {
+        var ai = a.querySelector('.inv-actual').value.trim();
+        var bi = b.querySelector('.inv-actual').value.trim();
+        // Empty inputs sort last regardless of direction
+        var aEmpty = (ai === '' || isNaN(parseFloat(ai)));
+        var bEmpty = (bi === '' || isNaN(parseFloat(bi)));
+        if (aEmpty && bEmpty) return 0;
+        if (aEmpty) return 1;
+        if (bEmpty) return -1;
+        va = parseFloat(ai) - (parseFloat(a.getAttribute('data-current')) || 0);
+        vb = parseFloat(bi) - (parseFloat(b.getAttribute('data-current')) || 0);
+      } else {
+        va = a.getAttribute('data-' + key) || '';
+        vb = b.getAttribute('data-' + key) || '';
+        return sortState.dir * va.localeCompare(vb, undefined, { numeric: true });
+      }
+      return sortState.dir * (va - vb);
+    });
+    rows.forEach(function(row) { body.appendChild(row); });
+
+    // Update header arrows
+    document.querySelectorAll('.inv-arrow').forEach(function(a) { a.textContent = ''; });
+    var th = document.querySelector('.inv-sort[data-sort="' + key + '"] .inv-arrow');
+    if (th) th.textContent = sortState.dir > 0 ? ' ▲' : ' ▼';
+
+    renumber();
+  }
+
+  document.querySelectorAll('.inv-sort').forEach(function(th) {
+    th.addEventListener('click', function() {
+      sortRows(th.getAttribute('data-sort'));
+    });
+  });
+
+  // Spot mode: filter rows by search text
+  var searchInput = document.getElementById('spotSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      var q = this.value.trim().toLowerCase();
+      body.querySelectorAll('.inv-row').forEach(function(row) {
+        if (!q) {
+          row.style.display = '';
+          return;
+        }
+        var hay = row.getAttribute('data-brand') + ' ' +
+                  row.getAttribute('data-model') + ' ' +
+                  row.getAttribute('data-name') + ' ' +
+                  row.getAttribute('data-barcode');
+        row.style.display = hay.indexOf(q) >= 0 ? '' : 'none';
+      });
+    });
+  }
+})();
+
+function confirmInv() {
+  var changed = 0, surplus = 0, shortage = 0;
+  document.querySelectorAll('.inv-row').forEach(function(row) {
+    var current = parseFloat(row.getAttribute('data-current')) || 0;
+    var input = row.querySelector('.inv-actual');
+    var raw = input.value.trim();
+    if (raw === '') return;
+    var actual = parseFloat(raw);
+    if (isNaN(actual)) return;
+    var d = actual - current;
+    if (d !== 0) {
+      changed++;
+      if (d > 0) surplus += d; else shortage += -d;
+    }
+  });
+  if (changed === 0) {
+    alert('Нет строк с расхождениями. Заполните хотя бы одно поле "Факт".');
+    return false;
+  }
+  var msg = 'Применить корректировки?\n\n' +
+            '• Строк с расхождением: ' + changed + '\n' +
+            '• Оприходовано (+): ' + surplus.toFixed(2) + '\n' +
+            '• Списано (–): ' + shortage.toFixed(2) + '\n\n' +
+            'Эти изменения будут записаны как ADJUST-операции. История приходов и продаж не меняется.';
+  return confirm(msg);
+}
+</script>
+{% endblock %}

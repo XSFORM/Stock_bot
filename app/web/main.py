@@ -49,6 +49,12 @@ from app.db.sqlite import (
     delete_client_ledger_entry,
     get_client_balance,
     list_clients_with_balance,
+    get_all_clients_payment_stats,
+    get_client_payment_stats,
+    get_profit_report,
+    list_stock_for_inventory,
+    apply_inventory_adjustments,
+    get_inventory_discrepancies,
     get_client_history,
     # suppliers
     list_suppliers,
@@ -1045,6 +1051,15 @@ def clients_get(
         client_type = "all"
 
     clients = list_clients_with_balance(include_archived=bool(show_archived))
+    # Phase 3: attach payment stats
+    _all_stats = get_all_clients_payment_stats()
+    for c in clients:
+        s = _all_stats.get(c["id"]) or {
+            "last_payment_at": None, "days_since_last": None,
+            "sum_last_30d": 0.0, "sum_last_90d": 0.0,
+            "avg_payment_90d": 0.0, "count_last_90d": 0,
+        }
+        c["payment_stats"] = s
     # Compute counts per type (over the full archived-filtered list)
     type_counts = {
         "all": len(clients),
@@ -1070,6 +1085,17 @@ def clients_get(
         clients = sorted(clients, key=lambda c: c.get("balance") or 0, reverse=True)
     elif sort_by == "debt_asc":
         clients = sorted(clients, key=lambda c: c.get("balance") or 0)
+    elif sort_by == "silent_desc":
+        # Phase 3: "давно не платили" — среди должников по убыванию days_since_last;
+        # None (никогда не платили) считаем самым худшим (высокий приоритет).
+        debtors = [c for c in clients if (c.get("balance") or 0) > 0]
+        others  = [c for c in clients if (c.get("balance") or 0) <= 0]
+        def _silent_key(c):
+            d = (c.get("payment_stats") or {}).get("days_since_last")
+            return d if d is not None else 10**9
+        debtors.sort(key=_silent_key, reverse=True)
+        others.sort(key=lambda c: (c.get("name") or "").lower())
+        clients = debtors + others
     else:  # name_asc (default)
         clients = sorted(clients, key=lambda c: (c.get("name") or "").lower())
 
@@ -1188,6 +1214,7 @@ def client_history_get(request: Request, client_id: int):
         return RedirectResponse(url="/clients?msg=client_not_found", status_code=303)
     events = get_client_history(int(client_id))
     balance = get_client_balance(int(client_id))
+    _ps = get_client_payment_stats(int(client_id))
     return _render(request, "client_history.html", {
         "client": c,
         "events": events,
@@ -1924,6 +1951,146 @@ def return_xlsx_view(request: Request, n: int):
 # ──────────────────────────────────────────────────────────────────────────────
 # Help page
 # ──────────────────────────────────────────────────────────────────────────────
+
+@app.get("/inventory", response_class=HTMLResponse)
+def inventory_page(
+    request: Request,
+    warehouse: Optional[str] = None,
+    mode: str = "full",
+):
+    """Phase 4: physical count vs system. Two modes: full (all products) or spot (search)."""
+    warehouse_options = list_warehouses()
+    warehouse_codes_all = [w["code"] for w in warehouse_options]
+    if not warehouse and warehouse_codes_all:
+        warehouse = warehouse_codes_all[0]
+    if warehouse and warehouse not in warehouse_codes_all:
+        warehouse = warehouse_codes_all[0] if warehouse_codes_all else ""
+
+    items = list_stock_for_inventory(warehouse) if warehouse else []
+    return _render(
+        request,
+        "inventory.html",
+        {
+            "warehouse_options": warehouse_options,
+            "warehouse": warehouse,
+            "mode": mode if mode in ("full", "spot") else "full",
+            "items": items,
+        },
+    )
+
+
+@app.post("/inventory/apply")
+async def inventory_apply(request: Request):
+    """Apply a batch of ADJUST operations from the physical-count form."""
+    form = await request.form()
+    warehouse = str(form.get("warehouse", "")).strip()
+    note = str(form.get("note", "")).strip()
+    if not warehouse:
+        return RedirectResponse(url="/inventory?msg=no_warehouse", status_code=303)
+    if not note:
+        return RedirectResponse(url=f"/inventory?warehouse={warehouse}&msg=note_required", status_code=303)
+
+    # Form contains actual[<product_id>] fields — one per product row.
+    adjustments = []
+    current_qty_by_pid = {
+        it["product_id"]: float(it["qty"] or 0)
+        for it in list_stock_for_inventory(warehouse)
+    }
+    for key, value in form.multi_items():
+        if not key.startswith("actual_"):
+            continue
+        try:
+            pid = int(key[len("actual_"):])
+            actual = str(value).strip()
+            if actual == "":
+                continue
+            actual_qty = float(actual)
+        except (ValueError, TypeError):
+            continue
+        current = current_qty_by_pid.get(pid, 0.0)
+        delta = actual_qty - current
+        if delta != 0:
+            adjustments.append({"product_id": pid, "delta": delta})
+
+    if not adjustments:
+        return RedirectResponse(url=f"/inventory?warehouse={warehouse}&msg=no_changes", status_code=303)
+
+    ok, err, n = apply_inventory_adjustments(warehouse, adjustments, note=note)
+    if ok:
+        return RedirectResponse(url=f"/inventory?warehouse={warehouse}&msg=applied:{n}", status_code=303)
+    return RedirectResponse(url=f"/inventory?warehouse={warehouse}&msg=error:{quote(err, safe='')}", status_code=303)
+
+
+@app.get("/reports/inventory", response_class=HTMLResponse)
+def reports_inventory_page(
+    request: Request,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    warehouses: Optional[list[str]] = Query(default=None),
+):
+    """Phase 4: inventory discrepancies report."""
+    from datetime import date as _date
+    today = _date.today()
+    if not date_from:
+        date_from = today.replace(day=1).isoformat()
+    if not date_to:
+        date_to = today.isoformat()
+
+    warehouse_options = list_warehouses()
+    warehouse_codes_all = [w["code"] for w in warehouse_options]
+    selected_wh = _reports_warehouse_filter(warehouses, warehouse_codes_all)
+
+    report = get_inventory_discrepancies(date_from, date_to, warehouse_codes=selected_wh)
+
+    return _render(
+        request,
+        "inventory_report.html",
+        {
+            "report":              report,
+            "date_from":           date_from,
+            "date_to":             date_to,
+            "warehouse_options":   warehouse_options,
+            "selected_warehouses": selected_wh,
+            "all_warehouses_selected": not selected_wh,
+        },
+    )
+
+
+@app.get("/reports/profit", response_class=HTMLResponse)
+def reports_profit_page(
+    request: Request,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    warehouses: Optional[list[str]] = Query(default=None),
+):
+    """Phase 2: gross profit report (revenue - cost of goods sold + returns)."""
+    from datetime import date as _date, timedelta as _td
+    # Default range: current month
+    today = _date.today()
+    if not date_from:
+        date_from = today.replace(day=1).isoformat()
+    if not date_to:
+        date_to = today.isoformat()
+
+    warehouse_options = list_warehouses()
+    warehouse_codes_all = [w["code"] for w in warehouse_options]
+    selected_wh = _reports_warehouse_filter(warehouses, warehouse_codes_all)
+
+    report = get_profit_report(date_from, date_to, warehouse_codes=selected_wh)
+
+    return _render(
+        request,
+        "profit_report.html",
+        {
+            "report":              report,
+            "date_from":           date_from,
+            "date_to":             date_to,
+            "warehouse_options":   warehouse_options,
+            "selected_warehouses": selected_wh,
+            "all_warehouses_selected": not selected_wh,
+        },
+    )
+
 
 @app.get("/reports", response_class=HTMLResponse)
 def reports_page(

@@ -41,6 +41,46 @@
     {% endif %}
   </div>
 
+  {# Phase 3: Payment discipline stats #}
+  {% if payment_stats %}
+    {% set _ps = payment_stats %}
+    <div class="row g-2 mb-3 small">
+      <div class="col-sm-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted">{{ t.payment_last | default('Последняя оплата') }}</div>
+          <div class="fw-semibold">
+            {% if _ps.last_payment_at %}
+              {{ _ps.last_payment_at[:10] }}
+            {% else %}
+              <span class="text-danger">{{ t.clients_never_paid | default('никогда') }}</span>
+            {% endif %}
+          </div>
+          {% if _ps.days_since_last is not none %}
+            <div class="text-muted">{{ _ps.days_since_last }} {{ t.clients_days_ago | default('дн. назад') }}</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted">{{ t.payment_sum_30d | default('Оплаты за 30 дней') }}</div>
+          <div class="fw-semibold">{{ "%.2f"|format(_ps.sum_last_30d or 0) }} USD</div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted">{{ t.payment_avg_90d | default('Средний платёж (90 дн.)') }}</div>
+          <div class="fw-semibold">{{ "%.2f"|format(_ps.avg_payment_90d or 0) }} USD</div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted">{{ t.payment_count_90d | default('Платежей за 90 дней') }}</div>
+          <div class="fw-semibold">{{ _ps.count_last_90d or 0 }}</div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
   <table class="table table-sm table-striped align-middle client-history-table">
     <thead class="table-dark">
       <tr>
