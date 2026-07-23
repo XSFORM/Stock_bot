@@ -682,7 +682,10 @@ def test_generate_invoice_xlsx_bytes_sets_print_setup_for_a4_width_fit() -> None
     assert ws.page_margins.top == pytest.approx(0.75)
     assert ws.page_margins.bottom == pytest.approx(0.75)
 
-    assert "$A$1:$G$7" in ws.print_area
+    # print_area now extends 3 rows past the TOTAL row to include the
+    # Seller/Buyer signature line (added in Phase 5). Old expectation was
+    # $A$1:$G$7 (header@5 + 1 item + TOTAL@7). Signature sits at TOTAL+3 → G10.
+    assert "$A$1:$G$10" in ws.print_area
     assert ws.print_title_rows == "$5:$5"
 
 

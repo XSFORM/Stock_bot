@@ -226,6 +226,31 @@ def generate_invoice_pdf(invoice: dict[str, Any],
     table.setStyle(style)
     story.append(table)
 
+    # ── Signature block ─────────────────────────────────────────────────────
+    # Two side-by-side columns: Seller on the left, Buyer on the right.
+    # English-only labels — bold Cyrillic doesn't render reliably on servers
+    # that only have Latin-subset variants of DejaVu Sans Bold installed.
+    story.append(Spacer(1, 15 * mm))
+
+    sig_style = ParagraphStyle(
+        "sig", fontName=FONT, fontSize=10, leading=14,
+    )
+    sig_cell_seller = Paragraph("Seller: ______________________________", sig_style)
+    sig_cell_buyer  = Paragraph("Buyer: ______________________________",  sig_style)
+
+    sig_table = Table(
+        [[sig_cell_seller, sig_cell_buyer]],
+        colWidths=[87 * mm, 87 * mm],
+    )
+    sig_table.setStyle(TableStyle([
+        ("VALIGN",       (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING",   (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 0),
+    ]))
+    story.append(sig_table)
+
     # Stamp is drawn ONLY on page 1 — on continuation pages it would overlap the table.
     doc.build(story, onFirstPage=_draw_stamp)
     return str(filename)

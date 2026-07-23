@@ -134,6 +134,16 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     ws.cell(row=total_row_idx, column=6, value="").fill = _TOTAL_FILL
     ws.cell(row=total_row_idx, column=6).border = _BORDER
 
+    # --- Signature block (two side-by-side signatures) ---
+    # Leave 2 blank rows, then put Seller on the left half (cols A–C)
+    # and Buyer on the right half (cols E–G). Merge each label into a
+    # single visual cell so it prints nicely on one line.
+    sig_row = total_row_idx + 3
+    ws.cell(row=sig_row, column=1, value="Seller: ______________________________").alignment = Alignment(horizontal="left")
+    ws.merge_cells(start_row=sig_row, start_column=1, end_row=sig_row, end_column=3)
+    ws.cell(row=sig_row, column=5, value="Buyer: ______________________________").alignment = Alignment(horizontal="left")
+    ws.merge_cells(start_row=sig_row, start_column=5, end_row=sig_row, end_column=7)
+
     # --- Print setup: A4, fit to 1 page wide, multi-page tall ---
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
@@ -151,7 +161,7 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     ws.page_margins.header = 0.3
     ws.page_margins.footer = 0.3
 
-    ws.print_area = f"A1:G{total_row_idx}"
+    ws.print_area = f"A1:G{sig_row}"
     ws.print_title_rows = f"{header_row}:{header_row}"
 
     return wb

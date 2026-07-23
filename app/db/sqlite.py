@@ -229,6 +229,84 @@ def _ensure_stock_ops_note_column(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE stock_ops ADD COLUMN note TEXT NOT NULL DEFAULT ''")
 
 
+# ── Phase 5 — Expenses ─────────────────────────────────────────────────────
+
+# Fixed set — used to validate the kind column and to filter reports.
+EXPENSE_KINDS = ("business", "personal")
+
+
+def _ensure_expense_categories_table(conn: sqlite3.Connection) -> None:
+    """
+    Phase 5 — categories dictionary for expenses.
+
+    Each category is tagged as 'business' or 'personal' so the finance
+    report can show business net profit separately from wallet net.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS expense_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            kind TEXT NOT NULL DEFAULT 'business',
+            archived INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+
+
+def _ensure_expenses_table(conn: sqlite3.Connection) -> None:
+    """
+    Phase 5 — actual expense entries.
+
+    Store money in USD (single-currency by user request). date is the day
+    the expense happened; created_at is when the record was entered.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            category_id INTEGER NOT NULL,
+            amount_usd REAL NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (category_id) REFERENCES expense_categories(id) ON DELETE RESTRICT
+        )
+        """
+    )
+    # Helpful index for period filters.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date)"
+    )
+
+
+def _seed_default_expense_categories(conn: sqlite3.Connection) -> None:
+    """
+    First-run seed. Only inserts categories that don't exist by name.
+    Runs on every init_db but is a no-op after the first time.
+    """
+    defaults = [
+        # Business
+        ("Аренда",              "business"),
+        ("Зарплата",            "business"),
+        ("Налоги/Госторг",      "business"),
+        ("Коммуналка",          "business"),
+        ("Транспорт",           "business"),
+        ("Связь/Интернет",      "business"),
+        ("Реклама",             "business"),
+        ("Прочие бизнес",       "business"),
+        # Personal
+        ("Личные покупки",      "personal"),
+        ("Семья",               "personal"),
+        ("Прочие личные",       "personal"),
+    ]
+    for name, kind in defaults:
+        conn.execute(
+            "INSERT OR IGNORE INTO expense_categories (name, kind) VALUES (?, ?)",
+            (name, kind),
+        )
+
+
 def _ensure_items_cost_price_column(conn: sqlite3.Connection) -> None:
     """
     Phase 1 — snapshot of cost price at the moment of sale/return.
@@ -335,6 +413,9 @@ def init_db() -> None:
         _ensure_return_items_free_columns(conn)
         _ensure_items_cost_price_column(conn)
         _ensure_stock_ops_note_column(conn)
+        _ensure_expense_categories_table(conn)
+        _ensure_expenses_table(conn)
+        _seed_default_expense_categories(conn)
         conn.commit()
 
 
@@ -1557,6 +1638,269 @@ def get_inventory_discrepancies(
     }
 
 
+# ── Phase 5 — Expenses CRUD ─────────────────────────────────────────────────
+
+def list_expense_categories(include_archived: bool = False) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        if include_archived:
+            rows = conn.execute(
+                "SELECT * FROM expense_categories ORDER BY kind, name"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM expense_categories WHERE archived = 0 ORDER BY kind, name"
+            ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
+def add_expense_category(name: str, kind: str = "business") -> tuple[bool, str]:
+    name = (name or "").strip()
+    if not name:
+        return False, "name_required"
+    if kind not in EXPENSE_KINDS:
+        return False, "bad_kind"
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "INSERT INTO expense_categories (name, kind) VALUES (?, ?)",
+                (name, kind),
+            )
+            conn.commit()
+        return True, ""
+    except sqlite3.IntegrityError:
+        return False, "duplicate_name"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def update_expense_category(
+    category_id: int, name: str, kind: str
+) -> tuple[bool, str]:
+    name = (name or "").strip()
+    if not name:
+        return False, "name_required"
+    if kind not in EXPENSE_KINDS:
+        return False, "bad_kind"
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE expense_categories SET name = ?, kind = ? WHERE id = ?",
+                (name, kind, category_id),
+            )
+            conn.commit()
+        return True, ""
+    except sqlite3.IntegrityError:
+        return False, "duplicate_name"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def set_expense_category_archived(
+    category_id: int, archived: bool
+) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE expense_categories SET archived = ? WHERE id = ?",
+                (1 if archived else 0, category_id),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def list_expenses(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    category_id: Optional[int] = None,
+    kind: Optional[str] = None,
+    search: str = "",
+) -> list[dict[str, Any]]:
+    """
+    Return expenses joined with category info, newest date first.
+
+    All filters are optional; date_from/date_to are inclusive 'YYYY-MM-DD'.
+    kind, if given, must be 'business' or 'personal'.
+    """
+    sql = (
+        "SELECT e.id, e.date, e.category_id, e.amount_usd, e.note, e.created_at,"
+        "       c.name AS category_name, c.kind AS category_kind,"
+        "       c.archived AS category_archived"
+        " FROM expenses e"
+        " JOIN expense_categories c ON c.id = e.category_id"
+        " WHERE 1=1"
+    )
+    params: list[Any] = []
+    if date_from:
+        sql += " AND e.date >= ?"
+        params.append(date_from)
+    if date_to:
+        sql += " AND e.date <= ?"
+        params.append(date_to)
+    if category_id:
+        sql += " AND e.category_id = ?"
+        params.append(int(category_id))
+    if kind and kind in EXPENSE_KINDS:
+        sql += " AND c.kind = ?"
+        params.append(kind)
+    if search:
+        sql += " AND (e.note LIKE ? OR c.name LIKE ?)"
+        s = f"%{search.strip()}%"
+        params.extend([s, s])
+    sql += " ORDER BY e.date DESC, e.id DESC"
+    with _connect() as conn:
+        rows = conn.execute(sql, params).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
+def get_expense(expense_id: int) -> Optional[dict[str, Any]]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT e.*, c.name AS category_name, c.kind AS category_kind"
+            " FROM expenses e"
+            " JOIN expense_categories c ON c.id = e.category_id"
+            " WHERE e.id = ?",
+            (expense_id,),
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+
+
+def add_expense(
+    date: str, category_id: int, amount_usd: float, note: str = ""
+) -> tuple[bool, str]:
+    date = (date or "").strip()
+    if not date:
+        return False, "date_required"
+    if not category_id:
+        return False, "category_required"
+    try:
+        amount_usd = float(amount_usd)
+    except (TypeError, ValueError):
+        return False, "amount_invalid"
+    if amount_usd <= 0:
+        return False, "amount_must_be_positive"
+    try:
+        with _connect() as conn:
+            cat = conn.execute(
+                "SELECT id FROM expense_categories WHERE id = ?", (category_id,)
+            ).fetchone()
+            if not cat:
+                return False, "category_not_found"
+            conn.execute(
+                "INSERT INTO expenses (date, category_id, amount_usd, note)"
+                " VALUES (?, ?, ?, ?)",
+                (date, int(category_id), round(amount_usd, 2), (note or "").strip()),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def update_expense(
+    expense_id: int,
+    date: str,
+    category_id: int,
+    amount_usd: float,
+    note: str = "",
+) -> tuple[bool, str]:
+    date = (date or "").strip()
+    if not date:
+        return False, "date_required"
+    if not category_id:
+        return False, "category_required"
+    try:
+        amount_usd = float(amount_usd)
+    except (TypeError, ValueError):
+        return False, "amount_invalid"
+    if amount_usd <= 0:
+        return False, "amount_must_be_positive"
+    try:
+        with _connect() as conn:
+            cat = conn.execute(
+                "SELECT id FROM expense_categories WHERE id = ?", (category_id,)
+            ).fetchone()
+            if not cat:
+                return False, "category_not_found"
+            row = conn.execute(
+                "SELECT id FROM expenses WHERE id = ?", (expense_id,)
+            ).fetchone()
+            if not row:
+                return False, "expense_not_found"
+            conn.execute(
+                "UPDATE expenses"
+                "   SET date = ?, category_id = ?, amount_usd = ?, note = ?"
+                " WHERE id = ?",
+                (
+                    date, int(category_id), round(amount_usd, 2),
+                    (note or "").strip(), expense_id,
+                ),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def delete_expense(expense_id: int) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM expenses WHERE id = ?", (expense_id,)
+            ).fetchone()
+            if not row:
+                return False, "expense_not_found"
+            conn.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def get_expenses_summary(
+    date_from: str,
+    date_to: str,
+) -> dict[str, Any]:
+    """
+    Aggregate expenses per category for the period; also totals per kind.
+
+    Returns:
+        {
+            "totals": {"business": float, "personal": float, "all": float},
+            "by_category": [
+                {"category_id", "category", "kind", "amount"},
+                ...
+            ],
+        }
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT c.id AS category_id, c.name AS category, c.kind AS kind,
+                   COALESCE(SUM(e.amount_usd), 0) AS amount
+            FROM expense_categories c
+            LEFT JOIN expenses e
+                   ON e.category_id = c.id
+                  AND e.date BETWEEN ? AND ?
+            GROUP BY c.id, c.name, c.kind
+            HAVING amount > 0
+            ORDER BY c.kind, amount DESC
+            """,
+            (date_from, date_to),
+        ).fetchall()
+    by_cat = [_row_to_dict(r) for r in rows]
+    totals = {"business": 0.0, "personal": 0.0}
+    for r in by_cat:
+        r["amount"] = round(float(r["amount"]), 2)
+        if r["kind"] in totals:
+            totals[r["kind"]] += r["amount"]
+    totals["business"] = round(totals["business"], 2)
+    totals["personal"] = round(totals["personal"], 2)
+    totals["all"] = round(totals["business"] + totals["personal"], 2)
+    return {"totals": totals, "by_category": by_cat}
+
+
 # ── Phase 3: Payment discipline stats ────────────────────────────────────────
 
 def get_client_payment_stats(client_id: int) -> dict[str, Any]:
@@ -2677,7 +3021,8 @@ def _finish_cart(
                    ci.qty, ci.price_mode, ci.unit_price, ci.total,
                    COALESCE(p.brand, '') AS brand,
                    COALESCE(p.model, '') AS model,
-                   COALESCE(p.name, ci.free_name) AS name
+                   COALESCE(p.name, ci.free_name) AS name,
+                   COALESCE(p.barcode, '') AS barcode
             FROM cart_items ci
             LEFT JOIN products p ON p.id = ci.product_id
             WHERE ci.cart_id = ?

@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h4 class="mb-0">💸 {{ t.expenses_title | default('Расходы') }}</h4>
+    <div>
+      <a href="/expenses/add" class="btn btn-sm btn-primary">＋ {{ t.expenses_add | default('Добавить расход') }}</a>
+      <a href="/expenses/categories" class="btn btn-sm btn-outline-secondary">🏷️ {{ t.expenses_categories_link | default('Категории') }}</a>
+      <a href="/reports/finance" class="btn btn-sm btn-outline-success">📈 {{ t.expenses_finance_link | default('Финотчёт') }}</a>
+    </div>
+  </div>
+  <p class="text-muted small mb-3">
+    {{ t.expenses_subtitle | default('Все траты вне ERP: аренда, зарплата, налоги, личное. Оплаты поставщикам сюда не заносить — они уже учтены в приходах и себестоимости.') }}
+  </p>
+
+  {# ─── Alerts ─── #}
+  {% set _msg = request.query_params.get('msg', '') %}
+  {% if _msg == 'added' %}<div class="alert alert-success py-2 small">✅ {{ t.expenses_added | default('Расход добавлен.') }}</div>{% endif %}
+  {% if _msg == 'updated' %}<div class="alert alert-success py-2 small">✅ {{ t.expenses_updated | default('Изменено.') }}</div>{% endif %}
+  {% if _msg == 'deleted' %}<div class="alert alert-success py-2 small">🗑️ {{ t.expenses_deleted | default('Удалено.') }}</div>{% endif %}
+  {% if _msg == 'not_found' %}<div class="alert alert-warning py-2 small">{{ t.expenses_not_found | default('Запись не найдена.') }}</div>{% endif %}
+  {% if _msg.startswith('del_err:') %}<div class="alert alert-danger py-2 small">{{ _msg[8:] | e }}</div>{% endif %}
+
+  {# ─── Filters ─── #}
+  <form method="get" action="/expenses" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.reports_from | default('С') }}</label>
+      <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.reports_to | default('По') }}</label>
+      <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.expenses_category | default('Категория') }}</label>
+      <select name="category_id" class="form-select form-select-sm">
+        <option value="">{{ t.expenses_all_categories | default('Все') }}</option>
+        {% for c in categories %}
+          <option value="{{ c.id }}"{% if category_id == c.id %} selected{% endif %}>
+            {{ c.name }} {% if c.kind == 'personal' %}🛒{% else %}📦{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.expenses_kind | default('Тип') }}</label>
+      <select name="kind" class="form-select form-select-sm">
+        <option value="">{{ t.expenses_all_kinds | default('Все') }}</option>
+        <option value="business"{% if kind == 'business' %} selected{% endif %}>📦 {{ t.expenses_kind_business | default('Бизнес') }}</option>
+        <option value="personal"{% if kind == 'personal' %} selected{% endif %}>🛒 {{ t.expenses_kind_personal | default('Личное') }}</option>
+      </select>
+    </div>
+    <div class="col-auto flex-grow-1">
+      <label class="form-label form-label-sm mb-1">{{ t.expenses_search | default('Поиск') }}</label>
+      <input type="text" name="search" value="{{ search }}" class="form-control form-control-sm"
+             placeholder="{{ t.expenses_search_placeholder | default('заметка или категория…') }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sm btn-primary">{{ t.btn_apply | default('Применить') }}</button>
+      <a href="/expenses" class="btn btn-sm btn-outline-secondary">{{ t.btn_reset | default('Сброс') }}</a>
+    </div>
+  </form>
+
+  {# ─── KPI cards ─── #}
+  <div class="row g-2 mb-3">
+    <div class="col-sm-4">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted small">📦 {{ t.expenses_kpi_business | default('Бизнес-расходы') }}</div>
+        <div class="fs-5 fw-semibold text-danger">-{{ "%.2f"|format(summary.totals.business) }} $</div>
+      </div>
+    </div>
+    <div class="col-sm-4">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted small">🛒 {{ t.expenses_kpi_personal | default('Личные') }}</div>
+        <div class="fs-5 fw-semibold text-danger">-{{ "%.2f"|format(summary.totals.personal) }} $</div>
+      </div>
+    </div>
+    <div class="col-sm-4">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted small">💰 {{ t.expenses_kpi_total | default('Всего за период') }}</div>
+        <div class="fs-5 fw-bold text-danger">-{{ "%.2f"|format(summary.totals.all) }} $</div>
+      </div>
+    </div>
+  </div>
+
+  {% if not items %}
+    <div class="text-muted small">{{ t.expenses_empty | default('Нет расходов за выбранный период.') }}</div>
+  {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>{{ t.lbl_date | default('Дата') }}</th>
+            <th>{{ t.expenses_category | default('Категория') }}</th>
+            <th>{{ t.expenses_kind | default('Тип') }}</th>
+            <th class="text-end">{{ t.expenses_amount | default('Сумма') }}</th>
+            <th>{{ t.expenses_note | default('Заметка') }}</th>
+            <th class="text-end">{{ t.lbl_actions | default('Действия') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in items %}
+            <tr>
+              <td>{{ it.date }}</td>
+              <td>{{ it.category_name }}{% if it.category_archived %} <span class="badge bg-secondary" title="архивная категория">A</span>{% endif %}</td>
+              <td>
+                {% if it.category_kind == 'personal' %}
+                  <span class="badge bg-warning text-dark">🛒 {{ t.expenses_kind_personal | default('Личное') }}</span>
+                {% else %}
+                  <span class="badge bg-info text-dark">📦 {{ t.expenses_kind_business | default('Бизнес') }}</span>
+                {% endif %}
+              </td>
+              <td class="text-end text-danger fw-semibold">-{{ "%.2f"|format(it.amount_usd) }} $</td>
+              <td>{{ it.note or '' }}</td>
+              <td class="text-end">
+                <a href="/expenses/edit/{{ it.id }}" class="btn btn-sm btn-outline-primary">{{ t.btn_edit | default('Редактировать') }}</a>
+                <form method="post" action="/expenses/delete/{{ it.id }}" class="d-inline exp-del-form"
+                      data-date="{{ it.date }}" data-cat="{{ it.category_name }}"
+                      data-amount="{{ '%.2f' | format(it.amount_usd) }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger">{{ t.btn_delete | default('Удалить') }}</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+
+<script>
+document.querySelectorAll('form.exp-del-form').forEach(function(f) {
+  f.addEventListener('submit', function(e) {
+    var d = f.getAttribute('data-date');
+    var c = f.getAttribute('data-cat');
+    var a = f.getAttribute('data-amount');
+    var msg = 'Удалить запись?\n' + d + ' — ' + c + ' — ' + a + ' USD\n\nДействие необратимо.';
+    if (!confirm(msg)) { e.preventDefault(); return false; }
+  });
+});
+</script>
+{% endblock %}

@@ -55,6 +55,16 @@ from app.db.sqlite import (
     list_stock_for_inventory,
     apply_inventory_adjustments,
     get_inventory_discrepancies,
+    list_expense_categories,
+    add_expense_category,
+    update_expense_category,
+    set_expense_category_archived,
+    list_expenses,
+    get_expense,
+    add_expense,
+    update_expense,
+    delete_expense,
+    get_expenses_summary,
     get_client_history,
     # suppliers
     list_suppliers,
@@ -1952,6 +1962,168 @@ def return_xlsx_view(request: Request, n: int):
 # Help page
 # ──────────────────────────────────────────────────────────────────────────────
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Phase 5 — Expenses (non-trading spending: rent, salary, taxes, personal…)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.get("/expenses", response_class=HTMLResponse)
+def expenses_page(
+    request: Request,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    category_id: Optional[int] = None,
+    kind: Optional[str] = None,
+    search: str = "",
+):
+    from datetime import date as _date
+    today = _date.today()
+    if not date_from:
+        date_from = today.replace(day=1).isoformat()
+    if not date_to:
+        date_to = today.isoformat()
+
+    kind_norm = kind if kind in ("business", "personal") else None
+    cat_id = int(category_id) if category_id else None
+
+    items = list_expenses(
+        date_from=date_from, date_to=date_to,
+        category_id=cat_id, kind=kind_norm, search=search.strip(),
+    )
+    categories = list_expense_categories()
+    summary = get_expenses_summary(date_from, date_to)
+
+    return _render(
+        request,
+        "expenses.html",
+        {
+            "items":         items,
+            "categories":    categories,
+            "summary":       summary,
+            "date_from":     date_from,
+            "date_to":       date_to,
+            "category_id":   cat_id,
+            "kind":          kind_norm or "",
+            "search":        search,
+        },
+    )
+
+
+@app.get("/expenses/add", response_class=HTMLResponse)
+def expenses_add_form(request: Request):
+    from datetime import date as _date
+    return _render(
+        request,
+        "expenses_form.html",
+        {
+            "expense":    None,
+            "today":      _date.today().isoformat(),
+            "categories": list_expense_categories(),
+            "action_url": "/expenses/add",
+        },
+    )
+
+
+@app.post("/expenses/add")
+def expenses_add_submit(
+    date: str = Form(...),
+    category_id: int = Form(...),
+    amount_usd: float = Form(...),
+    note: str = Form(""),
+):
+    ok, err = add_expense(date.strip(), int(category_id), float(amount_usd), note.strip())
+    if not ok:
+        return RedirectResponse(url=f"/expenses/add?msg=err:{quote(err, safe='')}", status_code=303)
+    return RedirectResponse(url="/expenses?msg=added", status_code=303)
+
+
+@app.get("/expenses/edit/{expense_id}", response_class=HTMLResponse)
+def expenses_edit_form(request: Request, expense_id: int):
+    exp = get_expense(expense_id)
+    if not exp:
+        return RedirectResponse(url="/expenses?msg=not_found", status_code=303)
+    return _render(
+        request,
+        "expenses_form.html",
+        {
+            "expense":    exp,
+            # If the expense's own category is archived, still let user save it as-is
+            # by including all categories (archived flagged), so the dropdown isn't broken.
+            "categories": list_expense_categories(include_archived=True),
+            "action_url": f"/expenses/edit/{expense_id}",
+        },
+    )
+
+
+@app.post("/expenses/edit/{expense_id}")
+def expenses_edit_submit(
+    expense_id: int,
+    date: str = Form(...),
+    category_id: int = Form(...),
+    amount_usd: float = Form(...),
+    note: str = Form(""),
+):
+    ok, err = update_expense(
+        expense_id, date.strip(), int(category_id),
+        float(amount_usd), note.strip(),
+    )
+    if not ok:
+        return RedirectResponse(
+            url=f"/expenses/edit/{expense_id}?msg=err:{quote(err, safe='')}",
+            status_code=303,
+        )
+    return RedirectResponse(url="/expenses?msg=updated", status_code=303)
+
+
+@app.post("/expenses/delete/{expense_id}")
+def expenses_delete_submit(expense_id: int):
+    ok, err = delete_expense(expense_id)
+    if not ok:
+        return RedirectResponse(url=f"/expenses?msg=del_err:{quote(err, safe='')}", status_code=303)
+    return RedirectResponse(url="/expenses?msg=deleted", status_code=303)
+
+
+# ─── Expense categories admin ────────────────────────────────────────────────
+
+@app.get("/expenses/categories", response_class=HTMLResponse)
+def expense_categories_page(request: Request):
+    return _render(
+        request,
+        "expense_categories.html",
+        {"categories": list_expense_categories(include_archived=True)},
+    )
+
+
+@app.post("/expenses/categories/add")
+def expense_categories_add(
+    name: str = Form(...),
+    kind: str = Form("business"),
+):
+    ok, err = add_expense_category(name.strip(), kind.strip())
+    if not ok:
+        return RedirectResponse(url=f"/expenses/categories?msg=err:{quote(err, safe='')}", status_code=303)
+    return RedirectResponse(url="/expenses/categories?msg=added", status_code=303)
+
+
+@app.post("/expenses/categories/edit/{category_id}")
+def expense_categories_edit(
+    category_id: int,
+    name: str = Form(...),
+    kind: str = Form(...),
+):
+    ok, err = update_expense_category(category_id, name.strip(), kind.strip())
+    if not ok:
+        return RedirectResponse(url=f"/expenses/categories?msg=err:{quote(err, safe='')}", status_code=303)
+    return RedirectResponse(url="/expenses/categories?msg=updated", status_code=303)
+
+
+@app.post("/expenses/categories/archive/{category_id}")
+def expense_categories_archive(category_id: int, archived: str = Form("1")):
+    ok, err = set_expense_category_archived(category_id, archived == "1")
+    if not ok:
+        return RedirectResponse(url=f"/expenses/categories?msg=err:{quote(err, safe='')}", status_code=303)
+    return RedirectResponse(url="/expenses/categories?msg=updated", status_code=303)
+
+
 @app.get("/inventory", response_class=HTMLResponse)
 def inventory_page(
     request: Request,
@@ -2083,6 +2255,64 @@ def reports_profit_page(
         "profit_report.html",
         {
             "report":              report,
+            "date_from":           date_from,
+            "date_to":             date_to,
+            "warehouse_options":   warehouse_options,
+            "selected_warehouses": selected_wh,
+            "all_warehouses_selected": not selected_wh,
+        },
+    )
+
+
+@app.get("/reports/finance", response_class=HTMLResponse)
+def reports_finance_page(
+    request: Request,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    warehouses: Optional[list[str]] = Query(default=None),
+):
+    """
+    Phase 5: combined finance report.
+
+    Trading side comes from get_profit_report (unchanged). Spending side
+    comes from get_expenses_summary. We then compute three headline
+    numbers users care about:
+
+        gross_profit  = profit from trading (unchanged from profit report)
+        business_net  = gross_profit - business expenses
+        wallet_net    = business_net - personal expenses
+    """
+    from datetime import date as _date
+    today = _date.today()
+    if not date_from:
+        date_from = today.replace(day=1).isoformat()
+    if not date_to:
+        date_to = today.isoformat()
+
+    warehouse_options = list_warehouses()
+    warehouse_codes_all = [w["code"] for w in warehouse_options]
+    selected_wh = _reports_warehouse_filter(warehouses, warehouse_codes_all)
+
+    profit = get_profit_report(date_from, date_to, warehouse_codes=selected_wh)
+    expenses = get_expenses_summary(date_from, date_to)
+
+    gross_profit = float(profit["totals"]["profit"])
+    biz_exp = float(expenses["totals"]["business"])
+    pers_exp = float(expenses["totals"]["personal"])
+    business_net = round(gross_profit - biz_exp, 2)
+    wallet_net = round(business_net - pers_exp, 2)
+
+    return _render(
+        request,
+        "finance_report.html",
+        {
+            "profit":              profit,
+            "expenses":            expenses,
+            "gross_profit":        gross_profit,
+            "business_expenses":   biz_exp,
+            "personal_expenses":   pers_exp,
+            "business_net":        business_net,
+            "wallet_net":          wallet_net,
             "date_from":           date_from,
             "date_to":             date_to,
             "warehouse_options":   warehouse_options,

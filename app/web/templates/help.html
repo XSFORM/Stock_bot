@@ -34,6 +34,12 @@
       <li><a href="#ru-inventory">Инвентаризация</a>
         <ul class="mt-1"><li><a href="#ru-inv-report">Отчёт расхождений</a></li></ul>
       </li>
+      <li><a href="#ru-expenses">Расходы</a>
+        <ul class="mt-1">
+          <li><a href="#ru-expense-categories">Категории расходов</a></li>
+          <li><a href="#ru-finance-report">Финотчёт (доходы vs расходы)</a></li>
+        </ul>
+      </li>
       <li><a href="#ru-brands">Бренды</a></li>
       <li><a href="#ru-clients">Клиенты</a>
         <ul class="mt-1"><li><a href="#ru-payments">Дисциплина платежей</a></li></ul>
@@ -197,7 +203,7 @@
   </ol>
 
   {# 8a. Reports #}
-  <h4 id="ru-reports" class="mt-4">8a. Отчёты</h4>
+  <h4 id="ru-reports" class="mt-4">9. Отчёты</h4>
   <p>Раздел <strong>«Отчёты»</strong> — это первая рабочая версия базовой аналитики ERP.</p>
   <p>Он показывает выручку, возвраты, чистую выручку, количество продаж, проданные товары, средний чек, количество товаров на складе, позиции с остатком, топ товаров, низкие остатки и выручку по дням за выбранный период.</p>
   <p>Готовые периоды в фильтре автоматически заполняют даты <strong>С/По</strong>; если даты изменить вручную, период переключается на <strong>«Произвольный период»</strong>. Вариант <strong>«За всё время»</strong> показывает отчёты от начала данных системы до текущей даты.</p>
@@ -205,7 +211,7 @@
   <p class="mb-0">Раздел <strong>«Отчёты»</strong> ведёт к двум специализированным подотчётам: <a href="#ru-profit">Отчёт по прибыли</a> и <a href="#ru-inv-report">Расхождения по инвентаризации</a>. Ссылки на них также вынесены на страницу /reports.</p>
 
   {# 8b. Profit report #}
-  <h4 id="ru-profit" class="mt-4">8b. Отчёт по прибыли (/reports/profit)</h4>
+  <h5 id="ru-profit" class="mt-3">Отчёт по прибыли (/reports/profit)</h5>
   <p>Отдельная страница, показывающая, сколько бизнес заработал за период. Открывается по кнопке 📈 <strong>«Отчёт по прибыли»</strong> в разделе Отчёты или из верхнего меню.</p>
 
   <p><strong>Что показывает.</strong> Четыре KPI-карточки сверху:</p>
@@ -244,7 +250,7 @@
   </p>
 
   {# 8c. Inventory #}
-  <h4 id="ru-inventory" class="mt-4">8c. Инвентаризация (/inventory)</h4>
+  <h4 id="ru-inventory" class="mt-4">10. Инвентаризация (/inventory)</h4>
   <p>
     Раздел для сверки того, что <strong>реально лежит на складе</strong>, с тем, что <strong>показывает система</strong>. Если во время физического пересчёта нашлись расхождения (недостача или излишек) — они фиксируются отдельными операциями <strong>ADJUST</strong> в журнале движений товара. История прошлых приходов, продаж и возвратов <strong>не меняется</strong> — только добавляются новые строки-корректировки.
   </p>
@@ -285,8 +291,67 @@
   </ul>
   <p><strong>Фильтры:</strong> период (С/По) и склад.</p>
 
+  {# 8d. Expenses #}
+  <h4 id="ru-expenses" class="mt-4">11. Расходы (/expenses)</h4>
+  <p>
+    Отдельный раздел для всех трат, которых <strong>нет</strong> в ERP через приход/ledger/склад: аренда, зарплата помощнику, налоги, коммуналка, интернет, реклама, транспорт — а также личные покупки. Оплаты поставщикам сюда <strong>не заносить</strong>: они уже учтены в приходах и себестоимости проданного товара.
+  </p>
+
+  <p><strong>Как работает:</strong></p>
+  <ol>
+    <li>Меню → <strong>Расходы</strong> → «＋ Добавить расход».</li>
+    <li>Укажите дату, категорию, сумму в USD и заметку. Сохранить.</li>
+    <li>На главной странице раздела: фильтры (период, категория, тип, поиск), три KPI-карточки (Бизнес / Личное / Всего) и список за период. Каждую запись можно редактировать или удалить (с подтверждением).</li>
+  </ol>
+
+  <div class="alert alert-info">
+    <strong>Важно:</strong> оплаты поставщикам НЕ заносить в Расходы — иначе задвоится. Поставщик уже учтён в приходной накладной (влияет на себестоимость товара), а его оплата — в supplier_ledger (уменьшает долг перед ним). Если добавите те же 500$ ещё и как «Расход», финотчёт покажет минус, которого на самом деле нет.
+  </div>
+
+  <p><strong>Что заносить в Расходы:</strong></p>
+  <ul>
+    <li>Аренда магазина, склада, офиса</li>
+    <li>Зарплата помощнику, продавцу</li>
+    <li>Налоги, госторг, лицензии</li>
+    <li>Коммуналка (свет, вода), интернет, связь</li>
+    <li>Транспорт (бензин, такси для работы)</li>
+    <li>Реклама (Instagram, Telegram, листовки)</li>
+    <li>Услуги: грузчик, растаможка, ремонт оборудования</li>
+    <li>Личные покупки (телефон, одежда), семья</li>
+  </ul>
+
+  <h5 id="ru-expense-categories" class="mt-3">Категории расходов</h5>
+  <p>
+    Категории — это справочник, чтобы не писать «аренда», «Аренда», «Rent» по-разному и потом не искать. Каждая категория помечена одним из двух типов: <strong>📦 Бизнес</strong> или <strong>🛒 Личное</strong>. Тип используется в финотчёте — бизнес и личное считаются отдельно.
+  </p>
+  <p>
+    При первой установке в базе уже есть стандартный набор: Аренда, Зарплата, Налоги/Госторг, Коммуналка, Транспорт, Связь/Интернет, Реклама, Прочие бизнес — плюс Личные покупки, Семья, Прочие личные. Открыть <strong>Расходы → Категории</strong>, чтобы добавить свои (например «Реклама Instagram»), переименовать или отправить в архив.
+  </p>
+  <p>
+    <strong>Архив категории:</strong> архивированная категория не появляется в форме нового расхода, но продолжает считаться в отчётах и остаётся у уже существующих записей. Удалить категорию нельзя (иначе сломались бы старые записи).
+  </p>
+
+  <h5 id="ru-finance-report" class="mt-3">Финотчёт (/reports/finance)</h5>
+  <p>
+    Ответ на вопрос «идёт ли торговля в плюс» — с учётом всех расходов. Открывается кнопкой <strong>«Финотчёт»</strong> на странице /reports или ссылкой из раздела Расходы.
+  </p>
+  <p><strong>Структура отчёта:</strong></p>
+  <ol>
+    <li><strong>📦 Торговля</strong> — те же цифры, что в Отчёте по прибыли: Чистая выручка, Себестоимость, <em>Валовая прибыль</em>, Маржа %.</li>
+    <li><strong>💼 Бизнес-расходы</strong> — таблица по категориям (аренда, зарплата и т.д.) и итоговая сумма.</li>
+    <li><strong>= Чистая прибыль бизнеса</strong> — <em>главная</em> цифра: Валовая прибыль − Бизнес-расходы. Именно она показывает, зарабатывает торговля или проедает деньги.</li>
+    <li><strong>🛒 Личные расходы</strong> — таблица по категориям и итог. Показывается отдельно, чтобы личные траты не искажали финрез торговли.</li>
+    <li><strong>= Итог кошелька</strong> — Чистая прибыль бизнеса − Личные расходы. Реальный остаток от бизнеса на руках за период.</li>
+  </ol>
+  <p>
+    <strong>Фильтры:</strong> период (по умолчанию — текущий месяц) и склад. Фильтр склада применяется только к «Торговле» — расходы не привязаны к складу.
+  </p>
+  <div class="alert alert-warning">
+    <strong>⚠️ Про «Нераскрытую себестоимость».</strong> Если в Отчёте по прибыли есть жёлтая плашка о cost=0 строках — эта же сумма выручки не входит в Валовую прибыль здесь, и значит не участвует в расчёте Чистой прибыли бизнеса. Финотчёт показывает подсказку с количеством и суммой таких строк, если они есть.
+  </div>
+
   {# 9. Brands #}
-  <h4 id="ru-brands" class="mt-4">9. Бренды</h4>
+  <h4 id="ru-brands" class="mt-4">12. Бренды</h4>
   <p>Справочник торговых марок. Раздел доступен из выпадающего меню <strong>«Справочники»</strong>. Каждый товар должен принадлежать бренду.</p>
   <ul>
     <li>Добавить бренд: укажите название (например, «Artel» или «Xiaomi»).</li>
@@ -296,7 +361,7 @@
   <p><strong>Совет:</strong> создайте бренды перед добавлением товаров — иначе список выбора будет пустым.</p>
 
   {# 10. Clients #}
-  <h4 id="ru-clients" class="mt-4">10. Клиенты</h4>
+  <h4 id="ru-clients" class="mt-4">13. Клиенты</h4>
   <p>Справочник покупателей. Раздел доступен из меню <strong>«Справочники»</strong>. Здесь хранится информация о каждом клиенте и его текущий долг.</p>
 
   <p><strong>Типы клиентов и табы.</strong> Клиенты делятся на две категории, которые видны как вкладки наверху страницы:</p>
@@ -343,7 +408,7 @@
   </ul>
 
   {# 11. Suppliers #}
-  <h4 id="ru-suppliers" class="mt-4">11. Поставщики</h4>
+  <h4 id="ru-suppliers" class="mt-4">14. Поставщики</h4>
   <p>Справочник поставщиков доступен из выпадающего меню <strong>«Справочники»</strong>. Здесь хранится информация о поставщиках и текущий долг перед ними в USD.</p>
   <ul>
     <li>Добавить поставщика: имя, телефон и заметка.</li>
@@ -354,7 +419,7 @@
   </ul>
 
   {# 12. Invoices #}
-  <h4 id="ru-invoices" class="mt-4">12. Накладные (Invoices)</h4>
+  <h4 id="ru-invoices" class="mt-4">15. Накладные (Invoices)</h4>
   <p>Список всех созданных документов: накладные продажи и возвраты. Раздел доступен из меню <strong>«Документы»</strong>.</p>
   <ul>
     <li>Просмотр: нажмите «Просмотреть» рядом с накладной — откроется страница с деталями.</li>
@@ -365,7 +430,7 @@
   </ul>
 
   {# 13. History #}
-  <h4 id="ru-history" class="mt-4">13. История (History)</h4>
+  <h4 id="ru-history" class="mt-4">16. История (History)</h4>
   <p>Полный журнал всех движений товаров: приходы, продажи, возвраты. Раздел доступен из меню <strong>«Документы»</strong> и позволяет отследить любую операцию.</p>
   <ul>
     <li>Поиск по ключевому слову (бренд, модель, номер накладной, клиент).</li>
@@ -374,7 +439,7 @@
   </ul>
 
   {# 14. Admin #}
-  <h4 id="ru-admin" class="mt-4">14. Настройки (Admin)</h4>
+  <h4 id="ru-admin" class="mt-4">17. Настройки (Admin)</h4>
   <p>Системные настройки и управление ERP.</p>
   <ul>
     <li><strong>Блокировка сайта (Site Lock):</strong> включить пароль для входа. Рекомендуется, если сервер доступен из интернета.</li>
@@ -414,7 +479,7 @@
   </div>
 
   {# 15. Pocket Price #}
-  <h4 id="ru-pocket-price" class="mt-4">15. Pocket Price — публичный прайс-лист</h4>
+  <h4 id="ru-pocket-price" class="mt-4">18. Pocket Price — публичный прайс-лист</h4>
   <p>
     Pocket Price — облегчённая страница просмотра актуальных цен и остатков. Она предназначена
     для клиентов или сотрудников, которым нужно быстро узнать цену без доступа к основному ERP.
@@ -436,7 +501,7 @@
   токен посторонним. Отозвать или удалить токен можно в Admin → Токены Price.</p>
 
   {# 16. Pocket Catalog #}
-  <h4 id="ru-pocket-catalog" class="mt-4">16. Pocket Catalog — мобильный каталог</h4>
+  <h4 id="ru-pocket-catalog" class="mt-4">19. Pocket Catalog — мобильный каталог</h4>
   <p>
     Pocket Catalog — PWA-приложение для работы с каталогом товаров прямо на складе.
     Сотрудник сканирует штрих-коды и обновляет цены закупки, не заходя в основной интерфейс ERP.
@@ -474,7 +539,7 @@
   отзыва доступа используйте Admin → Токены Catalog.</p>
 
   {# 17. Background images #}
-  <h4 id="ru-backgrounds" class="mt-4">17. Фоновые картинки</h4>
+  <h4 id="ru-backgrounds" class="mt-4">20. Фоновые картинки</h4>
 
   <h5 class="mt-3">Основной фон сайта</h5>
   <p>
@@ -527,7 +592,7 @@
   </p>
 
   {# 18. Tips #}
-  <h4 id="ru-tips" class="mt-4">18. Советы и частые ошибки</h4>
+  <h4 id="ru-tips" class="mt-4">21. Советы и частые ошибки</h4>
   <ul>
     <li>✅ Всегда завершайте операцию кнопкой «Завершить» — незавершённый приход или продажа не влияет на остатки.</li>
     <li>✅ Перед продажей убедитесь, что товар есть на складе — система не позволит продать больше, чем есть в наличии.</li>
@@ -539,7 +604,7 @@
   </ul>
 
   {# 19. Authors #}
-  <h4 id="ru-authors" class="mt-4">19. Авторы</h4>
+  <h4 id="ru-authors" class="mt-4">22. Авторы</h4>
   <p>
     <strong>Идея и разработка:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><path fill="#4caf50" d="M45 16.2l-5 2.75-5 4.75L35 40h7c1.657 0 3-1.343 3-3V16.2z"/><path fill="#1e88e5" d="M3 16.2l3.614 1.71L13 23.7V40H6c-1.657 0-3-1.343-3-3V16.2z"/><polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17"/><path fill="#c62828" d="M3 12.298V16.2l10 7.5V11.2L9.876 8.859A3.296 3.296 0 007.298 8C4.924 8 3 9.924 3 12.298z"/><path fill="#fbc02d" d="M45 12.298V16.2l-10 7.5V11.2l3.124-2.341A3.296 3.296 0 0040.702 8C43.076 8 45 9.924 45 12.298z"/></svg> <a href="mailto:berditairov@gmail.com">berditairov@gmail.com</a><br>
     <strong>Telegram:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#2CA5E0"/><path fill="white" d="M17.928 6.17L5.638 10.926c-.877.352-.872.84-.16 1.057l3.184.994 7.364-4.647c.347-.211.665-.098.404.134l-5.963 5.386-.233 3.296c.34 0 .49-.155.678-.336l1.627-1.582 3.384 2.496c.623.344 1.071.167 1.226-.578l2.214-10.427c.227-.906-.347-1.316-1.015-1.03z"/></svg> <a href="https://t.me/technica_1416">https://t.me/technica_1416</a><br>
@@ -581,6 +646,9 @@
       </li>
       <li><a href="#tm-inventory">Inwentarizasiýa</a>
         <ul class="mt-1"><li><a href="#tm-inv-report">Tapawut hasabaty</a></li></ul>
+      </li>
+      <li><a href="#tm-expenses">Çykdajylar</a>
+        <ul class="mt-1"><li><a href="#tm-finance-report">Maliýe hasabaty</a></li></ul>
       </li>
       <li><a href="#tm-brands">Brendler</a></li>
       <li><a href="#tm-clients">Müşderiler</a>
@@ -733,7 +801,7 @@
   </ol>
 
   {# 8a. Reports #}
-  <h4 id="tm-reports" class="mt-4">8a. Hasabatlar</h4>
+  <h4 id="tm-reports" class="mt-4">9. Hasabatlar</h4>
   <p><strong>«Hasabatlar»</strong> bölümi ERP üçin esasy analitikanyň ilkinji işjeň görnüşidir.</p>
   <p>Bu ýerde saýlanan döwür boýunça düşewünt, yzyna gaýtaryş, arassa düşewünt, satyş sany, satylan birlikler, orta çek, ammardaky haryt sany, galyndyly pozisiýalar, iň köp satylan harytlar, pes galyndylar we günler boýunça düşewünt görkezilýär.</p>
   <p>Taýýar döwür saýlanylanda <strong>Başlangyç/Sonky</strong> seneler awtomatik doldurylýar; seneleri el bilen üýtgedeniňizde döwür <strong>«Erkin döwür»</strong> ýagdaýyna geçýär. <strong>«Tutuş döwür»</strong> saýlanylanda ulgamyň başlangyjyndan şu güne çenli hasabat görkezilýär.</p>
@@ -741,7 +809,7 @@
   <p class="mb-0"><strong>«Hasabatlar»</strong> bölüminden iki ýörite kiçi hasabata geçip bolýar: <a href="#tm-profit">Peýda hasabaty</a> we <a href="#tm-inv-report">Inwentar tapawutlary</a>.</p>
 
   {# 8b. Profit report #}
-  <h4 id="tm-profit" class="mt-4">8b. Peýda hasabaty (/reports/profit)</h4>
+  <h5 id="tm-profit" class="mt-3">Peýda hasabaty (/reports/profit)</h5>
   <p>Işewürligiň saýlanan döwürde näçe gazanandygyny görkezýän aýratyn sahypa. Hasabatlar bölümindäki 📈 <strong>«Peýda hasabaty»</strong> düwmesi arkaly açylýar.</p>
 
   <p><strong>Näme görkezýär.</strong> Ýokarda 4 KPI-kart:</p>
@@ -780,7 +848,7 @@
   </p>
 
   {# 8c. Inventory #}
-  <h4 id="tm-inventory" class="mt-4">8c. Inwentarizasiýa (/inventory)</h4>
+  <h4 id="tm-inventory" class="mt-4">10. Inwentarizasiýa (/inventory)</h4>
   <p>
     <strong>Ammarda hakyky bar zady</strong> bilen <strong>ulgamda görkezilýän zady</strong> deňeşdirmek üçin bölüm. Fiziki hasap wagtynda tapawut ýüze çyksa (kem ýa-da artyk), olar haryt hereketiniň žurnalyna <strong>ADJUST</strong> operasiýalary görnüşinde ýazylýar. Öňki kabul etmek, satyş we yzyna gaýtarmalaryň taryhy <strong>üýtgemeýär</strong> — diňe täze düzediş setirleri goşulýar.
   </p>
@@ -821,8 +889,31 @@
   </ul>
   <p><strong>Süzgüçler:</strong> döwür (Başlangyç/Sonky) we ammar.</p>
 
+  {# 8d. Expenses #}
+  <h4 id="tm-expenses" class="mt-4">11. Çykdajylar (/expenses)</h4>
+  <p>
+    ERP-den <strong>daşarky</strong> tölegler üçin bölüm: kärende, aýlyk, salgytlar, kommunal, mahabat, transport, şeýle hem şahsy harajatlar. Üpjün edijilere tölegleri bu ýere <strong>ýazmaň</strong> — olar eýýäm kabul etmelerde we özüne düşýän gymmatda hasaba alynýar.
+  </p>
+  <p><strong>Nähili ulanmaly:</strong> Çykdajylar → «＋ Çykdajy goş» → sene, kategoriýa, USD-de mukdar, bellik → Sakla. Sanawda süzgüçler (döwür, kategoriýa, görnüş, gözleg) we üç KPI-kart (Biznes / Şahsy / Jemi).</p>
+  <div class="alert alert-info">
+    <strong>Möhüm:</strong> üpjün edijä tölegi bu ýerde ýazmaň — iki gezek hasaplanar. Ol eýýäm supplier_ledger arkaly bergini azaldýar.
+  </div>
+  <p>Kategoriýalar iki görnüşde: <strong>📦 Biznes</strong> (kärende, aýlyk, salgyt, mahabat we ş.m.) we <strong>🛒 Şahsy</strong> (telefon, egin-eşik, maşgala). Görnüş maliýe hasabatynda ulanylýar — biznes we şahsy aýratyn hasaplanýar. Öz kategoriýaňyzy Çykdajylar → Kategoriýalar bölüminde goşup bolýar.</p>
+
+  <h5 id="tm-finance-report" class="mt-3">Maliýe hasabaty (/reports/finance)</h5>
+  <p>«Söwda peýda getirýärmi» soragyna doly jogap — ähli çykdajylary hasaba alyp. /reports sahypasyndaky <strong>«Maliýe hasabaty»</strong> düwmesi arkaly açylýar.</p>
+  <p><strong>Gurluşy:</strong></p>
+  <ol>
+    <li><strong>📦 Söwda</strong> — Peýda hasabatyndaky sanlar (Arassa girdeji, Özüne düşýän gymmat, Umumy peýda, Marja %).</li>
+    <li><strong>💼 Biznes-çykdajylar</strong> — kategoriýalar boýunça tablisa we jem.</li>
+    <li><strong>= Biznesiň arassa peýdasy</strong> — esasy san: Umumy peýda − Biznes-çykdajylar.</li>
+    <li><strong>🛒 Şahsy çykdajylar</strong> — aýratyn tablisa.</li>
+    <li><strong>= Gapjyk jemi</strong> — Biznesiň arassa peýdasy − Şahsy çykdajylar.</li>
+  </ol>
+  <p><strong>Süzgüçler:</strong> döwür (deslapky — häzirki aý) we ammar (diňe söwda böleginde ulanylýar).</p>
+
   {# 9. Brands #}
-  <h4 id="tm-brands" class="mt-4">9. Brendler</h4>
+  <h4 id="tm-brands" class="mt-4">12. Brendler</h4>
   <p>Söwda markalarynyň sanawy. Bölüm <strong>«Salgylanmalar»</strong> menýusyndan açylýar. Her haryt bir brende degişli bolmalydyr.</p>
   <ul>
     <li>Brend goşmak: at görkeziň (meselem, «Artel» ýa-da «Xiaomi»).</li>
@@ -831,7 +922,7 @@
   </ul>
 
   {# 10. Clients #}
-  <h4 id="tm-clients" class="mt-4">10. Müşderiler</h4>
+  <h4 id="tm-clients" class="mt-4">13. Müşderiler</h4>
   <p>Alyjylaryň sanawy. Bölüm <strong>«Salgylanmalar»</strong> menýusyndan açylýar. Bu ýerde her müşderiniň maglumaty we häzirki bergisi saklanýar.</p>
 
   <p><strong>Müşderiniň görnüşleri.</strong> Müşderiler iki bölege bölünýär — sahypanyň üstünde tablar görnüşinde:</p>
@@ -878,7 +969,7 @@
   </ul>
 
   {# 11. Suppliers #}
-  <h4 id="tm-suppliers" class="mt-4">11. Üpjün edijiler</h4>
+  <h4 id="tm-suppliers" class="mt-4">14. Üpjün edijiler</h4>
   <p><strong>Üpjün edijiler</strong> bölümi <strong>«Salgylanmalar»</strong> açylýan menýusyndan elýeterlidir. Bu ýerde üpjün edijileriň maglumaty we olaryň öňündäki USD bergiňiz alnyp barylýar.</p>
   <ul>
     <li>Üpjün ediji goşmak: ady, telefon belgisi we bellik.</li>
@@ -889,7 +980,7 @@
   </ul>
 
   {# 12. Invoices #}
-  <h4 id="tm-invoices" class="mt-4">12. Hasap-fakturalar</h4>
+  <h4 id="tm-invoices" class="mt-4">15. Hasap-fakturalar</h4>
   <p>Döredilen ähli resminamalaryň sanawy: satyş hasap-fakturaları we yzyna gaýtarmalar. Bölüm <strong>«Resminamalar»</strong> menýusyndan açylýar.</p>
   <ul>
     <li>Görmek: hasap-fakturayň ýanyndaky «Görmek» düwmesine basyň — jikme-jik sahypa açylar.</li>
@@ -899,7 +990,7 @@
   </ul>
 
   {# 13. History #}
-  <h4 id="tm-history" class="mt-4">13. Taryh</h4>
+  <h4 id="tm-history" class="mt-4">16. Taryh</h4>
   <p>Ähli haryt hereketleriniň doly žurnaly: kabul etmek, satyş, yzyna gaýtarmak. Bölüm <strong>«Resminamalar»</strong> menýusyndan açylýar.</p>
   <ul>
     <li>Açar söz boýunça gözleg (brend, model, hasap-faktura belgisi, müşderi).</li>
@@ -908,7 +999,7 @@
   </ul>
 
   {# 14. Admin #}
-  <h4 id="tm-admin" class="mt-4">14. Sazlamalar (Admin)</h4>
+  <h4 id="tm-admin" class="mt-4">17. Sazlamalar (Admin)</h4>
   <ul>
     <li><strong>Sahypa gulpy (Site Lock):</strong> giriş parolyny açmak.</li>
     <li><strong>Deslapky interfeýs dili:</strong> EN / RU / TM.</li>
@@ -945,7 +1036,7 @@
   </div>
 
   {# 15. Pocket Price #}
-  <h4 id="tm-pocket-price" class="mt-4">15. Pocket Price — jemgyýetçilik bahalar sanawy</h4>
+  <h4 id="tm-pocket-price" class="mt-4">18. Pocket Price — jemgyýetçilik bahalar sanawy</h4>
   <p>
     Pocket Price — häzirki bahalary we galdyklary görmek üçin ýeňil sahypa. ERP-e girişsiz
     müşderilere ýa-da işgärlere harydyň bahasyny çalt öwrenmäge niýetlenendir.
@@ -967,7 +1058,7 @@
   Admin → Price Tokenleri bölümünde tokeni ýatyryp ýa-da pozup bolýar.</p>
 
   {# 16. Pocket Catalog #}
-  <h4 id="tm-pocket-catalog" class="mt-4">16. Pocket Catalog — mobil katalog</h4>
+  <h4 id="tm-pocket-catalog" class="mt-4">19. Pocket Catalog — mobil katalog</h4>
   <p>
     Pocket Catalog — ammarda ştrik-kodlary skanirlemek we satyn alyş bahalaryny täzelemek üçin
     PWA-goşundy. Işgär esasy ERP interfeýsine girmezden katalog bilen işläp bilýär.
@@ -1005,7 +1096,7 @@
   üçin Admin → Catalog Tokenleri bölümini ulanyň.</p>
 
   {# 17. Background images #}
-  <h4 id="tm-backgrounds" class="mt-4">17. Fon suratlary</h4>
+  <h4 id="tm-backgrounds" class="mt-4">20. Fon suratlary</h4>
 
   <h5 class="mt-3">Saýtyň esasy fony</h5>
   <p>
@@ -1058,7 +1149,7 @@
   </p>
 
   {# 18. Tips #}
-  <h4 id="tm-tips" class="mt-4">18. Maslahatlar we ýalňyşlyklar</h4>
+  <h4 id="tm-tips" class="mt-4">21. Maslahatlar we ýalňyşlyklar</h4>
   <ul>
     <li>✅ Amaly hemişe «Tamamlamak» düwmesi bilen tamamlaň — tamamlanmadyk kabul etmek ýa-da satyş galdyklara täsir etmeýär.</li>
     <li>✅ Satmazdan ozal harydyň ammarda bardygyna göz ýetiriň — ulgam mümkin bolan mukdardan köp satmaga rugsat bermeýär.</li>
@@ -1069,7 +1160,7 @@
   </ul>
 
   {# 19. Authors #}
-  <h4 id="tm-authors" class="mt-4">19. Awtorlary</h4>
+  <h4 id="tm-authors" class="mt-4">22. Awtorlary</h4>
   <p>
     <strong>Pikir we işläp düzmek:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><path fill="#4caf50" d="M45 16.2l-5 2.75-5 4.75L35 40h7c1.657 0 3-1.343 3-3V16.2z"/><path fill="#1e88e5" d="M3 16.2l3.614 1.71L13 23.7V40H6c-1.657 0-3-1.343-3-3V16.2z"/><polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17"/><path fill="#c62828" d="M3 12.298V16.2l10 7.5V11.2L9.876 8.859A3.296 3.296 0 007.298 8C4.924 8 3 9.924 3 12.298z"/><path fill="#fbc02d" d="M45 12.298V16.2l-10 7.5V11.2l3.124-2.341A3.296 3.296 0 0040.702 8C43.076 8 45 9.924 45 12.298z"/></svg> <a href="mailto:berditairov@gmail.com">berditairov@gmail.com</a><br>
     <strong>Telegram:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#2CA5E0"/><path fill="white" d="M17.928 6.17L5.638 10.926c-.877.352-.872.84-.16 1.057l3.184.994 7.364-4.647c.347-.211.665-.098.404.134l-5.963 5.386-.233 3.296c.34 0 .49-.155.678-.336l1.627-1.582 3.384 2.496c.623.344 1.071.167 1.226-.578l2.214-10.427c.227-.906-.347-1.316-1.015-1.03z"/></svg> <a href="https://t.me/technica_1416">https://t.me/technica_1416</a><br>
@@ -1111,6 +1202,9 @@
       </li>
       <li><a href="#en-inventory">Inventory</a>
         <ul class="mt-1"><li><a href="#en-inv-report">Discrepancy report</a></li></ul>
+      </li>
+      <li><a href="#en-expenses">Expenses</a>
+        <ul class="mt-1"><li><a href="#en-finance-report">Finance report</a></li></ul>
       </li>
       <li><a href="#en-brands">Brands</a></li>
       <li><a href="#en-clients">Clients</a>
@@ -1276,7 +1370,7 @@
   </ol>
 
   {# 8a. Reports #}
-  <h4 id="en-reports" class="mt-4">8a. Reports</h4>
+  <h4 id="en-reports" class="mt-4">9. Reports</h4>
   <p>The <strong>Reports</strong> section is now the first working version of basic ERP analytics.</p>
   <p>It shows revenue, returns, net revenue, sales count, sold units, average receipt, units in stock, positions in stock, top products, low stock, and daily revenue for the selected period.</p>
   <p>Preset periods automatically fill the <strong>From/To</strong> dates; if you edit either date manually, the period switches to <strong>Custom period</strong>. The <strong>All time</strong> option shows reports from the beginning of system data to the current date.</p>
@@ -1284,7 +1378,7 @@
   <p class="mb-0">The <strong>Reports</strong> section leads to two specialised sub-reports: <a href="#en-profit">Profit report</a> and <a href="#en-inv-report">Inventory discrepancies</a>. Direct links are also placed on /reports.</p>
 
   {# 8b. Profit report #}
-  <h4 id="en-profit" class="mt-4">8b. Profit report (/reports/profit)</h4>
+  <h5 id="en-profit" class="mt-3">Profit report (/reports/profit)</h5>
   <p>A dedicated page that shows how much the business earned over a period. Opens via the 📈 <strong>«Profit report»</strong> button in the Reports section or from the top menu.</p>
 
   <p><strong>What it shows.</strong> Four KPI cards at the top:</p>
@@ -1323,7 +1417,7 @@
   </p>
 
   {# 8c. Inventory #}
-  <h4 id="en-inventory" class="mt-4">8c. Inventory (/inventory)</h4>
+  <h4 id="en-inventory" class="mt-4">10. Inventory (/inventory)</h4>
   <p>
     A section for reconciling <strong>what is physically in the warehouse</strong> with <strong>what the system says</strong>. If discrepancies are found during a physical count (shortage or surplus), they are recorded as separate <strong>ADJUST</strong> operations in the stock movement journal. Past receive, sale and return history is <strong>not modified</strong> — only new adjustment rows are appended.
   </p>
@@ -1364,8 +1458,31 @@
   </ul>
   <p><strong>Filters:</strong> period (From/To) and warehouse.</p>
 
+  {# 8d. Expenses #}
+  <h4 id="en-expenses" class="mt-4">11. Expenses (/expenses)</h4>
+  <p>
+    Section for all spending that <strong>doesn't</strong> go through the ERP via receive/ledger/stock: rent, salary, taxes, utilities, ads, transport — and personal purchases. Payments to suppliers do <strong>not</strong> belong here: they're already accounted for in receive invoices and cost of goods sold.
+  </p>
+  <p><strong>How it works:</strong> Expenses → «＋ Add expense» → date, category, USD amount, note → Save. The list has filters (period, category, kind, search) and three KPI cards (Business / Personal / Total).</p>
+  <div class="alert alert-info">
+    <strong>Important:</strong> don't record supplier payments here — they'd be double-counted. Those are already tracked via supplier_ledger.
+  </div>
+  <p>Categories are tagged as <strong>📦 Business</strong> (rent, salary, tax, ads, etc.) or <strong>🛒 Personal</strong> (phone, clothes, family). The tag is used in the finance report — business and personal are counted separately. Manage your own categories at Expenses → Categories.</p>
+
+  <h5 id="en-finance-report" class="mt-3">Finance report (/reports/finance)</h5>
+  <p>Answers «is the trading profitable?» taking all expenses into account. Open via the <strong>Finance report</strong> button on /reports.</p>
+  <p><strong>Structure:</strong></p>
+  <ol>
+    <li><strong>📦 Trading</strong> — same numbers as Profit report (Net revenue, Cost, Gross profit, Margin %).</li>
+    <li><strong>💼 Business expenses</strong> — table by category and total.</li>
+    <li><strong>= Business net profit</strong> — the key number: Gross profit − Business expenses.</li>
+    <li><strong>🛒 Personal expenses</strong> — separate table.</li>
+    <li><strong>= Wallet net</strong> — Business net profit − Personal expenses.</li>
+  </ol>
+  <p><strong>Filters:</strong> period (defaults to current month) and warehouse (only affects the Trading section).</p>
+
   {# 9. Brands #}
-  <h4 id="en-brands" class="mt-4">9. Brands</h4>
+  <h4 id="en-brands" class="mt-4">12. Brands</h4>
   <p>A directory of trade marks. This section is available from the <strong>Directories</strong> dropdown. Every product must belong to a brand.</p>
   <ul>
     <li>Add a brand: enter the name (e.g. «Artel» or «Xiaomi»).</li>
@@ -1375,7 +1492,7 @@
   <p><strong>Tip:</strong> create brands before adding products — otherwise the brand dropdown will be empty.</p>
 
   {# 10. Clients #}
-  <h4 id="en-clients" class="mt-4">10. Clients</h4>
+  <h4 id="en-clients" class="mt-4">13. Clients</h4>
   <p>A directory of buyers. This section is available from the <strong>Directories</strong> dropdown and stores each client's details and their current outstanding debt.</p>
 
   <p><strong>Client types and tabs.</strong> Clients are split into two categories visible as tabs at the top:</p>
@@ -1422,7 +1539,7 @@
   </ul>
 
   {# 11. Suppliers #}
-  <h4 id="en-suppliers" class="mt-4">11. Suppliers</h4>
+  <h4 id="en-suppliers" class="mt-4">14. Suppliers</h4>
   <p>The <strong>Suppliers</strong> section is available from the <strong>Directories</strong> dropdown. It stores supplier details and tracks your outstanding supplier debt in USD.</p>
   <ul>
     <li>Add a supplier: name, phone number, and note.</li>
@@ -1433,7 +1550,7 @@
   </ul>
 
   {# 12. Invoices #}
-  <h4 id="en-invoices" class="mt-4">12. Invoices</h4>
+  <h4 id="en-invoices" class="mt-4">15. Invoices</h4>
   <p>A list of all created documents: sales invoices and returns. This section is available from the <strong>Documents</strong> dropdown.</p>
   <ul>
     <li>View: click «View» next to an invoice — a details page opens.</li>
@@ -1444,7 +1561,7 @@
   </ul>
 
   {# 13. History #}
-  <h4 id="en-history" class="mt-4">13. History</h4>
+  <h4 id="en-history" class="mt-4">16. History</h4>
   <p>A complete log of all stock movements: receives, sales, returns. This section is available from the <strong>Documents</strong> dropdown and helps trace any operation.</p>
   <ul>
     <li>Search by keyword (brand, model, invoice number, client).</li>
@@ -1453,7 +1570,7 @@
   </ul>
 
   {# 14. Admin #}
-  <h4 id="en-admin" class="mt-4">14. Admin settings</h4>
+  <h4 id="en-admin" class="mt-4">17. Admin settings</h4>
   <ul>
     <li><strong>Site Lock:</strong> enable a login password. Recommended when your server is accessible
         from the internet.</li>
@@ -1496,7 +1613,7 @@
   </div>
 
   {# 15. Pocket Price #}
-  <h4 id="en-pocket-price" class="mt-4">15. Pocket Price — public price list</h4>
+  <h4 id="en-pocket-price" class="mt-4">18. Pocket Price — public price list</h4>
   <p>
     Pocket Price is a lightweight page for viewing current prices and stock levels. It is designed
     for clients or staff who need to quickly look up a price without accessing the main ERP.
@@ -1518,7 +1635,7 @@
   unauthorised people. Tokens can be revoked or deleted in Admin → Price Tokens.</p>
 
   {# 16. Pocket Catalog #}
-  <h4 id="en-pocket-catalog" class="mt-4">16. Pocket Catalog — mobile catalogue</h4>
+  <h4 id="en-pocket-catalog" class="mt-4">19. Pocket Catalog — mobile catalogue</h4>
   <p>
     Pocket Catalog is a PWA for working with the product catalogue on the warehouse floor.
     Staff can scan barcodes and update purchase prices without logging into the main ERP.
@@ -1556,7 +1673,7 @@
   access use Admin → Catalog Tokens.</p>
 
   {# 17. Background images #}
-  <h4 id="en-backgrounds" class="mt-4">17. Background images</h4>
+  <h4 id="en-backgrounds" class="mt-4">20. Background images</h4>
 
   <h5 class="mt-3">Main site background</h5>
   <p>
@@ -1609,7 +1726,7 @@
   </p>
 
   {# 18. Tips #}
-  <h4 id="en-tips" class="mt-4">18. Tips &amp; common mistakes</h4>
+  <h4 id="en-tips" class="mt-4">21. Tips &amp; common mistakes</h4>
   <ul>
     <li>✅ Always finish an operation with the «Finish» button — an unfinished receive or sale does not
         affect stock balances.</li>
@@ -1624,7 +1741,7 @@
   </ul>
 
   {# 19. Authors #}
-  <h4 id="en-authors" class="mt-4">19. Authors</h4>
+  <h4 id="en-authors" class="mt-4">22. Authors</h4>
   <p>
     <strong>Idea &amp; development:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><path fill="#4caf50" d="M45 16.2l-5 2.75-5 4.75L35 40h7c1.657 0 3-1.343 3-3V16.2z"/><path fill="#1e88e5" d="M3 16.2l3.614 1.71L13 23.7V40H6c-1.657 0-3-1.343-3-3V16.2z"/><polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17"/><path fill="#c62828" d="M3 12.298V16.2l10 7.5V11.2L9.876 8.859A3.296 3.296 0 007.298 8C4.924 8 3 9.924 3 12.298z"/><path fill="#fbc02d" d="M45 12.298V16.2l-10 7.5V11.2l3.124-2.341A3.296 3.296 0 0040.702 8C43.076 8 45 9.924 45 12.298z"/></svg> <a href="mailto:berditairov@gmail.com">berditairov@gmail.com</a><br>
     <strong>Telegram:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#2CA5E0"/><path fill="white" d="M17.928 6.17L5.638 10.926c-.877.352-.872.84-.16 1.057l3.184.994 7.364-4.647c.347-.211.665-.098.404.134l-5.963 5.386-.233 3.296c.34 0 .49-.155.678-.336l1.627-1.582 3.384 2.496c.623.344 1.071.167 1.226-.578l2.214-10.427c.227-.906-.347-1.316-1.015-1.03z"/></svg> <a href="https://t.me/technica_1416">https://t.me/technica_1416</a><br>

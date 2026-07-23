@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm" style="max-width:640px">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h4 class="mb-0">
+      {% if expense %}✏️ {{ t.expenses_edit_title | default('Редактировать расход') }}
+      {% else %}＋ {{ t.expenses_add_title | default('Новый расход') }}{% endif %}
+    </h4>
+    <a href="/expenses" class="btn btn-sm btn-outline-secondary">{{ t.btn_back | default('Назад') }}</a>
+  </div>
+
+  {% set _msg = request.query_params.get('msg', '') %}
+  {% if _msg.startswith('err:') %}
+    {% set _e = _msg[4:] %}
+    <div class="alert alert-danger py-2 small">
+      {% if _e == 'date_required' %}{{ t.expenses_err_date | default('Укажите дату.') }}
+      {% elif _e == 'category_required' or _e == 'category_not_found' %}{{ t.expenses_err_cat | default('Выберите категорию.') }}
+      {% elif _e == 'amount_invalid' %}{{ t.expenses_err_amount_invalid | default('Некорректная сумма.') }}
+      {% elif _e == 'amount_must_be_positive' %}{{ t.expenses_err_amount_positive | default('Сумма должна быть больше 0.') }}
+      {% elif _e == 'expense_not_found' %}{{ t.expenses_err_not_found | default('Запись не найдена.') }}
+      {% else %}❗ {{ _e | e }}{% endif %}
+    </div>
+  {% endif %}
+
+  <form method="post" action="{{ action_url }}">
+    <div class="mb-3">
+      <label class="form-label form-label-sm">{{ t.lbl_date | default('Дата') }} <span class="text-danger">*</span></label>
+      <input type="date" name="date" required class="form-control form-control-sm"
+             value="{{ expense.date if expense else today }}">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label form-label-sm">{{ t.expenses_category | default('Категория') }} <span class="text-danger">*</span></label>
+      <select name="category_id" required class="form-select form-select-sm">
+        <option value="">— {{ t.expenses_choose_cat | default('выберите') }} —</option>
+        {% for group in ['business', 'personal'] %}
+          <optgroup label="{% if group == 'business' %}📦 {{ t.expenses_kind_business | default('Бизнес') }}{% else %}🛒 {{ t.expenses_kind_personal | default('Личное') }}{% endif %}">
+            {% for c in categories %}
+              {% if c.kind == group %}
+                <option value="{{ c.id }}"{% if expense and expense.category_id == c.id %} selected{% endif %}>
+                  {{ c.name }}{% if c.archived %} (архив){% endif %}
+                </option>
+              {% endif %}
+            {% endfor %}
+          </optgroup>
+        {% endfor %}
+      </select>
+      <div class="form-text small">
+        {{ t.expenses_cat_hint | default('Нет нужной категории?') }}
+        <a href="/expenses/categories" target="_blank">{{ t.expenses_manage_cats | default('Управление категориями') }}</a>
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label form-label-sm">{{ t.expenses_amount | default('Сумма') }} (USD) <span class="text-danger">*</span></label>
+      <input type="number" step="0.01" min="0.01" name="amount_usd" required
+             class="form-control form-control-sm"
+             value="{{ '%.2f' | format(expense.amount_usd) if expense else '' }}">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label form-label-sm">{{ t.expenses_note | default('Заметка') }}</label>
+      <input type="text" name="note" class="form-control form-control-sm" maxlength="200"
+             value="{{ expense.note if expense else '' }}"
+             placeholder="{{ t.expenses_note_placeholder | default('например: аренда за июль') }}">
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-sm">
+      {% if expense %}{{ t.btn_save | default('Сохранить') }}
+      {% else %}{{ t.btn_add | default('Добавить') }}{% endif %}
+    </button>
+    <a href="/expenses" class="btn btn-outline-secondary btn-sm">{{ t.btn_cancel | default('Отмена') }}</a>
+  </form>
+</div>
+{% endblock %}
