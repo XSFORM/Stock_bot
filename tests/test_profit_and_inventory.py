@@ -515,6 +515,62 @@ class TestInventoryApply:
         assert n == 1, f"expected 1 ADJUST op (zero deltas skipped), got {n}"
 
 
+class TestClientHistoryReturnDeduplication:
+    """When a return is finished, return_invoice_finish inserts a client_ledger
+    row so get_client_balance reduces the debt correctly. The client history
+    view must NOT show this row as a separate event — otherwise the return
+    appears twice (once as 'Возврат', once as 'Оплата RETURN #NNN') and the
+    balance_after column double-counts."""
+
+    def test_return_shows_once_in_history_and_running_balance_is_correct(self) -> None:
+        from app.db.sqlite import (
+            get_client_balance, get_client_history,
+            return_invoice_start, return_invoice_finish, return_item_add,
+        )
+
+        # A clean sale to give the client some debt.
+        pid = _make_product("HIST_RET", "H1", wh_price=5.0)
+        cid = _make_client("History Return Client")
+        _finish_sale(cid, "HIST_RET", "H1", qty=2, unit_price=10.0)  # debt = 20
+
+        balance_before = get_client_balance(cid)
+        assert balance_before == 20.0, f"expected debt 20, got {balance_before}"
+
+        # Create + finish a return worth 5.
+        ok, err, ret_id = return_invoice_start(cid, "TEST_WH", note="test return")
+        assert ok, err
+        ok, err = return_item_add(ret_id, pid, qty=1, unit_price=5.0)
+        assert ok, err
+        ok, err = return_invoice_finish(ret_id)
+        assert ok, err
+
+        # Actual balance drops by exactly the return amount, once.
+        balance_after = get_client_balance(cid)
+        assert balance_after == balance_before - 5.0, (
+            f"balance should drop by 5 (single reduction), got {balance_before} → {balance_after}"
+        )
+
+        # History: exactly one RETURN event and NO LEDGER twin for the same amount.
+        events = get_client_history(cid)
+        ret_events = [e for e in events if e["kind"] == "RETURN"]
+        ledger_return_twins = [
+            e for e in events
+            if e["kind"] == "LEDGER" and str(e.get("note", "")).startswith("RETURN #")
+        ]
+        assert len(ret_events) == 1, f"expected 1 RETURN event, got {len(ret_events)}"
+        assert len(ledger_return_twins) == 0, (
+            f"auto-generated 'RETURN #xxx' ledger row leaked into history: {ledger_return_twins}"
+        )
+
+        # The RETURN event's balance_after must equal the actual current
+        # balance (no double-subtraction). We look it up by kind rather than
+        # position because events created in the same second can sort either
+        # way relative to each other.
+        assert ret_events[0]["balance_after"] == balance_after, (
+            f"balance_after {ret_events[0]['balance_after']} != actual {balance_after}"
+        )
+
+
 class TestInventoryDiscrepancyReport:
     def test_report_aggregates_surplus_and_shortage(self) -> None:
         from app.db.sqlite import apply_inventory_adjustments, get_inventory_discrepancies

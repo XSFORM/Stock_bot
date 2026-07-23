@@ -1704,9 +1704,17 @@ def get_client_history(client_id: int) -> list[dict[str, Any]]:
                 "download_url": f"/return/xlsx?n={row.get('id')}",
             })
 
+        # Skip auto-generated ledger rows for returns — they are the side
+        # effect of return_invoice_finish and are already shown to the user
+        # as a "RETURN" event above (from return_invoices). Displaying the
+        # ledger twin would double-count the debt reduction in balance_after
+        # and confuse the user with two lines for one action.
+        # The note pattern is stable: "RETURN #NNNNNN" (6-digit zero-padded).
         rows2 = conn.execute(
             "SELECT id, created_at, amount, note"
-            " FROM client_ledger WHERE client_id = ? ORDER BY created_at DESC",
+            " FROM client_ledger WHERE client_id = ?"
+            "   AND (note IS NULL OR note NOT LIKE 'RETURN #%')"
+            " ORDER BY created_at DESC",
             (client_id,),
         ).fetchall()
         for r in rows2:
