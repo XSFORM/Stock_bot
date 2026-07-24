@@ -50,6 +50,8 @@
       <li><a href="#ru-admin">Настройки (Admin)</a></li>
       <li><a href="#ru-pocket-price">Pocket Price</a></li>
       <li><a href="#ru-pocket-catalog">Pocket Catalog</a></li>
+      <li><a href="#ru-telegram-bot">Telegram-бот (только вэб)</a></li>
+      <li><a href="#ru-desktop-vs-web">Desktop-версия vs Веб-версия</a></li>
       <li><a href="#ru-backgrounds">Фоновые картинки</a></li>
       <li><a href="#ru-tips">Советы и частые ошибки</a></li>
       <li><a href="#ru-authors">Авторы</a></li>
@@ -539,7 +541,146 @@
   отзыва доступа используйте Admin → Токены Catalog.</p>
 
   {# 17. Background images #}
-  <h4 id="ru-backgrounds" class="mt-4">20. Фоновые картинки</h4>
+  {# 20. Telegram bot #}
+  <h4 id="ru-telegram-bot" class="mt-4">20. Telegram-бот</h4>
+  <div class="alert alert-warning">
+    <strong>⚠️ Только для вэб-версии.</strong> Бот работает вместе с этой серверной вэб-версией ERP.
+    В <strong>десктопной</strong> версии HASAPCY бота нет — она работает автономно на компьютере клиента, без интернета и без Telegram.
+  </div>
+
+  <p>
+    Бот сделан под одну задачу — <strong>быстро работать с долгами клиентов на ходу</strong>,
+    когда стоишь у клиента с телефоном в руке. Товары, склад, приход, продажи в бота
+    <em>не входят</em> — всё это удобнее в вэб.
+  </p>
+
+  <p><strong>Команды:</strong></p>
+  <ul>
+    <li><code>/start</code> — главное меню: недавние клиенты (кто платил за последние 7 дней) + кнопки поиска и топ должников</li>
+    <li><code>/clients</code> — то же самое, что <code>/start</code></li>
+    <li><code>/debt</code> — сколько мне вообще должны в сумме</li>
+    <li><code>/top_debtors</code> — топ-10 должников с пометкой «сколько дней без оплаты»</li>
+    <li><code>/help</code> — короткая шпаргалка</li>
+    <li><code>/cancel</code> — отменить текущий шаг</li>
+  </ul>
+
+  <p><strong>Обычный сценарий «в поле» — 3 тапа:</strong></p>
+  <ol>
+    <li>Открыл бота → тап по имени клиента из списка недавних (или «🔍 Поиск» → часть имени → тап).</li>
+    <li>В карточке клиента (имя, долг, телефон, последние 3 операции) тап по кнопке быстрой оплаты
+        <strong>[💵 50]</strong>, <strong>[💵 100]</strong>, <strong>[💵 200]</strong> или <strong>[💵 500]</strong>.
+        Для другой суммы — <strong>«Другая оплата»</strong> → напиши цифру.</li>
+    <li>Подтверди — <strong>«✅ Да, списать»</strong>. Готово.</li>
+  </ol>
+
+  <p><strong>Добавление долга:</strong></p>
+  <ol>
+    <li>В карточке клиента тап <strong>«➕ Добавить долг»</strong>.</li>
+    <li>Пишешь сумму.</li>
+    <li>Пишешь <strong>заметку — обязательно</strong> (причина: «взял в долг товар», «предоплата не пришла»).
+        Без заметки бот не даст сохранить, чтобы потом не гадать за что этот долг.</li>
+    <li>Подтверди — <strong>«✅ Да, добавить долг»</strong>.</li>
+  </ol>
+
+  <p><strong>Заметки к операциям (как в вэб):</strong></p>
+  <ul>
+    <li><strong>Оплата</strong> — заметка не обязательна, поэтому бот вообще не спрашивает (быстрее).</li>
+    <li><strong>Добавление долга</strong> — заметка обязательна (объясняет причину).</li>
+  </ul>
+
+  <p><strong>Связь с вэб:</strong> любая операция из бота — та же самая запись в <code>client_ledger</code>,
+  что при работе через вэб. Долг клиента, DEB в правом верхнем углу вэб-меню, история клиента —
+  всё обновляется мгновенно. Открой историю клиента в вэб — увидишь строки, сделанные через Telegram, вперемешку с обычными.</p>
+
+  <p><strong>Кто может пользоваться:</strong> только владелец (по <code>ADMIN_ID</code> в конфиге сервера).
+  Если кто-то посторонний найдёт бот и напишет <code>/start</code> — получит «Доступ запрещён».</p>
+
+  <p><strong>Что бот НЕ умеет специально:</strong> добавлять товары, приходы, склад, продажи, накладные, отчёты, инвентаризацию, расходы.
+  Всё это уже отлично работает в вэб — дублировать нет смысла. Через мобильный тап-экран
+  сложные формы с товарами и ценами — только мучение.</p>
+
+  {# 21. Desktop vs Web #}
+  <h4 id="ru-desktop-vs-web" class="mt-4">21. Desktop-версия vs Веб-версия</h4>
+  <p>
+    Этот мини-ERP существует в двух вариантах. Они полностью совместимы по логике
+    (одна и та же база товаров, накладные, отчёты), но по сценариям использования сильно отличаются.
+  </p>
+  <div class="table-responsive">
+    <table class="table table-bordered table-sm align-top">
+      <thead class="table-light">
+        <tr>
+          <th style="width:22%">Параметр</th>
+          <th style="width:39%">💻 Desktop-версия (HASAPCY)</th>
+          <th style="width:39%">🌐 Веб-версия (Hasapcy)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Установка</strong></td>
+          <td>Один .exe-установщик. Двойной клик — программа в Пуске.</td>
+          <td>Серверная установка (Linux + nginx + systemd).</td>
+        </tr>
+        <tr>
+          <td><strong>Стоимость</strong></td>
+          <td>✅ Бесплатно (только электричество для ПК).</td>
+          <td>⚠️ Сервер ~$5–15/мес + домен ~$10/год.</td>
+        </tr>
+        <tr>
+          <td><strong>Лицензия / Сертификат</strong></td>
+          <td>Одноразовая оплата за лицензию <em>(цену уточняйте у администратора).</em></td>
+          <td>Одноразовая оплата за сертификат <em>(цену уточняйте у администратора).</em></td>
+        </tr>
+        <tr>
+          <td><strong>Интернет</strong></td>
+          <td>✅ Не нужен для работы за ПК. Нужен только для доступа с телефона по WiFi.</td>
+          <td>⚠️ Обязателен постоянно — и на сервере, и у пользователя.</td>
+        </tr>
+        <tr>
+          <td><strong>Доступ из любой точки</strong></td>
+          <td>❌ Только локально (за компьютером).</td>
+          <td>✅ С любого устройства с интернетом — телефон, ноут, планшет, дома или в магазине.</td>
+        </tr>
+        <tr>
+          <td><strong>Несколько сотрудников одновременно</strong></td>
+          <td>Ограниченно — только в одной локальной сети.</td>
+          <td>✅ Полностью поддерживается — все работают параллельно.</td>
+        </tr>
+        <tr>
+          <td><strong>Telegram-бот</strong> (быстрая работа с долгами клиентов)</td>
+          <td>❌ Не доступен в desktop-версии.</td>
+          <td>✅ Есть. Оплаты и добавление долгов на ходу с телефона за 3 тапа. См. раздел 20.</td>
+        </tr>
+        <tr>
+          <td><strong>Pocket Price</strong> (телефон видит цены)</td>
+          <td>Работает в локальной сети + офлайн-кэш в браузере. Рекомендуем Firefox.</td>
+          <td>Работает откуда угодно с интернетом. Поддержка HTTPS «из коробки».</td>
+        </tr>
+        <tr>
+          <td><strong>Pocket Catalog</strong> (склад со сканером)</td>
+          <td>❌ Не доступен в desktop-версии.</td>
+          <td>✅ Полная поддержка с аппаратными Bluetooth-сканерами.</td>
+        </tr>
+        <tr>
+          <td><strong>Бэкапы</strong></td>
+          <td>Локально в <code>%APPDATA%\HASAPCY\backups\</code>. Ответственность владельца.</td>
+          <td>Можно настроить автоматический бэкап на сервере + удалённое хранилище.</td>
+        </tr>
+        <tr>
+          <td><strong>Обновления</strong></td>
+          <td>Переустановка через новый .exe-инсталлятор.</td>
+          <td>Один <code>git pull</code> на сервере — все клиенты получают сразу.</td>
+        </tr>
+        <tr>
+          <td><strong>Если ПК выключен / сломался</strong></td>
+          <td>❌ Всё стоит до восстановления + восстановления бэкапа.</td>
+          <td>Не зависит от одного ПК — сервер работает 24/7, ПК клиента можно заменить.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  {# 22. Background images #}
+  <h4 id="ru-backgrounds" class="mt-4">22. Фоновые картинки</h4>
 
   <h5 class="mt-3">Основной фон сайта</h5>
   <p>
@@ -592,7 +733,7 @@
   </p>
 
   {# 18. Tips #}
-  <h4 id="ru-tips" class="mt-4">21. Советы и частые ошибки</h4>
+  <h4 id="ru-tips" class="mt-4">23. Советы и частые ошибки</h4>
   <ul>
     <li>✅ Всегда завершайте операцию кнопкой «Завершить» — незавершённый приход или продажа не влияет на остатки.</li>
     <li>✅ Перед продажей убедитесь, что товар есть на складе — система не позволит продать больше, чем есть в наличии.</li>
@@ -604,7 +745,7 @@
   </ul>
 
   {# 19. Authors #}
-  <h4 id="ru-authors" class="mt-4">22. Авторы</h4>
+  <h4 id="ru-authors" class="mt-4">24. Авторы</h4>
   <p>
     <strong>Идея и разработка:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><path fill="#4caf50" d="M45 16.2l-5 2.75-5 4.75L35 40h7c1.657 0 3-1.343 3-3V16.2z"/><path fill="#1e88e5" d="M3 16.2l3.614 1.71L13 23.7V40H6c-1.657 0-3-1.343-3-3V16.2z"/><polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17"/><path fill="#c62828" d="M3 12.298V16.2l10 7.5V11.2L9.876 8.859A3.296 3.296 0 007.298 8C4.924 8 3 9.924 3 12.298z"/><path fill="#fbc02d" d="M45 12.298V16.2l-10 7.5V11.2l3.124-2.341A3.296 3.296 0 0040.702 8C43.076 8 45 9.924 45 12.298z"/></svg> <a href="mailto:berditairov@gmail.com">berditairov@gmail.com</a><br>
     <strong>Telegram:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#2CA5E0"/><path fill="white" d="M17.928 6.17L5.638 10.926c-.877.352-.872.84-.16 1.057l3.184.994 7.364-4.647c.347-.211.665-.098.404.134l-5.963 5.386-.233 3.296c.34 0 .49-.155.678-.336l1.627-1.582 3.384 2.496c.623.344 1.071.167 1.226-.578l2.214-10.427c.227-.906-.347-1.316-1.015-1.03z"/></svg> <a href="https://t.me/technica_1416">https://t.me/technica_1416</a><br>
@@ -660,6 +801,8 @@
       <li><a href="#tm-admin">Sazlamalar (Admin)</a></li>
       <li><a href="#tm-pocket-price">Pocket Price</a></li>
       <li><a href="#tm-pocket-catalog">Pocket Catalog</a></li>
+      <li><a href="#tm-telegram-bot">Telegram bot (diňe web)</a></li>
+      <li><a href="#tm-desktop-vs-web">Desktop vs Web</a></li>
       <li><a href="#tm-backgrounds">Fon suratlary</a></li>
       <li><a href="#tm-tips">Maslahatlar we ýalňyşlyklar</a></li>
       <li><a href="#tm-authors">Awtorlary</a></li>
@@ -1096,7 +1239,89 @@
   üçin Admin → Catalog Tokenleri bölümini ulanyň.</p>
 
   {# 17. Background images #}
-  <h4 id="tm-backgrounds" class="mt-4">20. Fon suratlary</h4>
+  {# 20. Telegram bot #}
+  <h4 id="tm-telegram-bot" class="mt-4">20. Telegram bot</h4>
+  <div class="alert alert-warning">
+    <strong>⚠️ Diňe web wersiýasy üçin.</strong> Bot bu serwerdäki web-ERP bilen bilelikde işleýär.
+    <strong>Kompýuter (desktop) HASAPCY</strong> wersiýasynda bot ýok — ol müşderiniň
+    kompýuterinde özbaşdak, internetsiz we Telegramsyz işleýär.
+  </div>
+
+  <p>
+    Bot bir işi üçin — <strong>ýoluň üstünde müşderileriň bergisi bilen çalt işlemek</strong>,
+    telefon el bilen müşderiniň ýanynda dursaň. Harytlar, ammar, kabul etmek, satyş botda <em>ýok</em> —
+    bu zatlar webde has amatly.
+  </p>
+
+  <p><strong>Buýruklar:</strong></p>
+  <ul>
+    <li><code>/start</code> — esasy menýu: soňky 7 günde işjeň bolan müşderiler, gözleg, iň köp berdiler</li>
+    <li><code>/clients</code> — <code>/start</code> bilen deň</li>
+    <li><code>/debt</code> — maňa jemi näçe bergilidiginiň jemi</li>
+    <li><code>/top_debtors</code> — iň köp berdiliniň onlugy, näçe gün tölegsiz</li>
+    <li><code>/help</code> — gysga gollanma</li>
+    <li><code>/cancel</code> — häzirki ädimi ýatyrmak</li>
+  </ul>
+
+  <p><strong>Adaty senariý — 3 basyş:</strong></p>
+  <ol>
+    <li>Boty aç → soňky müşderiler sanawyndan ada bas (ýa-da «🔍 Gözle»).</li>
+    <li>Müşderi kartynda (ady, bergisi, telefon, soňky 3 amal) çalt töleg düwmesi <strong>[💵 50/100/200/500]</strong>.
+        Başga mukdar üçin — <strong>«Başga töleg»</strong> → san ýaz.</li>
+    <li>Tassykla — <strong>«✅ Hawa, aýyr»</strong>. Boldy.</li>
+  </ol>
+
+  <p><strong>Bergi goşmak:</strong></p>
+  <ol>
+    <li>Kartda <strong>«➕ Bergi goş»</strong> düwmesine bas.</li>
+    <li>Mukdary ýaz.</li>
+    <li><strong>Bellik hökman</strong> ýaz (sebäbi: «harydy karza aldy», «öňki töleg gelmedi»). Belliksiz saklap bolmaýar.</li>
+    <li>Tassykla — <strong>«✅ Hawa, bergi goş»</strong>.</li>
+  </ol>
+
+  <p><strong>Bellikler (web bilen deň):</strong> tölegde bellik islege bagly (bot soramaýar, has çalt),
+  bergini goşanda bellik hökman.</p>
+
+  <p><strong>Web bilen baglanyşyk:</strong> botdaky islendik amal — şol bir <code>client_ledger</code>-däki
+  ýazgy. Müşderiniň bergisi, ýokardaky DEB, taryhy — hemmesi derrew täzelenýär.</p>
+
+  <p><strong>Kim ulanyp bilýär:</strong> diňe eýe (serwer konfigindäki <code>ADMIN_ID</code>).
+  Başga biri boty tapsa we <code>/start</code> ýazsa — «Rugsat ýok» diýer.</p>
+
+  <p><strong>Botda ýok zatlar:</strong> haryt, kabul etmek, ammar, satyş, hasap-fakturalar,
+  hasabatlar, inwentar, çykdajylar — bularyň hemmesi webde bar. Mobil ekranda çylşyrymly forma diňe kynçylyk.</p>
+
+  {# 21. Desktop vs Web #}
+  <h4 id="tm-desktop-vs-web" class="mt-4">21. Desktop vs Web wersiýasy</h4>
+  <p>Bu mini-ERP-iň iki görnüşi bar. Logika (harytlar bazasy, hasap-fakturalar, hasabatlar) doly gabat gelýär, ýöne ulanyş senariýleri düýpli tapawutlanýar.</p>
+  <div class="table-responsive">
+    <table class="table table-bordered table-sm align-top">
+      <thead class="table-light">
+        <tr>
+          <th style="width:22%">Parametr</th>
+          <th style="width:39%">💻 Desktop (HASAPCY)</th>
+          <th style="width:39%">🌐 Web (Hasapcy)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Gurmak</strong></td><td>Bir .exe. Iki gezek bas — PC-de gurulýar.</td><td>Server gurnama (Linux + nginx + systemd).</td></tr>
+        <tr><td><strong>Nyrhy</strong></td><td>✅ Mugt (diňe elektrik toga PC üçin).</td><td>⚠️ Server ~$5–15/aý + domen ~$10/ýyl.</td></tr>
+        <tr><td><strong>Ygtyýarnama / Sertifikat</strong></td><td>Bir gezeklik ygtyýarnama töleg <em>(nyrhy admin bilen).</em></td><td>Bir gezeklik sertifikat töleg <em>(nyrhy admin bilen).</em></td></tr>
+        <tr><td><strong>Internet</strong></td><td>✅ PC-de işlemek üçin gerek däl. Telefondan WiFi bilen girmek üçin gerek.</td><td>⚠️ Hemişe hökman — hem serverde, hem ulanyjyda.</td></tr>
+        <tr><td><strong>Islendik ýerden giriş</strong></td><td>❌ Diňe ýerli (PC-niň ýanynda).</td><td>✅ Internetli islendik enjamdan.</td></tr>
+        <tr><td><strong>Bir wagtda birnäçe işgär</strong></td><td>Çäkli — diňe bir ýerli ulgamda.</td><td>✅ Doly goldaýar.</td></tr>
+        <tr><td><strong>Telegram bot</strong> (bergilər bilen çalt işlemek)</td><td>❌ Desktop-da ýok.</td><td>✅ Bar. Ýoluň üstünde 3 basyşda tölegler. 20-nji bölüme seret.</td></tr>
+        <tr><td><strong>Pocket Price</strong></td><td>Ýerli ulgamda + brauzerde offline keş. Firefox maslahat berilýär.</td><td>Internetli islendik ýerden. HTTPS goldaw «gutudan».</td></tr>
+        <tr><td><strong>Pocket Catalog</strong> (ammar we skaner)</td><td>❌ Desktop-da ýok.</td><td>✅ Doly goldaw, apparat Bluetooth skanerleri bilen.</td></tr>
+        <tr><td><strong>Ätiýaçlyk nusgalar</strong></td><td>Ýerli: <code>%APPDATA%\HASAPCY\backups\</code>. Eýe jogapkär.</td><td>Serwerde awtomatiki + uzak ammar sazlap bolýar.</td></tr>
+        <tr><td><strong>Täzelenmeler</strong></td><td>Täze .exe bilen gaýtadan gurmak.</td><td>Serverde bir <code>git pull</code> — hemme ulanyja derrew geler.</td></tr>
+        <tr><td><strong>PC öçen bolsa / döwülen</strong></td><td>❌ Dikeldýänçä hiç zat işlemez.</td><td>Bir PC-den bagly däl — server 24/7, PC-i çalşyp bolýar.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  {# 22. Background images #}
+  <h4 id="tm-backgrounds" class="mt-4">22. Fon suratlary</h4>
 
   <h5 class="mt-3">Saýtyň esasy fony</h5>
   <p>
@@ -1149,7 +1374,7 @@
   </p>
 
   {# 18. Tips #}
-  <h4 id="tm-tips" class="mt-4">21. Maslahatlar we ýalňyşlyklar</h4>
+  <h4 id="tm-tips" class="mt-4">23. Maslahatlar we ýalňyşlyklar</h4>
   <ul>
     <li>✅ Amaly hemişe «Tamamlamak» düwmesi bilen tamamlaň — tamamlanmadyk kabul etmek ýa-da satyş galdyklara täsir etmeýär.</li>
     <li>✅ Satmazdan ozal harydyň ammarda bardygyna göz ýetiriň — ulgam mümkin bolan mukdardan köp satmaga rugsat bermeýär.</li>
@@ -1160,7 +1385,7 @@
   </ul>
 
   {# 19. Authors #}
-  <h4 id="tm-authors" class="mt-4">22. Awtorlary</h4>
+  <h4 id="tm-authors" class="mt-4">24. Awtorlary</h4>
   <p>
     <strong>Pikir we işläp düzmek:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><path fill="#4caf50" d="M45 16.2l-5 2.75-5 4.75L35 40h7c1.657 0 3-1.343 3-3V16.2z"/><path fill="#1e88e5" d="M3 16.2l3.614 1.71L13 23.7V40H6c-1.657 0-3-1.343-3-3V16.2z"/><polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17"/><path fill="#c62828" d="M3 12.298V16.2l10 7.5V11.2L9.876 8.859A3.296 3.296 0 007.298 8C4.924 8 3 9.924 3 12.298z"/><path fill="#fbc02d" d="M45 12.298V16.2l-10 7.5V11.2l3.124-2.341A3.296 3.296 0 0040.702 8C43.076 8 45 9.924 45 12.298z"/></svg> <a href="mailto:berditairov@gmail.com">berditairov@gmail.com</a><br>
     <strong>Telegram:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#2CA5E0"/><path fill="white" d="M17.928 6.17L5.638 10.926c-.877.352-.872.84-.16 1.057l3.184.994 7.364-4.647c.347-.211.665-.098.404.134l-5.963 5.386-.233 3.296c.34 0 .49-.155.678-.336l1.627-1.582 3.384 2.496c.623.344 1.071.167 1.226-.578l2.214-10.427c.227-.906-.347-1.316-1.015-1.03z"/></svg> <a href="https://t.me/technica_1416">https://t.me/technica_1416</a><br>
@@ -1216,6 +1441,8 @@
       <li><a href="#en-admin">Admin settings</a></li>
       <li><a href="#en-pocket-price">Pocket Price</a></li>
       <li><a href="#en-pocket-catalog">Pocket Catalog</a></li>
+      <li><a href="#en-telegram-bot">Telegram bot (web only)</a></li>
+      <li><a href="#en-desktop-vs-web">Desktop vs Web edition</a></li>
       <li><a href="#en-backgrounds">Background images</a></li>
       <li><a href="#en-tips">Tips &amp; common mistakes</a></li>
       <li><a href="#en-authors">Authors</a></li>
@@ -1673,7 +1900,93 @@
   access use Admin → Catalog Tokens.</p>
 
   {# 17. Background images #}
-  <h4 id="en-backgrounds" class="mt-4">20. Background images</h4>
+  {# 20. Telegram bot #}
+  <h4 id="en-telegram-bot" class="mt-4">20. Telegram bot</h4>
+  <div class="alert alert-warning">
+    <strong>⚠️ Web edition only.</strong> The bot works together with this server-hosted web ERP.
+    The <strong>desktop HASAPCY</strong> edition has no bot — it runs standalone on the customer's
+    computer, without internet and without Telegram.
+  </div>
+
+  <p>
+    The bot is built for a single job — <strong>quick client-debt work on the go</strong>,
+    when you're standing next to a client with your phone in hand. Products, stock, receiving,
+    sales are <em>not</em> in the bot — those flows are much better in the web UI.
+  </p>
+
+  <p><strong>Commands:</strong></p>
+  <ul>
+    <li><code>/start</code> — main menu: recent clients (active in the last 7 days) + search + top debtors</li>
+    <li><code>/clients</code> — same as <code>/start</code></li>
+    <li><code>/debt</code> — total outstanding debt owed to you</li>
+    <li><code>/top_debtors</code> — top 10 debtors with «days since last payment»</li>
+    <li><code>/help</code> — short cheat sheet</li>
+    <li><code>/cancel</code> — cancel the current step</li>
+  </ul>
+
+  <p><strong>Typical «in the field» flow — 3 taps:</strong></p>
+  <ol>
+    <li>Open the bot → tap a client name in the recent list (or «🔍 Search» → part of the name → tap).</li>
+    <li>On the client card (name, debt, phone, last 3 operations) tap a quick-pay button
+        <strong>[💵 50/100/200/500]</strong>. For any other amount — <strong>«Other payment»</strong> → type the number.</li>
+    <li>Confirm — <strong>«✅ Yes, apply»</strong>. Done.</li>
+  </ol>
+
+  <p><strong>Adding debt:</strong></p>
+  <ol>
+    <li>On the client card tap <strong>«➕ Add debt»</strong>.</li>
+    <li>Type the amount.</li>
+    <li>Type a <strong>note — required</strong> (reason: «took goods on credit», «prepayment didn't arrive»).
+        Without a note the bot won't save it, so you'll always know what the debt was for.</li>
+    <li>Confirm — <strong>«✅ Yes, add debt»</strong>.</li>
+  </ol>
+
+  <p><strong>Notes (matches web behaviour):</strong> payment note is optional (the bot doesn't even ask, to keep it fast);
+  debt note is mandatory.</p>
+
+  <p><strong>Web integration:</strong> every bot action is the same <code>client_ledger</code> row
+  that web writes. Client balance, the DEB counter in the top-right of the web menu, the client's
+  history — all update instantly. Open the client's history in the web UI and you'll see rows
+  made via Telegram mixed in with the manual ones.</p>
+
+  <p><strong>Who can use it:</strong> only the owner (via <code>ADMIN_ID</code> in the server config).
+  If someone else finds the bot and sends <code>/start</code> — they get «Access denied».</p>
+
+  <p><strong>What the bot deliberately doesn't do:</strong> add products, receives, stock, sales,
+  invoices, reports, inventory, expenses. All of that already works well in the web UI — duplicating
+  it would be pointless. Complex forms with products and prices on a phone touchscreen are just painful.</p>
+
+  {# 21. Desktop vs Web #}
+  <h4 id="en-desktop-vs-web" class="mt-4">21. Desktop vs Web edition</h4>
+  <p>This mini-ERP ships in two editions. They share the same logic (product catalogue, invoices, reports), but the use cases differ significantly.</p>
+  <div class="table-responsive">
+    <table class="table table-bordered table-sm align-top">
+      <thead class="table-light">
+        <tr>
+          <th style="width:22%">Aspect</th>
+          <th style="width:39%">💻 Desktop edition (HASAPCY)</th>
+          <th style="width:39%">🌐 Web edition (Hasapcy)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Install</strong></td><td>Single .exe installer. Double-click — the app lands in Start.</td><td>Server install (Linux + nginx + systemd).</td></tr>
+        <tr><td><strong>Cost</strong></td><td>✅ Free (only electricity for the PC).</td><td>⚠️ Server ~$5–15/mo + domain ~$10/yr.</td></tr>
+        <tr><td><strong>License / Certificate</strong></td><td>One-time license fee <em>(ask the administrator for pricing).</em></td><td>One-time certificate fee <em>(ask the administrator for pricing).</em></td></tr>
+        <tr><td><strong>Internet</strong></td><td>✅ Not needed for local PC work. Only needed for phone access over WiFi.</td><td>⚠️ Required at all times — both on server and client side.</td></tr>
+        <tr><td><strong>Access from anywhere</strong></td><td>❌ Local only (at the computer).</td><td>✅ From any device with internet — phone, laptop, tablet, home or shop.</td></tr>
+        <tr><td><strong>Multiple staff at the same time</strong></td><td>Limited — only within a single LAN.</td><td>✅ Fully supported — everyone works in parallel.</td></tr>
+        <tr><td><strong>Telegram bot</strong> (quick client-debt work)</td><td>❌ Not available in the desktop edition.</td><td>✅ Available. On-the-go payments and debt entries from a phone in 3 taps. See section 20.</td></tr>
+        <tr><td><strong>Pocket Price</strong> (price lookup on phone)</td><td>Works on the LAN + browser offline cache. Firefox recommended.</td><td>Works from anywhere with internet. HTTPS out of the box.</td></tr>
+        <tr><td><strong>Pocket Catalog</strong> (warehouse with scanner)</td><td>❌ Not available in the desktop edition.</td><td>✅ Full support incl. hardware Bluetooth scanners.</td></tr>
+        <tr><td><strong>Backups</strong></td><td>Local: <code>%APPDATA%\HASAPCY\backups\</code>. Owner's responsibility.</td><td>Automated server-side backups + remote storage possible.</td></tr>
+        <tr><td><strong>Updates</strong></td><td>Reinstall via a new .exe installer.</td><td>One <code>git pull</code> on the server — every client gets it immediately.</td></tr>
+        <tr><td><strong>If the PC is off / broken</strong></td><td>❌ Nothing works until the PC + backup are restored.</td><td>Not tied to a single PC — the server runs 24/7 and the client PC can be swapped.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  {# 22. Background images #}
+  <h4 id="en-backgrounds" class="mt-4">22. Background images</h4>
 
   <h5 class="mt-3">Main site background</h5>
   <p>
@@ -1726,7 +2039,7 @@
   </p>
 
   {# 18. Tips #}
-  <h4 id="en-tips" class="mt-4">21. Tips &amp; common mistakes</h4>
+  <h4 id="en-tips" class="mt-4">23. Tips &amp; common mistakes</h4>
   <ul>
     <li>✅ Always finish an operation with the «Finish» button — an unfinished receive or sale does not
         affect stock balances.</li>
@@ -1741,7 +2054,7 @@
   </ul>
 
   {# 19. Authors #}
-  <h4 id="en-authors" class="mt-4">22. Authors</h4>
+  <h4 id="en-authors" class="mt-4">24. Authors</h4>
   <p>
     <strong>Idea &amp; development:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><path fill="#4caf50" d="M45 16.2l-5 2.75-5 4.75L35 40h7c1.657 0 3-1.343 3-3V16.2z"/><path fill="#1e88e5" d="M3 16.2l3.614 1.71L13 23.7V40H6c-1.657 0-3-1.343-3-3V16.2z"/><polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17"/><path fill="#c62828" d="M3 12.298V16.2l10 7.5V11.2L9.876 8.859A3.296 3.296 0 007.298 8C4.924 8 3 9.924 3 12.298z"/><path fill="#fbc02d" d="M45 12.298V16.2l-10 7.5V11.2l3.124-2.341A3.296 3.296 0 0040.702 8C43.076 8 45 9.924 45 12.298z"/></svg> <a href="mailto:berditairov@gmail.com">berditairov@gmail.com</a><br>
     <strong>Telegram:</strong> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" style="vertical-align:middle;display:inline-block" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#2CA5E0"/><path fill="white" d="M17.928 6.17L5.638 10.926c-.877.352-.872.84-.16 1.057l3.184.994 7.364-4.647c.347-.211.665-.098.404.134l-5.963 5.386-.233 3.296c.34 0 .49-.155.678-.336l1.627-1.582 3.384 2.496c.623.344 1.071.167 1.226-.578l2.214-10.427c.227-.906-.347-1.316-1.015-1.03z"/></svg> <a href="https://t.me/technica_1416">https://t.me/technica_1416</a><br>

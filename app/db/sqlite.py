@@ -1249,6 +1249,94 @@ def get_client_balance(client_id: int) -> float:
         return round(inv_total - paid, 2)
 
 
+# ── Bot helpers (Phase 6 — Telegram redesign) ───────────────────────────────
+
+def get_recent_active_clients(days: int = 7, limit: int = 8) -> list[dict[str, Any]]:
+    """
+    Clients touched by a sale or a ledger entry in the last `days` days,
+    ordered by most-recent activity first. Used to fill the bot's main
+    menu with quick-access buttons.
+
+    Each returned dict has: id, name, phone, balance, last_activity_at.
+    Archived clients are excluded.
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT c.id, c.name, c.phone,
+                   MAX(activity_at) AS last_activity_at
+            FROM clients c
+            JOIN (
+                SELECT client_id, MAX(created_at) AS activity_at
+                FROM client_ledger
+                WHERE created_at >= datetime('now','localtime', ?)
+                GROUP BY client_id
+
+                UNION ALL
+
+                SELECT ca.client_id, MAX(ca.created_at) AS activity_at
+                FROM carts ca
+                WHERE ca.status = 'CLOSED'
+                  AND ca.created_at >= datetime('now','localtime', ?)
+                GROUP BY ca.client_id
+            ) act ON act.client_id = c.id
+            WHERE COALESCE(c.archived, 0) = 0
+            GROUP BY c.id, c.name, c.phone
+            ORDER BY last_activity_at DESC
+            LIMIT ?
+            """,
+            (f"-{int(days)} days", f"-{int(days)} days", int(limit)),
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = _row_to_dict(r)
+        d["balance"] = get_client_balance(d["id"])
+        result.append(d)
+    return result
+
+
+def get_top_debtors(limit: int = 10) -> list[dict[str, Any]]:
+    """
+    Non-archived clients with balance > 0, ordered by balance desc.
+    Adds days_since_last (from get_client_payment_stats) so the bot can
+    highlight silent debtors.
+    """
+    clients = list_clients_with_balance(include_archived=False)
+    debtors = [c for c in clients if float(c.get("balance", 0)) > 0]
+    debtors.sort(key=lambda c: float(c["balance"]), reverse=True)
+    debtors = debtors[: int(limit)]
+    for c in debtors:
+        stats = get_client_payment_stats(int(c["id"]))
+        c["days_since_last"] = stats.get("days_since_last")
+        c["last_payment_at"] = stats.get("last_payment_at")
+    return debtors
+
+
+def find_clients_by_name(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Case-insensitive substring search over non-archived clients."""
+    q = (query or "").strip()
+    if not q:
+        return []
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, name, phone
+            FROM clients
+            WHERE COALESCE(archived, 0) = 0
+              AND LOWER(name) LIKE LOWER(?)
+            ORDER BY name
+            LIMIT ?
+            """,
+            (f"%{q}%", int(limit)),
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = _row_to_dict(r)
+        d["balance"] = get_client_balance(d["id"])
+        result.append(d)
+    return result
+
+
 # ── Phase 2: Profit report ──────────────────────────────────────────────────
 
 def get_profit_report(

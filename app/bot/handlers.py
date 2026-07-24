@@ -1,702 +1,634 @@
-import re
-import shlex
+"""Telegram bot handlers — Phase 6 redesign.
 
-from aiogram import Router
+Scope: client debt management from the field.
+All previous product/receive/stock/move/cart/backup handlers are gone —
+those flows live in the web app now, where they belong.
+
+Flow (typical case: user is standing next to a client with cash):
+
+    /start
+      ↓
+    [Aylar Tajir market — 350$]  ← tap
+      ↓
+    Client card with quick-amount buttons
+      ↓
+    tap [💵 100]
+      ↓
+    [✅ Да, списать] [❌ Отмена]
+      ↓
+    "Готово. Долг 250$"
+
+Every payment/debt call reuses the same DB functions the web UI uses
+(add_client_adjustment / add_client_debt), so both surfaces stay in
+sync automatically. Rows created from the bot are tagged with a
+`tg:<user_id>` note prefix so we can trace source in the ledger.
+"""
+from __future__ import annotations
+
+import logging
+
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    KeyboardButton,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
     Message,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
 )
 
-from app.bot.states import ClientAdd, ProductAdd
-from app.config import settings
-from app.constants import WAREHOUSES
-from app.db.sqlite import (
-    add_client,
-    add_product,
-    cart_add,
-    cart_finish_from_shop,
-    cart_remove,
-    cart_show,
-    cart_start,
-    init_db,
-    list_clients,
-    list_products,
-    move_all,
-    move_all_auto_shop,
-    move_stock,
-    receive_stock,
+from app.bot.keyboards import (
+    QUICK_AMOUNTS,
+    after_action_kb,
+    cancel_kb,
+    client_card_kb,
+    confirm_debt_kb,
+    confirm_payment_kb,
+    fmt_balance,
+    main_menu_kb,
+    search_results_kb,
 )
-from app.services.backup import make_backup
-from app.services.invoice_pdf import generate_invoice_pdf
+from app.bot.states import ClientSearch, Payment
+from app.config import settings
+from app.db.sqlite import (
+    add_client_adjustment,
+    add_client_debt,
+    find_clients_by_name,
+    get_client,
+    get_client_balance,
+    get_client_history,
+    get_recent_active_clients,
+    get_top_debtors,
+    get_total_clients_debt,
+)
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
-ACTIVE_CLIENT: str | None = None
-ACTIVE_CART_SOURCE: str = "CHINA"  # CHINA | DEALER (по умолчанию Китай)
 
-DEFAULT_BRAND = "SONIFER"
+# ─── Access control ──────────────────────────────────────────────────────────
 
-BRAND_PREFIX = {
-    "SONIFER": "SF-",
-    "RAF": "R-",
-    "VGR": "V-",
-    "SOKANY": "SK-",
-    "BABYVERSE": "BA-",
-    "MOSER": "MS-",
-}
-
-
-def _is_admin(message: Message) -> bool:
+def _is_admin_user(user_id: int | None) -> bool:
     try:
-        return int(message.from_user.id) == int(settings.admin_id)
-    except Exception:
+        return int(user_id) == int(settings.admin_id)
+    except (TypeError, ValueError):
         return False
 
 
-def _brands_kb() -> ReplyKeyboardMarkup:
-    rows = [
-        [
-            KeyboardButton(text="✅ SONIFER"),
-            KeyboardButton(text="RAF"),
-            KeyboardButton(text="VGR"),
-        ],
-        [
-            KeyboardButton(text="SOKANY"),
-            KeyboardButton(text="BABYVERSE"),
-            KeyboardButton(text="MOSER"),
-        ],
-        [KeyboardButton(text="✍️ Другое (вручную)")],
-        [KeyboardButton(text="/cancel")],
+async def _guard(event: Message | CallbackQuery) -> bool:
+    """Return True if the caller is the configured admin. Otherwise reply/answer with a rejection."""
+    uid = event.from_user.id if event.from_user else None
+    if _is_admin_user(uid):
+        return True
+    if isinstance(event, CallbackQuery):
+        await event.answer("Доступ запрещён.", show_alert=True)
+    else:
+        await event.answer("Доступ запрещён.")
+    return False
+
+
+# ─── Formatting helpers ──────────────────────────────────────────────────────
+
+def _balance_line(balance: float) -> str:
+    """Colour-coded balance for message body."""
+    if balance > 0:
+        return f"💰 Долг: <b>{balance:.2f} USD</b>"
+    if balance < 0:
+        return f"🟢 Аванс: <b>{abs(balance):.2f} USD</b>"
+    return "⚪ Баланс: <b>0.00 USD</b>"
+
+
+def _main_menu_text() -> str:
+    total = get_total_clients_debt()
+    lines = [
+        f"👋 Привет!",
+        f"",
+        f"Мне должны в сумме: <b>{total:.2f} USD</b>",
+        f"",
+        f"Выбери клиента для оплаты или добавления долга:",
     ]
-    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, one_time_keyboard=True)
+    return "\n".join(lines)
 
 
-def _normalize_brand(text: str) -> str:
-    t = text.strip().upper()
-    t = re.sub(r"[^A-Z0-9\-]", "", t)
-    return t
+def _client_card_text(client: dict, balance: float, history: list[dict]) -> str:
+    """Compact card: name, balance, phone, last 3 operations."""
+    lines = [
+        f"👤 <b>{client['name']}</b>",
+        _balance_line(balance),
+    ]
+    if client.get("phone"):
+        lines.append(f"📞 {client['phone']}")
+    if history:
+        lines.append("")
+        lines.append("<b>Последние операции:</b>")
+        for ev in history[:3]:
+            dt = str(ev.get("dt") or "")[:10]  # YYYY-MM-DD
+            kind = str(ev.get("kind") or "")
+            amt = float(ev.get("amount") or 0)
+            if kind == "INVOICE":
+                lines.append(f"• {dt} — продажа <b>+{amt:.2f}</b> (#{ev.get('ref','')})")
+            elif kind == "RETURN":
+                lines.append(f"• {dt} — возврат <b>−{amt:.2f}</b>")
+            elif kind == "LEDGER":
+                if amt > 0:
+                    lines.append(f"• {dt} — оплата <b>−{amt:.2f}</b>")
+                elif amt < 0:
+                    lines.append(f"• {dt} — доп. долг <b>+{abs(amt):.2f}</b>")
+    return "\n".join(lines)
 
 
-def _normalize_model(model_text: str, prefix: str) -> str:
-    t = model_text.strip().replace(" ", "")
-    if not t:
-        return t
-
-    if prefix and re.fullmatch(r"\d+", t):
-        return (prefix + t).lower()
-
-    m = re.fullmatch(r"([A-Za-z]{1,5})-?(\d+)", t)
-    if m:
-        letters = m.group(1).upper()
-        digits = m.group(2)
-        if prefix:
-            pref_letters = prefix.rstrip("-").upper()
-            if letters == pref_letters:
-                return (prefix + digits).lower()
-        return f"{letters}-{digits}".lower()
-
-    return t.lower()
-
-
-def _parse_price(text: str) -> float:
-    return float(text.strip().replace(",", "."))
-
-
-def _parse_qty(text: str) -> float:
-    return float(text.strip().replace(",", "."))
-
-
-def _warehouse_help() -> str:
-    return ", ".join(sorted(WAREHOUSES.keys()))
-
-
-def _require_active_client() -> str | None:
-    global ACTIVE_CLIENT
-    return ACTIVE_CLIENT
-
-
-def _shop_for_source() -> str:
-    global ACTIVE_CART_SOURCE
-    return "SHOP_CHINA" if ACTIVE_CART_SOURCE == "CHINA" else "SHOP_DEALER"
-
+# ─── /start, /help, /cancel ──────────────────────────────────────────────────
 
 @router.message(Command("start"))
-async def cmd_start(message: Message):
-    if not _is_admin(message):
-        return
-    init_db()
-    await message.answer("✅ Stock_bot запущен")
-
-
-@router.message(Command("cancel"))
-async def cmd_cancel(message: Message, state: FSMContext):
-    if not _is_admin(message):
+async def cmd_start(message: Message, state: FSMContext) -> None:
+    if not await _guard(message):
         return
     await state.clear()
-    await message.answer("❎ Отменено. Можно вводить команды заново.", reply_markup=ReplyKeyboardRemove())
+    recent = get_recent_active_clients(days=7, limit=8)
+    await message.answer(_main_menu_text(), reply_markup=main_menu_kb(recent))
 
 
 @router.message(Command("help"))
-async def cmd_help(message: Message):
-    if not _is_admin(message):
+async def cmd_help(message: Message) -> None:
+    if not await _guard(message):
         return
-
     text = (
-        "<b>Stock_bot — команды</b>\n\n"
-        "<b>Основное</b>\n"
-        "/start — запуск\n"
-        "/cancel — отмена ввода\n"
-        "/help — помощь\n"
-        "/ping — проверка\n"
-        "/backup — бэкап базы + PDF\n\n"
-        "<b>Клиенты</b>\n"
-        "/clients — список\n"
-        "/client_add ИМЯ — добавить\n\n"
-        "<b>Товары</b>\n"
-        "/product_add — мастер добавления\n"
-        "/products — список\n\n"
-        "<b>Поступление</b>\n"
-        "/receive CHINA BRAND MODEL QTY — приход из Китая на CHINA_DEPOT\n"
-        "/receive DEALER BRAND MODEL QTY — приход от диллера на DEALER_DEPOT\n"
-        "/receive WAREHOUSE BRAND MODEL QTY — приход на указанный склад\n\n"
-        "<b>Остатки</b>\n"
-        "/stock — по всем складам\n"
-        "/stock WAREHOUSE — по складу\n\n"
-        "<b>Перемещение</b>\n"
-        "/move FROM TO BRAND MODEL QTY\n"
-        "/move_all FROM — перенести ВСЁ (CHINA_DEPOT→SHOP_CHINA, DEALER_DEPOT→SHOP_DEALER)\n"
-        "/move_all FROM TO — перенести ВСЁ в указанный склад\n\n"
-        "<b>Корзина (продажа)</b>\n"
-        "/cart_start CLIENT_NAME — выбрать клиента и начать корзину\n"
-        "/cart_source CHINA|DEALER — выбрать из какого магазина продаём\n"
-        "/cart_add BRAND MODEL QTY [wh|wh10|custom] [custom_price]\n"
-        "/cart_show — показать корзину\n"
-        "/cart_remove BRAND MODEL — удалить 1 позицию\n"
-        "/cart_finish — списать из SHOP_CHINA/SHOP_DEALER + PDF + backup\n"
+        "<b>Stock_bot — учёт долгов клиентов</b>\n\n"
+        "/start — главное меню (недавние клиенты + поиск)\n"
+        "/clients — то же, что /start\n"
+        "/debt — общий долг клиентов передо мной\n"
+        "/top_debtors — топ-10 должников\n"
+        "/cancel — отменить текущий шаг\n\n"
+        "Товары, приходы, склад и продажи — теперь только в вэб-версии.\n"
+        "Здесь только быстрая работа с долгом: тап по клиенту → сумма → подтвердить."
     )
     await message.answer(text)
-
-
-@router.message(Command("ping"))
-async def cmd_ping(message: Message):
-    if not _is_admin(message):
-        return
-    await message.answer("pong ✅")
-
-
-@router.message(Command("backup"))
-async def cmd_backup(message: Message):
-    if not _is_admin(message):
-        return
-    try:
-        file_path = make_backup()
-        await message.answer_document(open(file_path, "rb"))
-    except Exception as e:
-        await message.answer(f"❌ Ошибка бэкапа: {e}")
 
 
 @router.message(Command("clients"))
-async def cmd_clients(message: Message):
-    if not _is_admin(message):
+async def cmd_clients(message: Message, state: FSMContext) -> None:
+    # Alias for /start — some users type either.
+    await cmd_start(message, state)
+
+
+@router.message(Command("cancel"))
+async def cmd_cancel(message: Message, state: FSMContext) -> None:
+    if not await _guard(message):
         return
-    init_db()
-    rows = list_clients()
-    if not rows:
-        await message.answer("Клиентов пока нет. Добавь: /client_add Имя")
-        return
-    lines = ["<b>Клиенты:</b>"]
-    for r in rows:
-        lines.append(f"• {r['name']}")
-    await message.answer("\n".join(lines))
-
-
-@router.message(Command("client_add"))
-async def cmd_client_add(message: Message, state: FSMContext):
-    if not _is_admin(message):
-        return
-
-    parts = message.text.split(maxsplit=1)
-    if len(parts) >= 2 and parts[1].strip():
-        name = parts[1].strip()
-        try:
-            add_client(name)
-            await message.answer(f"✅ Клиент добавлен: {name}")
-        except Exception as e:
-            await message.answer(f"❌ Ошибка при добавлении клиента: {e}")
-        return
-
-    await state.set_state(ClientAdd.waiting_name)
-    await message.answer(
-        "Введите имя клиента одним сообщением.\nПример: ali\n\nОтмена: /cancel",
-        reply_markup=ReplyKeyboardRemove(),
-    )
-
-
-@router.message(ClientAdd.waiting_name)
-async def client_add_wait_name(message: Message, state: FSMContext):
-    if not _is_admin(message):
-        return
-
-    name = (message.text or "").strip()
-    if not name or name.startswith("/"):
-        await message.answer("Введите имя текстом. Отмена: /cancel")
-        return
-
-    try:
-        add_client(name)
-        await message.answer(f"✅ Клиент добавлен: {name}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка при добавлении клиента: {e}")
-        return
-    finally:
-        await state.clear()
-
-
-@router.message(Command("products"))
-async def cmd_products(message: Message):
-    if not _is_admin(message):
-        return
-    init_db()
-    rows = list_products()
-    if not rows:
-        await message.answer("Товаров пока нет. Добавь: /product_add")
-        return
-    lines = ["<b>Товары:</b>"]
-    for r in rows:
-        lines.append(
-            f"• {r['brand']} {r['model']} — {r['name']} (wh={float(r['wh_price']):.2f}$ / wh10={float(r['wh10_price']):.2f}$)"
-        )
-    await message.answer("\n".join(lines))
-
-
-@router.message(Command("product_add"))
-async def cmd_product_add(message: Message, state: FSMContext):
-    if not _is_admin(message):
-        return
-
-    init_db()
-
-    try:
-        args = shlex.split(message.text)
-        if len(args) >= 5:
-            _, brand, model, name, wh_price = args[:5]
-            add_product(brand, model, name, _parse_price(wh_price))
-            await message.answer(f"✅ Товар добавлен: {brand} {model}")
-            return
-    except Exception:
-        pass
-
     await state.clear()
-    await state.set_state(ProductAdd.waiting_brand)
-    await state.update_data(brand=DEFAULT_BRAND)
-    await message.answer(
-        "Ок, добавляем товар.\n\n1/4) Выберите БРЕНД (по умолчанию SONIFER)\nОтмена: /cancel",
-        reply_markup=_brands_kb(),
+    await message.answer("Отменено.")
+
+
+# ─── /debt, /top_debtors — read-only overview ────────────────────────────────
+
+@router.message(Command("debt"))
+async def cmd_debt(message: Message) -> None:
+    if not await _guard(message):
+        return
+    total = get_total_clients_debt()
+    await message.answer(f"💰 Мне должны в сумме: <b>{total:.2f} USD</b>")
+
+
+@router.message(Command("top_debtors"))
+async def cmd_top_debtors(message: Message) -> None:
+    if not await _guard(message):
+        return
+    debtors = get_top_debtors(limit=10)
+    if not debtors:
+        await message.answer("Должников нет — все чисты 🎉")
+        return
+    lines = ["<b>📊 Топ должников:</b>", ""]
+    for i, c in enumerate(debtors, 1):
+        days = c.get("days_since_last")
+        silent = ""
+        if days is None:
+            silent = " · <i>ни разу не платил</i>"
+        elif days > 30:
+            silent = f" · <b>🔴 {days} дн. без оплаты</b>"
+        elif days > 14:
+            silent = f" · 🟡 {days} дн. без оплаты"
+        lines.append(f"{i}. <b>{c['name']}</b> — {float(c['balance']):.2f}${silent}")
+    await message.answer("\n".join(lines))
+
+
+# ─── Main-menu button handlers ───────────────────────────────────────────────
+
+@router.callback_query(F.data == "menu")
+async def cb_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(callback):
+        return
+    await state.clear()
+    recent = get_recent_active_clients(days=7, limit=8)
+    await callback.message.edit_text(
+        _main_menu_text(), reply_markup=main_menu_kb(recent),
     )
+    await callback.answer()
 
 
-@router.message(ProductAdd.waiting_brand)
-async def product_add_brand(message: Message, state: FSMContext):
-    if not _is_admin(message):
+@router.callback_query(F.data == "top")
+async def cb_top(callback: CallbackQuery) -> None:
+    if not await _guard(callback):
+        return
+    debtors = get_top_debtors(limit=10)
+    if not debtors:
+        await callback.message.edit_text("Должников нет — все чисты 🎉",
+                                         reply_markup=main_menu_kb(
+                                             get_recent_active_clients()))
+        await callback.answer()
+        return
+    lines = ["<b>📊 Топ должников:</b>", ""]
+    for i, c in enumerate(debtors, 1):
+        days = c.get("days_since_last")
+        silent = ""
+        if days is None:
+            silent = " · <i>ни разу не платил</i>"
+        elif days > 30:
+            silent = f" · <b>🔴 {days} дн.</b>"
+        elif days > 14:
+            silent = f" · 🟡 {days} дн."
+        lines.append(f"{i}. {c['name']} — {float(c['balance']):.2f}${silent}")
+    # Show as clickable buttons.
+    rows = [[InlineKeyboardButton(
+                text=f"{c['name']} — {fmt_balance(float(c['balance']))}",
+                callback_data=f"c:{c['id']}",
+            )] for c in debtors]
+    rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu")])
+    await callback.message.edit_text("\n".join(lines),
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "search")
+async def cb_search(callback: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(callback):
+        return
+    await state.set_state(ClientSearch.waiting_query)
+    await callback.message.answer(
+        "🔍 Введи часть имени клиента:",
+        reply_markup=cancel_kb(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "cn")
+async def cb_cancel_inline(callback: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(callback):
+        return
+    await state.clear()
+    recent = get_recent_active_clients(days=7, limit=8)
+    await callback.message.edit_text(
+        _main_menu_text(), reply_markup=main_menu_kb(recent),
+    )
+    await callback.answer("Отменено.")
+
+
+# ─── Client card ─────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("c:"))
+async def cb_client_card(callback: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(callback):
+        return
+    await state.clear()  # user picked a client → any half-typed amount is dropped
+    try:
+        client_id = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    client = get_client(client_id)
+    if not client:
+        await callback.answer("Клиент не найден.", show_alert=True)
+        return
+    balance = get_client_balance(client_id)
+    history = get_client_history(client_id)
+    await callback.message.edit_text(
+        _client_card_text(client, balance, history),
+        reply_markup=client_card_kb(client_id, client.get("phone")),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("h:"))
+async def cb_full_history(callback: CallbackQuery) -> None:
+    """Show up to 20 recent operations for the client."""
+    if not await _guard(callback):
+        return
+    try:
+        client_id = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    client = get_client(client_id)
+    if not client:
+        await callback.answer("Клиент не найден.", show_alert=True)
+        return
+    history = get_client_history(client_id)[:20]
+    if not history:
+        await callback.message.answer("История пуста.")
+        await callback.answer()
+        return
+    lines = [f"<b>📋 История: {client['name']}</b>", ""]
+    for ev in history:
+        dt = str(ev.get("dt") or "")[:10]
+        kind = str(ev.get("kind") or "")
+        amt = float(ev.get("amount") or 0)
+        bal = ev.get("balance_after")
+        bal_str = f" → {float(bal):.2f}$" if bal is not None else ""
+        if kind == "INVOICE":
+            lines.append(f"{dt} 📄 продажа +{amt:.2f} (#{ev.get('ref','')}){bal_str}")
+        elif kind == "RETURN":
+            lines.append(f"{dt} ↩ возврат −{amt:.2f}{bal_str}")
+        elif kind == "LEDGER":
+            if amt > 0:
+                note = ev.get("note") or ""
+                note_s = f" ({note})" if note else ""
+                lines.append(f"{dt} 💵 оплата −{amt:.2f}{note_s}{bal_str}")
+            elif amt < 0:
+                lines.append(f"{dt} ➕ доп. долг +{abs(amt):.2f}{bal_str}")
+    await callback.message.answer("\n".join(lines))
+    await callback.answer()
+
+
+# ─── Quick payment (fixed amount) ────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("p:"))
+async def cb_pay_quick(callback: CallbackQuery) -> None:
+    """User tapped one of the [💵 50/100/200/500] buttons."""
+    if not await _guard(callback):
+        return
+    try:
+        _, cid, amt = callback.data.split(":")
+        client_id = int(cid)
+        amount = float(amt)
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    client = get_client(client_id)
+    if not client:
+        await callback.answer("Клиент не найден.", show_alert=True)
+        return
+    balance = get_client_balance(client_id)
+    new_balance = round(balance - amount, 2)
+    text = (
+        f"Списать <b>{amount:.2f} USD</b> с <b>{client['name']}</b>?\n\n"
+        f"Текущий долг: {balance:.2f} USD\n"
+        f"После оплаты: <b>{new_balance:.2f} USD</b>"
+    )
+    await callback.message.edit_text(text, reply_markup=confirm_payment_kb(client_id, amount))
+    await callback.answer()
+
+
+# ─── Free-text payment / debt entry ──────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("o:"))
+async def cb_other_amount(callback: CallbackQuery, state: FSMContext) -> None:
+    """User tapped [💰 Другая оплата] — ask for amount via free text."""
+    if not await _guard(callback):
+        return
+    try:
+        client_id = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    client = get_client(client_id)
+    if not client:
+        await callback.answer("Клиент не найден.", show_alert=True)
+        return
+    await state.set_state(Payment.waiting_amount)
+    await state.update_data(client_id=client_id, kind="payment")
+    await callback.message.answer(
+        f"💰 Введи сумму оплаты для <b>{client['name']}</b>:",
+        reply_markup=cancel_kb(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("d:"))
+async def cb_add_debt(callback: CallbackQuery, state: FSMContext) -> None:
+    """User tapped [➕ Добавить долг] — ask for amount via free text."""
+    if not await _guard(callback):
+        return
+    try:
+        client_id = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    client = get_client(client_id)
+    if not client:
+        await callback.answer("Клиент не найден.", show_alert=True)
+        return
+    await state.set_state(Payment.waiting_amount)
+    await state.update_data(client_id=client_id, kind="debt")
+    await callback.message.answer(
+        f"➕ Введи сумму долга для <b>{client['name']}</b>:",
+        reply_markup=cancel_kb(),
+    )
+    await callback.answer()
+
+
+@router.message(Payment.waiting_amount)
+async def on_amount_typed(message: Message, state: FSMContext) -> None:
+    if not await _guard(message):
+        return
+    raw = (message.text or "").strip().replace(",", ".")
+    try:
+        amount = float(raw)
+    except ValueError:
+        await message.answer("Не понял сумму. Введи число, например 100 или 75.50",
+                             reply_markup=cancel_kb())
+        return
+    if amount <= 0:
+        await message.answer("Сумма должна быть больше 0.", reply_markup=cancel_kb())
         return
 
-    raw = (message.text or "").strip()
-    if raw == "/cancel":
+    data = await state.get_data()
+    client_id = int(data.get("client_id", 0))
+    kind = str(data.get("kind", "payment"))
+
+    client = get_client(client_id)
+    if not client:
         await state.clear()
-        await message.answer("❎ Отменено.", reply_markup=ReplyKeyboardRemove())
+        await message.answer("Клиент не найден.")
         return
 
-    if raw.startswith("✍️"):
+    if kind == "debt":
+        # Debt requires a reason note (matches web form). Move to the
+        # note step and keep amount + client_id in state.
+        await state.set_state(Payment.waiting_note)
+        await state.update_data(amount=amount)
         await message.answer(
-            "Введите БРЕНД вручную (например: Sonifer)\nОтмена: /cancel",
-            reply_markup=ReplyKeyboardRemove(),
+            f"📝 Причина долга <b>{amount:.2f} USD</b> для "
+            f"<b>{client['name']}</b>?\n\n"
+            f"Например: «взял в долг товар», «предоплата не пришла».",
+            reply_markup=cancel_kb(),
         )
         return
 
-    brand = _normalize_brand(raw) or DEFAULT_BRAND
-    await state.update_data(brand=brand)
-
-    prefix = BRAND_PREFIX.get(brand, "")
-    await state.set_state(ProductAdd.waiting_model)
-
-    hint = f"\nПодсказка: можно написать только номер (например: 8040) — сделаю {prefix}8040." if prefix else ""
-    await message.answer(
-        f"2/4) Введите МОДЕЛЬ (например: {prefix.lower()}8040){hint}\nОтмена: /cancel",
-        reply_markup=ReplyKeyboardRemove(),
+    # Payment: no note required — go straight to confirmation.
+    await state.clear()
+    balance = get_client_balance(client_id)
+    new_balance = round(balance - amount, 2)
+    text = (
+        f"Списать <b>{amount:.2f} USD</b> с <b>{client['name']}</b>?\n\n"
+        f"Текущий долг: {balance:.2f} USD\n"
+        f"После оплаты: <b>{new_balance:.2f} USD</b>"
     )
+    await message.answer(text, reply_markup=confirm_payment_kb(client_id, amount))
 
 
-@router.message(ProductAdd.waiting_model)
-async def product_add_model(message: Message, state: FSMContext):
-    if not _is_admin(message):
+@router.message(Payment.waiting_note)
+async def on_debt_note_typed(message: Message, state: FSMContext) -> None:
+    """Second step of the debt flow: user types the reason."""
+    if not await _guard(message):
         return
-
-    model_in = (message.text or "").strip()
-    if model_in == "/cancel":
-        await state.clear()
-        await message.answer("❎ Отменено.", reply_markup=ReplyKeyboardRemove())
+    note = (message.text or "").strip()
+    if not note:
+        await message.answer("Заметка обязательна. Опиши причину коротко.",
+                             reply_markup=cancel_kb())
         return
+    if len(note) > 200:
+        note = note[:200]
 
     data = await state.get_data()
-    brand = str(data.get("brand", DEFAULT_BRAND)).upper()
-    prefix = BRAND_PREFIX.get(brand, "")
+    client_id = int(data.get("client_id", 0))
+    amount = float(data.get("amount", 0))
+    # Keep note in state so cb_apply_debt can read it after confirm.
+    await state.update_data(note=note)
 
-    model = _normalize_model(model_in, prefix)
-    if not model or model.startswith("/"):
-        await message.answer("Введите модель текстом. Пример: sf-8040\nОтмена: /cancel")
+    client = get_client(client_id)
+    if not client:
+        await state.clear()
+        await message.answer("Клиент не найден.")
         return
-
-    await state.update_data(model=model)
-    await state.set_state(ProductAdd.waiting_name)
-    await message.answer(
-        "3/4) Введите НАЗВАНИЕ (можно коротко), или '-' чтобы пропустить.\nОтмена: /cancel",
-        reply_markup=ReplyKeyboardRemove(),
+    balance = get_client_balance(client_id)
+    new_balance = round(balance + amount, 2)
+    text = (
+        f"Добавить долг <b>{amount:.2f} USD</b> клиенту "
+        f"<b>{client['name']}</b>?\n\n"
+        f"Заметка: <i>{note}</i>\n"
+        f"Текущий долг: {balance:.2f} USD\n"
+        f"После: <b>{new_balance:.2f} USD</b>"
     )
+    await message.answer(text, reply_markup=confirm_debt_kb(client_id, amount))
 
 
-@router.message(ProductAdd.waiting_name)
-async def product_add_name(message: Message, state: FSMContext):
-    if not _is_admin(message):
+# ─── Confirm & apply ─────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("ap:"))
+async def cb_apply_payment(callback: CallbackQuery, state: FSMContext) -> None:
+    """Apply a payment. Note is intentionally empty — same as web behaviour."""
+    if not await _guard(callback):
         return
-
-    name = (message.text or "").strip()
-    if name == "/cancel":
-        await state.clear()
-        await message.answer("❎ Отменено.", reply_markup=ReplyKeyboardRemove())
-        return
-
-    if not name:
-        await message.answer("Введите название или '-' чтобы пропустить.\nОтмена: /cancel")
-        return
-
-    data = await state.get_data()
-    if name == "-":
-        name = data.get("model", "")
-
-    await state.update_data(name=name)
-    await state.set_state(ProductAdd.waiting_price)
-    await message.answer(
-        "4/4) Введите ЦЕНУ ПРИХОДА (wh) в USD.\nПример: 12.50\nОтмена: /cancel",
-        reply_markup=ReplyKeyboardRemove(),
-    )
-
-
-@router.message(ProductAdd.waiting_price)
-async def product_add_price(message: Message, state: FSMContext):
-    if not _is_admin(message):
-        return
-
-    raw = (message.text or "").strip()
-    if raw == "/cancel":
-        await state.clear()
-        await message.answer("❎ Отменено.", reply_markup=ReplyKeyboardRemove())
-        return
-
     try:
-        price = _parse_price(raw)
-        if price <= 0:
-            raise ValueError("price <= 0")
-    except Exception:
-        await message.answer("Цена должна быть числом, например 12.50\nОтмена: /cancel")
+        _, cid, amt = callback.data.split(":")
+        client_id = int(cid)
+        amount = float(amt)
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
         return
-
-    data = await state.get_data()
-    brand = data.get("brand", DEFAULT_BRAND)
-    model = data.get("model", "")
-    name = data.get("name", "")
-
-    try:
-        add_product(str(brand), str(model), str(name), float(price))
-        await message.answer(f"✅ Товар добавлен: {brand} {model}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка добавления товара: {e}")
-        return
-    finally:
-        await state.clear()
-
-
-@router.message(Command("receive"))
-async def cmd_receive(message: Message):
-    if not _is_admin(message):
-        return
-
-    init_db()
-
-    parts = message.text.split()
-    if len(parts) != 5:
-        await message.answer(
-            "Формат:\n"
-            "/receive CHINA BRAND MODEL QTY\n"
-            "/receive DEALER BRAND MODEL QTY\n"
-            "/receive WAREHOUSE BRAND MODEL QTY\n\n"
-            f"Склады: {_warehouse_help()}"
-        )
-        return
-
-    _, src, brand, model, qty_s = parts
-    src_u = src.strip().upper()
-
-    if src_u in ("CHINA", "CN"):
-        warehouse = "CHINA_DEPOT"
-    elif src_u in ("DEALER", "DILLER", "SUPPLIER", "LOCAL"):
-        warehouse = "DEALER_DEPOT"
-    else:
-        warehouse = src_u
-
-    try:
-        qty = _parse_qty(qty_s)
-    except Exception:
-        await message.answer("QTY должно быть числом, пример: 10 или 2.5")
-        return
-
-    ok, err = receive_stock(warehouse, brand, model, qty)
+    await state.clear()  # in case user came here from a half-typed flow
+    ok, err = add_client_adjustment(client_id, amount, note="")
     if not ok:
-        await message.answer(f"❌ {err}")
+        logger.error("bot payment failed: client=%s amt=%s err=%s", client_id, amount, err)
+        await callback.answer(f"Ошибка: {err}", show_alert=True)
         return
-
-    await message.answer(f"✅ Приход: {warehouse} +{qty} шт — {brand} {model}")
-
-
-@router.message(Command("stock"))
-async def cmd_stock(message: Message):
-    if not _is_admin(message):
-        return
-
-    init_db()
-    parts = message.text.split(maxsplit=1)
-    wh = parts[1].strip().upper() if len(parts) > 1 else None
-    try:
-        from app.db.sqlite import get_stock_text
-        await message.answer(get_stock_text(wh))
-    except Exception as e:
-        await message.answer(f"❌ Ошибка остатков: {e}")
+    client = get_client(client_id)
+    balance = get_client_balance(client_id)
+    text = (
+        f"✅ Оплата принята.\n\n"
+        f"<b>{client['name']}</b>\n"
+        f"Списано: {amount:.2f} USD\n"
+        f"{_balance_line(balance)}"
+    )
+    await callback.message.edit_text(text, reply_markup=after_action_kb(client_id))
+    await callback.answer("Готово!")
 
 
-@router.message(Command("move"))
-async def cmd_move(message: Message):
-    if not _is_admin(message):
-        return
-
-    init_db()
-    parts = message.text.split()
-    if len(parts) != 6:
-        await message.answer("Формат: /move FROM TO BRAND MODEL QTY")
-        return
-
-    _, w_from, w_to, brand, model, qty = parts
-    ok, err = move_stock(w_from, w_to, brand, model, float(qty))
-    if not ok:
-        await message.answer(f"❌ {err}")
-        return
-    await message.answer(f"✅ Перемещено: {brand} {model} {qty} из {w_from} в {w_to}")
-
-
-@router.message(Command("move_all"))
-async def cmd_move_all(message: Message):
+@router.callback_query(F.data.startswith("ad:"))
+async def cb_apply_debt(callback: CallbackQuery, state: FSMContext) -> None:
     """
-    /move_all FROM
-    /move_all FROM TO
+    Apply a debt entry. The reason note lives in FSM state (set by
+    on_debt_note_typed just before we drew the confirmation keyboard).
     """
-    if not _is_admin(message):
+    if not await _guard(callback):
         return
-
-    init_db()
-    parts = message.text.split()
-    if len(parts) not in (2, 3):
-        await message.answer(
-            "Формат:\n"
-            "/move_all FROM\n"
-            "/move_all FROM TO\n\n"
-            f"Склады: {_warehouse_help()}"
+    try:
+        _, cid, amt = callback.data.split(":")
+        client_id = int(cid)
+        amount = float(amt)
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    data = await state.get_data()
+    note = str(data.get("note") or "").strip()
+    await state.clear()
+    if not note:
+        # Shouldn't happen in a normal flow, but guard against a stale
+        # confirmation button being tapped from an old chat message.
+        await callback.answer(
+            "Заметка потеряна. Открой /start и попробуй ещё раз.",
+            show_alert=True,
         )
         return
-
-    if len(parts) == 2:
-        _, src = parts
-        ok, err, moved, dst = move_all_auto_shop(src)
-        if not ok:
-            await message.answer(f"❌ {err}")
-            return
-        await message.answer(f"✅ Перенесено: {moved} позиций из {src.upper()} в {dst}. {src.upper()} очищен.")
-        return
-
-    _, src, dst = parts
-    ok, err, moved = move_all(src, dst)
+    ok, err = add_client_debt(client_id, amount, note=note)
     if not ok:
-        await message.answer(f"❌ {err}")
+        logger.error("bot debt failed: client=%s amt=%s err=%s", client_id, amount, err)
+        await callback.answer(f"Ошибка: {err}", show_alert=True)
         return
-    await message.answer(f"✅ Перенесено: {moved} позиций из {src.upper()} в {dst.upper()}. {src.upper()} очищен.")
+    client = get_client(client_id)
+    balance = get_client_balance(client_id)
+    text = (
+        f"✅ Долг добавлен.\n\n"
+        f"<b>{client['name']}</b>\n"
+        f"Добавлено: {amount:.2f} USD\n"
+        f"Заметка: <i>{note}</i>\n"
+        f"{_balance_line(balance)}"
+    )
+    await callback.message.edit_text(text, reply_markup=after_action_kb(client_id))
+    await callback.answer("Готово!")
 
 
-@router.message(Command("cart_start"))
-async def cmd_cart_start(message: Message):
-    if not _is_admin(message):
+# ─── Client search ───────────────────────────────────────────────────────────
+
+@router.message(ClientSearch.waiting_query)
+async def on_search_query(message: Message, state: FSMContext) -> None:
+    if not await _guard(message):
         return
-
-    global ACTIVE_CLIENT
-
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2 or not parts[1].strip():
-        await message.answer("Формат: /cart_start CLIENT_NAME")
+    query = (message.text or "").strip()
+    if len(query) < 2:
+        await message.answer("Введи хотя бы 2 символа.", reply_markup=cancel_kb())
         return
-
-    client_name = parts[1].strip()
-    try:
-        cart_start(client_name)
-        ACTIVE_CLIENT = client_name
-        await message.answer(f"🧺 Корзина начата. Клиент: <b>{client_name}</b>", reply_markup=ReplyKeyboardRemove())
-    except Exception as e:
-        await message.answer(f"❌ Ошибка корзины: {e}")
-
-
-@router.message(Command("cart_source"))
-async def cmd_cart_source(message: Message):
-    if not _is_admin(message):
+    await state.clear()
+    results = find_clients_by_name(query, limit=10)
+    if not results:
+        await message.answer(f"По запросу «{query}» никого не нашёл.",
+                             reply_markup=main_menu_kb(get_recent_active_clients()))
         return
-
-    global ACTIVE_CART_SOURCE
-
-    parts = message.text.split()
-    if len(parts) != 2:
-        await message.answer("Формат: /cart_source CHINA или /cart_source DEALER")
-        return
-
-    src = parts[1].strip().upper()
-    if src not in ("CHINA", "DEALER"):
-        await message.answer("Источник должен быть CHINA или DEALER")
-        return
-
-    ACTIVE_CART_SOURCE = src
-    await message.answer(f"✅ Источник продажи: <b>{ACTIVE_CART_SOURCE}</b> (склад списания: {_shop_for_source()})")
-
-
-@router.message(Command("cart_add"))
-async def cmd_cart_add(message: Message):
-    if not _is_admin(message):
-        return
-
-    client_name = _require_active_client()
-    if not client_name:
-        await message.answer("Сначала выбери клиента: /cart_start CLIENT_NAME")
-        return
-
-    parts = message.text.split()
-    if len(parts) < 4:
-        await message.answer("Формат: /cart_add BRAND MODEL QTY [wh|wh10|custom] [custom_price]")
-        return
-
-    _, brand, model, qty_s = parts[:4]
-    price_mode = parts[4] if len(parts) >= 5 else "wh"
-    custom_price = None
-
-    if price_mode.lower() == "custom":
-        if len(parts) < 6:
-            await message.answer("Для custom нужно указать custom_price: /cart_add ... custom 15.00")
-            return
-        try:
-            custom_price = _parse_price(parts[5])
-        except Exception:
-            await message.answer("custom_price должен быть числом, пример: 15.00")
-            return
-
-    try:
-        qty = _parse_qty(qty_s)
-    except Exception:
-        await message.answer("QTY должно быть числом, пример: 2 или 2.5")
-        return
-
-    ok, err = cart_add(client_name, brand, model, qty, price_mode, custom_price)
-    if not ok:
-        await message.answer(f"❌ {err}")
-        return
-
     await message.answer(
-        f"✅ Добавлено в корзину ({client_name}): {brand} {model} × {qty} ({price_mode})\n"
-        f"Источник продажи: {ACTIVE_CART_SOURCE} (спишется из {_shop_for_source()})"
+        f"Нашёл {len(results)}:",
+        reply_markup=search_results_kb(results),
     )
 
 
-@router.message(Command("cart_show"))
-async def cmd_cart_show(message: Message):
-    if not _is_admin(message):
+# ─── Fallback: raw text outside FSM = quick search ───────────────────────────
+
+@router.message(F.text & ~F.text.startswith("/"))
+async def on_free_text(message: Message, state: FSMContext) -> None:
+    """
+    User types "Aylar" without pressing /start first — treat as search.
+    Only fires when no FSM state is active (aiogram routes FSM states first).
+    """
+    if not await _guard(message):
         return
-
-    client_name = _require_active_client()
-    if not client_name:
-        await message.answer("Сначала выбери клиента: /cart_start CLIENT_NAME")
+    query = (message.text or "").strip()
+    if len(query) < 2:
         return
-
-    ok, text = cart_show(client_name)
-    if not ok:
-        await message.answer(f"❌ {text}")
+    results = find_clients_by_name(query, limit=10)
+    if not results:
+        await message.answer(
+            f"По запросу «{query}» никого не нашёл. Открой /start для меню.")
         return
-
-    await message.answer(text)
-
-
-@router.message(Command("cart_remove"))
-async def cmd_cart_remove(message: Message):
-    if not _is_admin(message):
-        return
-
-    client_name = _require_active_client()
-    if not client_name:
-        await message.answer("Сначала выбери клиента: /cart_start CLIENT_NAME")
-        return
-
-    parts = message.text.split()
-    if len(parts) != 3:
-        await message.answer("Формат: /cart_remove BRAND MODEL")
-        return
-
-    _, brand, model = parts
-    ok, err = cart_remove(client_name, brand, model)
-    if not ok:
-        await message.answer(f"❌ {err}")
-        return
-
-    await message.answer(f"✅ Удалено из корзины ({client_name}): {brand} {model}")
-
-
-@router.message(Command("cart_finish"))
-async def cmd_cart_finish(message: Message):
-    if not _is_admin(message):
-        return
-
-    global ACTIVE_CLIENT
-
-    client_name = _require_active_client()
-    if not client_name:
-        await message.answer("Сначала выбери клиента: /cart_start CLIENT_NAME")
-        return
-
-    shop = _shop_for_source()
-    ok, err, invoice, items = cart_finish_from_shop(client_name, shop)
-    if not ok:
-        await message.answer(f"❌ {err}")
-        return
-
-    try:
-        pdf_path = generate_invoice_pdf(invoice, items)
-        await message.answer_document(open(pdf_path, "rb"))
-    except Exception as e:
-        await message.answer(f"⚠️ Инвойс создан, но PDF не сгенерировался: {e}")
-
-    try:
-        backup_path = make_backup()
-        await message.answer_document(open(backup_path, "rb"))
-    except Exception as e:
-        await message.answer(f"⚠️ Продажа завершена, но backup не сделал: {e}")
-
     await message.answer(
-        f"✅ Продажа завершена. Инвойс #{int(invoice['number']):06d}\n"
-        f"Клиент: {client_name}\n"
-        f"Склад списания: {shop}\n"
-        f"Сумма: {float(invoice['total']):.2f} {invoice['currency']}"
+        f"Нашёл {len(results)}:",
+        reply_markup=search_results_kb(results),
     )
-
-    ACTIVE_CLIENT = None
