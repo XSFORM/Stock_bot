@@ -25,9 +25,11 @@ sync automatically. Rows created from the bot are tagged with a
 """
 from __future__ import annotations
 
+import html
 import logging
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -90,6 +92,29 @@ async def _guard(event: Message | CallbackQuery) -> bool:
 
 # ─── Formatting helpers ──────────────────────────────────────────────────────
 
+def _esc(v) -> str:
+    """
+    HTML-escape a value coming from the DB before injecting it into a
+    message rendered with parse_mode=HTML. Client names, phones, notes
+    can contain <, >, & — Telegram silently rejects such messages with
+    a 400, which shows up as «button does nothing» to the user.
+    """
+    return html.escape(str(v or ""), quote=False)
+
+
+async def _safe_edit(callback: CallbackQuery, text: str, reply_markup=None) -> None:
+    """
+    Try to edit the message in place. If Telegram refuses (message too
+    old, identical text, message-is-not-modified, etc.), fall back to
+    sending a fresh message so the user gets a response either way.
+    """
+    try:
+        await callback.message.edit_text(text, reply_markup=reply_markup)
+    except TelegramBadRequest as exc:
+        logger.warning("edit_text failed, sending new: %s", exc)
+        await callback.message.answer(text, reply_markup=reply_markup)
+
+
 def _balance_line(balance: float) -> str:
     """Colour-coded balance for message body."""
     if balance > 0:
@@ -114,20 +139,20 @@ def _main_menu_text() -> str:
 def _client_card_text(client: dict, balance: float, history: list[dict]) -> str:
     """Compact card: name, balance, phone, last 3 operations."""
     lines = [
-        f"👤 <b>{client['name']}</b>",
+        f"👤 <b>{_esc(client['name'])}</b>",
         _balance_line(balance),
     ]
     if client.get("phone"):
-        lines.append(f"📞 {client['phone']}")
+        lines.append(f"📞 {_esc(client['phone'])}")
     if history:
         lines.append("")
         lines.append("<b>Последние операции:</b>")
         for ev in history[:3]:
-            dt = str(ev.get("dt") or "")[:10]  # YYYY-MM-DD
+            dt = _esc(str(ev.get("dt") or "")[:10])  # YYYY-MM-DD
             kind = str(ev.get("kind") or "")
             amt = float(ev.get("amount") or 0)
             if kind == "INVOICE":
-                lines.append(f"• {dt} — продажа <b>+{amt:.2f}</b> (#{ev.get('ref','')})")
+                lines.append(f"• {dt} — продажа <b>+{amt:.2f}</b> (#{_esc(ev.get('ref',''))})")
             elif kind == "RETURN":
                 lines.append(f"• {dt} — возврат <b>−{amt:.2f}</b>")
             elif kind == "LEDGER":
@@ -208,7 +233,7 @@ async def cmd_top_debtors(message: Message) -> None:
             silent = f" · <b>🔴 {days} дн. без оплаты</b>"
         elif days > 14:
             silent = f" · 🟡 {days} дн. без оплаты"
-        lines.append(f"{i}. <b>{c['name']}</b> — {float(c['balance']):.2f}${silent}")
+        lines.append(f"{i}. <b>{_esc(c['name'])}</b> — {float(c['balance']):.2f}${silent}")
     await message.answer("\n".join(lines))
 
 
@@ -220,9 +245,7 @@ async def cb_menu(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await state.clear()
     recent = get_recent_active_clients(days=7, limit=8)
-    await callback.message.edit_text(
-        _main_menu_text(), reply_markup=main_menu_kb(recent),
-    )
+    await _safe_edit(callback, _main_menu_text(), reply_markup=main_menu_kb(recent))
     await callback.answer()
 
 
@@ -232,9 +255,8 @@ async def cb_top(callback: CallbackQuery) -> None:
         return
     debtors = get_top_debtors(limit=10)
     if not debtors:
-        await callback.message.edit_text("Должников нет — все чисты 🎉",
-                                         reply_markup=main_menu_kb(
-                                             get_recent_active_clients()))
+        await _safe_edit(callback, "Должников нет — все чисты 🎉",
+                         reply_markup=main_menu_kb(get_recent_active_clients()))
         await callback.answer()
         return
     lines = ["<b>📊 Топ должников:</b>", ""]
@@ -247,15 +269,16 @@ async def cb_top(callback: CallbackQuery) -> None:
             silent = f" · <b>🔴 {days} дн.</b>"
         elif days > 14:
             silent = f" · 🟡 {days} дн."
-        lines.append(f"{i}. {c['name']} — {float(c['balance']):.2f}${silent}")
-    # Show as clickable buttons.
+        lines.append(f"{i}. {_esc(c['name'])} — {float(c['balance']):.2f}${silent}")
+    # Button labels are plain text (Telegram doesn't parse HTML there),
+    # so no _esc needed for button texts.
     rows = [[InlineKeyboardButton(
                 text=f"{c['name']} — {fmt_balance(float(c['balance']))}",
                 callback_data=f"c:{c['id']}",
             )] for c in debtors]
     rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu")])
-    await callback.message.edit_text("\n".join(lines),
-                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await _safe_edit(callback, "\n".join(lines),
+                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
     await callback.answer()
 
 
@@ -277,9 +300,7 @@ async def cb_cancel_inline(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await state.clear()
     recent = get_recent_active_clients(days=7, limit=8)
-    await callback.message.edit_text(
-        _main_menu_text(), reply_markup=main_menu_kb(recent),
-    )
+    await _safe_edit(callback, _main_menu_text(), reply_markup=main_menu_kb(recent))
     await callback.answer("Отменено.")
 
 
@@ -299,12 +320,16 @@ async def cb_client_card(callback: CallbackQuery, state: FSMContext) -> None:
     if not client:
         await callback.answer("Клиент не найден.", show_alert=True)
         return
-    balance = get_client_balance(client_id)
-    history = get_client_history(client_id)
-    await callback.message.edit_text(
-        _client_card_text(client, balance, history),
-        reply_markup=client_card_kb(client_id, client.get("phone")),
-    )
+    try:
+        balance = get_client_balance(client_id)
+        history = get_client_history(client_id)
+        text = _client_card_text(client, balance, history)
+        kb = client_card_kb(client_id, client.get("phone"))
+    except Exception:
+        logger.exception("cb_client_card build failed for client_id=%s", client_id)
+        await callback.answer("Ошибка загрузки клиента.", show_alert=True)
+        return
+    await _safe_edit(callback, text, reply_markup=kb)
     await callback.answer()
 
 
@@ -327,21 +352,21 @@ async def cb_full_history(callback: CallbackQuery) -> None:
         await callback.message.answer("История пуста.")
         await callback.answer()
         return
-    lines = [f"<b>📋 История: {client['name']}</b>", ""]
+    lines = [f"<b>📋 История: {_esc(client['name'])}</b>", ""]
     for ev in history:
-        dt = str(ev.get("dt") or "")[:10]
+        dt = _esc(str(ev.get("dt") or "")[:10])
         kind = str(ev.get("kind") or "")
         amt = float(ev.get("amount") or 0)
         bal = ev.get("balance_after")
         bal_str = f" → {float(bal):.2f}$" if bal is not None else ""
         if kind == "INVOICE":
-            lines.append(f"{dt} 📄 продажа +{amt:.2f} (#{ev.get('ref','')}){bal_str}")
+            lines.append(f"{dt} 📄 продажа +{amt:.2f} (#{_esc(ev.get('ref',''))}){bal_str}")
         elif kind == "RETURN":
             lines.append(f"{dt} ↩ возврат −{amt:.2f}{bal_str}")
         elif kind == "LEDGER":
             if amt > 0:
                 note = ev.get("note") or ""
-                note_s = f" ({note})" if note else ""
+                note_s = f" ({_esc(note)})" if note else ""
                 lines.append(f"{dt} 💵 оплата −{amt:.2f}{note_s}{bal_str}")
             elif amt < 0:
                 lines.append(f"{dt} ➕ доп. долг +{abs(amt):.2f}{bal_str}")
@@ -370,11 +395,11 @@ async def cb_pay_quick(callback: CallbackQuery) -> None:
     balance = get_client_balance(client_id)
     new_balance = round(balance - amount, 2)
     text = (
-        f"Списать <b>{amount:.2f} USD</b> с <b>{client['name']}</b>?\n\n"
+        f"Списать <b>{amount:.2f} USD</b> с <b>{_esc(client['name'])}</b>?\n\n"
         f"Текущий долг: {balance:.2f} USD\n"
         f"После оплаты: <b>{new_balance:.2f} USD</b>"
     )
-    await callback.message.edit_text(text, reply_markup=confirm_payment_kb(client_id, amount))
+    await _safe_edit(callback, text, reply_markup=confirm_payment_kb(client_id, amount))
     await callback.answer()
 
 
@@ -397,7 +422,7 @@ async def cb_other_amount(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(Payment.waiting_amount)
     await state.update_data(client_id=client_id, kind="payment")
     await callback.message.answer(
-        f"💰 Введи сумму оплаты для <b>{client['name']}</b>:",
+        f"💰 Введи сумму оплаты для <b>{_esc(client['name'])}</b>:",
         reply_markup=cancel_kb(),
     )
     await callback.answer()
@@ -420,7 +445,7 @@ async def cb_add_debt(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(Payment.waiting_amount)
     await state.update_data(client_id=client_id, kind="debt")
     await callback.message.answer(
-        f"➕ Введи сумму долга для <b>{client['name']}</b>:",
+        f"➕ Введи сумму долга для <b>{_esc(client['name'])}</b>:",
         reply_markup=cancel_kb(),
     )
     await callback.answer()
@@ -458,7 +483,7 @@ async def on_amount_typed(message: Message, state: FSMContext) -> None:
         await state.update_data(amount=amount)
         await message.answer(
             f"📝 Причина долга <b>{amount:.2f} USD</b> для "
-            f"<b>{client['name']}</b>?\n\n"
+            f"<b>{_esc(client['name'])}</b>?\n\n"
             f"Например: «взял в долг товар», «предоплата не пришла».",
             reply_markup=cancel_kb(),
         )
@@ -469,7 +494,7 @@ async def on_amount_typed(message: Message, state: FSMContext) -> None:
     balance = get_client_balance(client_id)
     new_balance = round(balance - amount, 2)
     text = (
-        f"Списать <b>{amount:.2f} USD</b> с <b>{client['name']}</b>?\n\n"
+        f"Списать <b>{amount:.2f} USD</b> с <b>{_esc(client['name'])}</b>?\n\n"
         f"Текущий долг: {balance:.2f} USD\n"
         f"После оплаты: <b>{new_balance:.2f} USD</b>"
     )
@@ -504,8 +529,8 @@ async def on_debt_note_typed(message: Message, state: FSMContext) -> None:
     new_balance = round(balance + amount, 2)
     text = (
         f"Добавить долг <b>{amount:.2f} USD</b> клиенту "
-        f"<b>{client['name']}</b>?\n\n"
-        f"Заметка: <i>{note}</i>\n"
+        f"<b>{_esc(client['name'])}</b>?\n\n"
+        f"Заметка: <i>{_esc(note)}</i>\n"
         f"Текущий долг: {balance:.2f} USD\n"
         f"После: <b>{new_balance:.2f} USD</b>"
     )
@@ -536,11 +561,11 @@ async def cb_apply_payment(callback: CallbackQuery, state: FSMContext) -> None:
     balance = get_client_balance(client_id)
     text = (
         f"✅ Оплата принята.\n\n"
-        f"<b>{client['name']}</b>\n"
+        f"<b>{_esc(client['name'])}</b>\n"
         f"Списано: {amount:.2f} USD\n"
         f"{_balance_line(balance)}"
     )
-    await callback.message.edit_text(text, reply_markup=after_action_kb(client_id))
+    await _safe_edit(callback, text, reply_markup=after_action_kb(client_id))
     await callback.answer("Готово!")
 
 
@@ -579,12 +604,12 @@ async def cb_apply_debt(callback: CallbackQuery, state: FSMContext) -> None:
     balance = get_client_balance(client_id)
     text = (
         f"✅ Долг добавлен.\n\n"
-        f"<b>{client['name']}</b>\n"
+        f"<b>{_esc(client['name'])}</b>\n"
         f"Добавлено: {amount:.2f} USD\n"
-        f"Заметка: <i>{note}</i>\n"
+        f"Заметка: <i>{_esc(note)}</i>\n"
         f"{_balance_line(balance)}"
     )
-    await callback.message.edit_text(text, reply_markup=after_action_kb(client_id))
+    await _safe_edit(callback, text, reply_markup=after_action_kb(client_id))
     await callback.answer("Готово!")
 
 

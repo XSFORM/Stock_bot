@@ -64,7 +64,12 @@ def client_card_kb(client_id: int, phone: str | None) -> InlineKeyboardMarkup:
     Buttons under a single client's card: quick payments, add debt,
     other amount, history, back to menu.
 
-    Phone (if any) is added as a `tel:` URL button — tap = call.
+    NOTE: no tel:-URL button here. Telegram Bot API validates URL buttons
+    strictly and rejects the entire message with «Wrong port number
+    specified in the URL» when it sees `tel:+9936…` (the `+` after the
+    scheme confuses its parser). The phone number is already visible in
+    the card body — on mobile Telegram long-press turns it into a live
+    tel: link automatically.
     """
     rows: list[list[InlineKeyboardButton]] = []
     # Row 1: quick-pay buttons (payment reduces debt)
@@ -85,12 +90,6 @@ def client_card_kb(client_id: int, phone: str | None) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📋 Вся история", callback_data=f"h:{client_id}"),
         InlineKeyboardButton(text="↺ Другой клиент", callback_data="menu"),
     ])
-    # Row 4: phone (if set) — separate row because URL buttons don't mix nicely with wide labels
-    if phone and phone.strip():
-        # Telegram supports tel: URL scheme in inline buttons.
-        rows.append([
-            InlineKeyboardButton(text=f"📞 {phone}", url=f"tel:{phone.strip()}")
-        ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
