@@ -85,6 +85,10 @@ server {
     listen 80;
     server_name $DOMAIN;
 
+    # Backup restore uploads can be several MB; default nginx limit is 1 MB
+    # which returns 413 on /admin/backup/restore. 50 MB is plenty of headroom.
+    client_max_body_size 50M;
+
     auth_basic "Hasapcy";
     auth_basic_user_file /etc/nginx/.htpasswd;
 
