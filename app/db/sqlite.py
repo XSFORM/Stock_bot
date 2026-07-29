@@ -625,16 +625,75 @@ def set_product_archived(product_id: int, archived: int) -> tuple[bool, str]:
 def search_products(
     q: str, limit: int = 30, warehouse: str = ""
 ) -> list[dict[str, Any]]:
+    """
+    Product autocomplete for /sale, /return, /receive, /invoice edit forms.
+
+    Same filtering rules as search_products_for_price (Pocket Price):
+    - barcode is matched *prefix-only* and only for numeric queries of
+      length >= 6, otherwise short number searches (like "80" or "8081")
+      would match anything with those digits somewhere inside an EAN-13;
+    - CASE-based priority in ORDER BY makes sure exact/prefix model
+      matches survive the LIMIT cut.
+    """
     with _connect() as conn:
-        like = f"%{q}%"
-        rows = conn.execute(
-            "SELECT * FROM products"
-            " WHERE archived = 0"
-            "   AND (brand LIKE ? OR model LIKE ? OR name LIKE ? OR barcode LIKE ?)"
-            " ORDER BY brand, model"
-            " LIMIT ?",
-            (like, like, like, like, limit),
-        ).fetchall()
+        q_stripped = (q or "").strip()
+        like_all    = f"%{q_stripped}%"
+        like_prefix = f"{q_stripped}%"
+        include_barcode = q_stripped.isdigit() and len(q_stripped) >= 6
+
+        if include_barcode:
+            sql = (
+                "SELECT *,"
+                "       CASE"
+                "         WHEN LOWER(model) = LOWER(?)    THEN 1"
+                "         WHEN LOWER(model) LIKE LOWER(?) THEN 2"
+                "         WHEN LOWER(model) LIKE LOWER(?) THEN 3"
+                "         WHEN LOWER(brand) LIKE LOWER(?) THEN 4"
+                "         WHEN LOWER(name)  LIKE LOWER(?) THEN 4"
+                "         WHEN barcode LIKE ?             THEN 5"
+                "         ELSE 9"
+                "       END AS _prio"
+                " FROM products"
+                " WHERE archived = 0"
+                "   AND (   LOWER(brand) LIKE LOWER(?)"
+                "        OR LOWER(model) LIKE LOWER(?)"
+                "        OR LOWER(name)  LIKE LOWER(?)"
+                "        OR barcode LIKE ?)"
+                " ORDER BY _prio, brand, model"
+                " LIMIT ?"
+            )
+            params = (
+                q_stripped, like_prefix, like_all,
+                like_all, like_all, like_prefix,
+                like_all, like_all, like_all, like_prefix,
+                limit,
+            )
+        else:
+            sql = (
+                "SELECT *,"
+                "       CASE"
+                "         WHEN LOWER(model) = LOWER(?)    THEN 1"
+                "         WHEN LOWER(model) LIKE LOWER(?) THEN 2"
+                "         WHEN LOWER(model) LIKE LOWER(?) THEN 3"
+                "         WHEN LOWER(brand) LIKE LOWER(?) THEN 4"
+                "         WHEN LOWER(name)  LIKE LOWER(?) THEN 4"
+                "         ELSE 9"
+                "       END AS _prio"
+                " FROM products"
+                " WHERE archived = 0"
+                "   AND (   LOWER(brand) LIKE LOWER(?)"
+                "        OR LOWER(model) LIKE LOWER(?)"
+                "        OR LOWER(name)  LIKE LOWER(?))"
+                " ORDER BY _prio, brand, model"
+                " LIMIT ?"
+            )
+            params = (
+                q_stripped, like_prefix, like_all,
+                like_all, like_all,
+                like_all, like_all, like_all,
+                limit,
+            )
+        rows = conn.execute(sql, params).fetchall()
         result = [_product_with_prices(r) for r in rows]
         if warehouse:
             wh = warehouse.strip()
@@ -4764,18 +4823,78 @@ def search_products_for_price(
         List of product dicts with computed price fields filtered by *mode*.
     """
     with _connect() as conn:
-        like = f"%{q}%"
-        rows = conn.execute(
+        q_stripped = (q or "").strip()
+        like_all    = f"%{q_stripped}%"
+        like_prefix = f"{q_stripped}%"
+
+        # Barcode search rules:
+        # - only for purely numeric queries of length >= 6 (a barcode fragment
+        #   shorter than that gives huge amounts of false positives — EAN-13
+        #   codes are 13 digits, so 2–3 random digits appear in most of them);
+        # - only prefix match (LIKE 'q%'), never LIKE '%q%'. A shopper typing
+        #   part of a barcode always types the beginning.
+        include_barcode = q_stripped.isdigit() and len(q_stripped) >= 6
+
+        # Priority-based ordering makes sure the most relevant matches
+        # survive the LIMIT cut:
+        #   1 = model equals the query exactly (rare, but perfect)
+        #   2 = model starts with the query          (e.g. "80" → "8081")
+        #   3 = model contains the query somewhere   (e.g. "80" → "sf-2080")
+        #   4 = brand or name contains the query
+        #   5 = barcode prefix match (only when include_barcode)
+        if include_barcode:
+            sql = """
+                SELECT id, brand, model, name, wh_price, barcode, note,
+                       CASE
+                         WHEN LOWER(model) = LOWER(?)                THEN 1
+                         WHEN LOWER(model) LIKE LOWER(?)             THEN 2
+                         WHEN LOWER(model) LIKE LOWER(?)             THEN 3
+                         WHEN LOWER(brand) LIKE LOWER(?)             THEN 4
+                         WHEN LOWER(name)  LIKE LOWER(?)             THEN 4
+                         WHEN barcode LIKE ?                         THEN 5
+                         ELSE 9
+                       END AS _prio
+                FROM products
+                WHERE archived = 0
+                  AND (   LOWER(brand) LIKE LOWER(?)
+                       OR LOWER(model) LIKE LOWER(?)
+                       OR LOWER(name)  LIKE LOWER(?)
+                       OR barcode LIKE ?)
+                ORDER BY _prio, brand, model
+                LIMIT ?
             """
-            SELECT id, brand, model, name, wh_price, barcode, note
-            FROM products
-            WHERE archived = 0
-              AND (brand LIKE ? OR model LIKE ? OR name LIKE ? OR barcode LIKE ?)
-            ORDER BY brand, model
-            LIMIT ?
-            """,
-            (like, like, like, like, limit),
-        ).fetchall()
+            params = (
+                q_stripped, like_prefix, like_all,     # priority 1/2/3
+                like_all, like_all, like_prefix,       # priority 4/4/5
+                like_all, like_all, like_all, like_prefix,  # WHERE
+                limit,
+            )
+        else:
+            sql = """
+                SELECT id, brand, model, name, wh_price, barcode, note,
+                       CASE
+                         WHEN LOWER(model) = LOWER(?)    THEN 1
+                         WHEN LOWER(model) LIKE LOWER(?) THEN 2
+                         WHEN LOWER(model) LIKE LOWER(?) THEN 3
+                         WHEN LOWER(brand) LIKE LOWER(?) THEN 4
+                         WHEN LOWER(name)  LIKE LOWER(?) THEN 4
+                         ELSE 9
+                       END AS _prio
+                FROM products
+                WHERE archived = 0
+                  AND (   LOWER(brand) LIKE LOWER(?)
+                       OR LOWER(model) LIKE LOWER(?)
+                       OR LOWER(name)  LIKE LOWER(?))
+                ORDER BY _prio, brand, model
+                LIMIT ?
+            """
+            params = (
+                q_stripped, like_prefix, like_all,
+                like_all, like_all,
+                like_all, like_all, like_all,
+                limit,
+            )
+        rows = conn.execute(sql, params).fetchall()
         result = []
         qty_map: dict[int, float] = {}
         if show_qty and rows:
