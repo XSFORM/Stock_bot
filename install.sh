@@ -141,6 +141,15 @@ NGINXEOF
     sudo ln -s "$NGINX_CONF" /etc/nginx/sites-enabled/stockweb
   fi
 
+  # Raise server_names_hash_bucket_size — default (32) is too small for
+  # long domains like "stock.technica1416.online" and nginx -t fails with
+  # "could not build server_names_hash". Uncomment or add inside http { }.
+  if grep -q "^\s*#\s*server_names_hash_bucket_size" /etc/nginx/nginx.conf; then
+    sudo sed -i 's/^\s*#\s*server_names_hash_bucket_size .*/\tserver_names_hash_bucket_size 128;/' /etc/nginx/nginx.conf
+  elif ! grep -q "^\s*server_names_hash_bucket_size" /etc/nginx/nginx.conf; then
+    sudo sed -i '/^http {/a\\tserver_names_hash_bucket_size 128;' /etc/nginx/nginx.conf
+  fi
+
   # Validate config and reload nginx
   sudo nginx -t && sudo systemctl reload nginx
 

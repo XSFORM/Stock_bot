@@ -861,15 +861,17 @@ def test_sale_line_item_price_is_rounded_on_save_add_and_update(client: TestClie
 
     _, items = db.get_cart_items_list(cart_id)
     item = items[0]
-    assert item["unit_price"] == pytest.approx(8.30)
-    assert item["total"] == pytest.approx(24.90)
+    # _normalize_unit_price uses ROUND_HALF_UP (matches Python %.2f and
+    # what people expect in trade), so 8.305 rounds up to 8.31.
+    assert item["unit_price"] == pytest.approx(8.31)
+    assert item["total"] == pytest.approx(24.93)
 
     ok, err = db.update_cart_item(item["id"], 3, 8.305)
     assert ok, err
     _, items_after = db.get_cart_items_list(cart_id)
     updated = next(i for i in items_after if i["id"] == item["id"])
-    assert updated["unit_price"] == pytest.approx(8.30)
-    assert updated["total"] == pytest.approx(24.90)
+    assert updated["unit_price"] == pytest.approx(8.31)
+    assert updated["total"] == pytest.approx(24.93)
 
     db.cancel_cart(cart_id)
 
@@ -895,14 +897,15 @@ def test_receive_line_item_price_is_rounded_on_save_add_and_update(client: TestC
 
     items = db.receive_invoice_get_items(invoice_id)
     item = items[0]
-    assert item["purchase_price"] == pytest.approx(8.30)
-    assert item["total"] == pytest.approx(24.90)
+    # HALF_UP: 8.305 → 8.31
+    assert item["purchase_price"] == pytest.approx(8.31)
+    assert item["total"] == pytest.approx(24.93)
 
     ok, err = db.receive_item_update(item["id"], 3, 8.305)
     assert ok, err
     updated = db.receive_invoice_get_items(invoice_id)[0]
-    assert updated["purchase_price"] == pytest.approx(8.30)
-    assert updated["total"] == pytest.approx(24.90)
+    assert updated["purchase_price"] == pytest.approx(8.31)
+    assert updated["total"] == pytest.approx(24.93)
 
     db.receive_invoice_cancel(invoice_id)
 
@@ -931,14 +934,15 @@ def test_return_line_item_price_is_rounded_on_save_add_and_update(client: TestCl
 
     items = db.return_invoice_get_items(invoice_id)
     item = items[0]
-    assert item["unit_price"] == pytest.approx(8.30)
-    assert item["total"] == pytest.approx(24.90)
+    # HALF_UP: 8.305 → 8.31
+    assert item["unit_price"] == pytest.approx(8.31)
+    assert item["total"] == pytest.approx(24.93)
 
     ok, err = db.return_item_update(item["id"], 3, 8.305)
     assert ok, err
     updated = db.return_invoice_get_items(invoice_id)[0]
-    assert updated["unit_price"] == pytest.approx(8.30)
-    assert updated["total"] == pytest.approx(24.90)
+    assert updated["unit_price"] == pytest.approx(8.31)
+    assert updated["total"] == pytest.approx(24.93)
 
     db.return_invoice_cancel(invoice_id)
 

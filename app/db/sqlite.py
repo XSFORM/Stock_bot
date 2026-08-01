@@ -4,7 +4,7 @@ import hashlib
 import os
 import secrets
 import sqlite3
-from decimal import Decimal, ROUND_HALF_EVEN
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any, Optional
 
@@ -20,7 +20,11 @@ _CENT = Decimal("0.01")
 
 
 def _normalize_unit_price(value: float) -> float:
-    return float(Decimal(str(value)).quantize(_CENT, rounding=ROUND_HALF_EVEN))
+    # HALF_UP matches how people in trade intuitively round («.5 → up»)
+    # and, importantly, matches Python's %.2f formatter used by Pocket
+    # Price templates. Using banker's rounding here would show 12.76 on
+    # the sale page while Pocket Price shows 12.77 for the same wh_price.
+    return float(Decimal(str(value)).quantize(_CENT, rounding=ROUND_HALF_UP))
 
 
 def _connect() -> sqlite3.Connection:
