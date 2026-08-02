@@ -102,6 +102,12 @@
       <div class="border rounded p-2 h-100">
         <div class="text-muted small">💰 {{ t.expenses_kpi_total | default('Всего за период') }}</div>
         <div class="fs-5 fw-bold text-danger">-{{ "%.2f"|format(summary.totals.all) }} $</div>
+        {% if summary.totals.tmt_original and summary.totals.tmt_original > 0 %}
+          <div class="small text-muted mt-1">
+            {{ t.expenses_of_which_tmt | default('из них в манатах:') }}
+            <b>{{ "%.2f"|format(summary.totals.tmt_original) }} TMT</b>
+          </div>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -133,7 +139,16 @@
                   <span class="badge bg-info text-dark">📦 {{ t.expenses_kind_business | default('Бизнес') }}</span>
                 {% endif %}
               </td>
-              <td class="text-end text-danger fw-semibold">-{{ "%.2f"|format(it.amount_usd) }} $</td>
+              <td class="text-end fw-semibold">
+                {% if it.currency == 'TMT' and it.amount_original %}
+                  <div>-{{ "%.2f"|format(it.amount_original) }} TMT</div>
+                  <div class="small text-muted">≈ -{{ "%.2f"|format(it.amount_usd) }} $
+                    <span title="курс на момент создания">(курс {{ "%.2f"|format(it.rate_used) }})</span>
+                  </div>
+                {% else %}
+                  <div class="text-danger">-{{ "%.2f"|format(it.amount_usd) }} $</div>
+                {% endif %}
+              </td>
               <td>{{ it.note or '' }}</td>
               <td class="text-end">
                 <a href="/expenses/edit/{{ it.id }}" class="btn btn-sm btn-outline-primary">{{ t.btn_edit | default('Редактировать') }}</a>

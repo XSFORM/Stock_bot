@@ -66,6 +66,7 @@ from app.db.sqlite import (
     get_client,
     get_client_balance,
     get_client_history,
+    get_expense_tmt_rate,
     get_expenses_summary,
     get_recent_active_clients,
     get_top_debtors,
@@ -761,17 +762,35 @@ def _get_category(cat_id: int) -> dict | None:
     return None
 
 
-def _expense_confirm_text(cat: dict, amount: float, date_iso: str, note: str) -> str:
+def _expense_confirm_text(
+    cat: dict, amount: float, date_iso: str, note: str,
+    currency: str, rate: float, rate_is_fallback: bool = False,
+) -> str:
+    """
+    Show BOTH values on the confirm screen so the operator can't get
+    confused mid-flow (100 TMT and 100 USD look identical typed in).
+    """
     kind_badge = "🛒 Личное" if cat.get("kind") == "personal" else "📦 Бизнес"
+    if currency == "TMT" and rate > 0:
+        usd = amount / rate
+        amount_line = (
+            f"Сумма: <b>{amount:.2f} TMT</b> ≈ <b>{usd:.2f} $</b>"
+            f"  <i>(курс {rate:.2f})</i>"
+        )
+    else:
+        amount_line = f"Сумма: <b>{amount:.2f} $</b>"
     parts = [
         f"💸 <b>Проверь расход:</b>",
         f"",
         f"Категория: <b>{_esc(cat['name'])}</b> ({kind_badge})",
-        f"Сумма: <b>{amount:.2f} USD</b>",
+        amount_line,
         f"Дата: <b>{_esc(_fmt_date_ru(date_iso))}</b>",
     ]
     if note:
         parts.append(f"Заметка: <i>{_esc(note)}</i>")
+    if currency == "TMT" and rate_is_fallback:
+        parts.append("")
+        parts.append(f"⚠️ Курс не настроен, используется запасной {rate:.2f}.")
     return "\n".join(parts)
 
 
@@ -884,12 +903,14 @@ async def on_expense_note(message: Message, state: FSMContext) -> None:
 
     from datetime import date as _date
     date_iso = _date.today().isoformat()
-    # Keep note in state — the apply-callback will read it back.
-    await state.update_data(note=note, date=date_iso)
+    rate, is_fallback = get_expense_tmt_rate()
+    # Default currency is TMT — that's what most local expenses are in.
+    await state.update_data(note=note, date=date_iso, currency="TMT")
 
     await message.answer(
-        _expense_confirm_text(cat, amount, date_iso, note),
-        reply_markup=expense_confirm_kb(cat_id, amount, date_iso, is_today=True),
+        _expense_confirm_text(cat, amount, date_iso, note, "TMT", rate, is_fallback),
+        reply_markup=expense_confirm_kb(cat_id, amount, date_iso,
+                                        is_today=True, currency="TMT", rate=rate),
     )
 
 
@@ -913,12 +934,15 @@ async def cb_expense_skip_note(callback: CallbackQuery, state: FSMContext) -> No
 
     from datetime import date as _date
     date_iso = _date.today().isoformat()
-    await state.update_data(cat_id=cat_id, amount=amount, note="", date=date_iso)
+    rate, is_fallback = get_expense_tmt_rate()
+    await state.update_data(cat_id=cat_id, amount=amount, note="",
+                            date=date_iso, currency="TMT")
 
     await _safe_edit(
         callback,
-        _expense_confirm_text(cat, amount, date_iso, ""),
-        reply_markup=expense_confirm_kb(cat_id, amount, date_iso, is_today=True),
+        _expense_confirm_text(cat, amount, date_iso, "", "TMT", rate, is_fallback),
+        reply_markup=expense_confirm_kb(cat_id, amount, date_iso,
+                                        is_today=True, currency="TMT", rate=rate),
     )
     await callback.answer()
 
@@ -946,17 +970,58 @@ async def cb_expense_toggle_date(callback: CallbackQuery, state: FSMContext) -> 
     d = _date.today() if is_today else _date.today() - _td(days=1)
     date_iso = d.isoformat()
 
-    # note may have been stored earlier; preserve it.
+    # note + currency were stored earlier; preserve them.
     data = await state.get_data()
     note = str(data.get("note") or "")
+    currency = str(data.get("currency") or "TMT")
+    rate, is_fallback = get_expense_tmt_rate()
     await state.update_data(date=date_iso)
 
     await _safe_edit(
         callback,
-        _expense_confirm_text(cat, amount, date_iso, note),
-        reply_markup=expense_confirm_kb(cat_id, amount, date_iso, is_today=is_today),
+        _expense_confirm_text(cat, amount, date_iso, note, currency, rate, is_fallback),
+        reply_markup=expense_confirm_kb(cat_id, amount, date_iso,
+                                        is_today=is_today, currency=currency, rate=rate),
     )
     await callback.answer("Дата обновлена")
+
+
+# ─── Step 3.6: toggle currency TMT ↔ USD on the confirm screen ──────────────
+
+@router.callback_query(F.data.startswith("xt:"))
+async def cb_expense_toggle_currency(callback: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(callback):
+        return
+    try:
+        _, cid, amt, date_iso, cur = callback.data.split(":")
+        cat_id = int(cid)
+        amount = float(amt)
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    cat = _get_category(cat_id)
+    if not cat:
+        await callback.answer("Категория не найдена.", show_alert=True)
+        return
+
+    # Flip currency; TMT re-fetches the current rate (USD side never needs it).
+    new_currency = "USD" if cur == "TMT" else "TMT"
+    rate, is_fallback = get_expense_tmt_rate()
+
+    data = await state.get_data()
+    note = str(data.get("note") or "")
+    await state.update_data(currency=new_currency)
+
+    from datetime import date as _date
+    is_today = date_iso == _date.today().isoformat()
+
+    await _safe_edit(
+        callback,
+        _expense_confirm_text(cat, amount, date_iso, note, new_currency, rate, is_fallback),
+        reply_markup=expense_confirm_kb(cat_id, amount, date_iso,
+                                        is_today=is_today, currency=new_currency, rate=rate),
+    )
+    await callback.answer(f"→ {new_currency}")
 
 
 # ─── Step 4: apply — with the same double-tap protection as payments ───────
@@ -967,13 +1032,18 @@ async def cb_expense_apply(callback: CallbackQuery, state: FSMContext) -> None:
     Final apply. Same idempotency guard as cb_apply_payment:
       1) LRU-set on (chat, message, data) key
       2) Strip keyboard before the DB write.
+
+    Currency and rate come from the button's own callback_data — this way
+    a rate change between the confirm screen and the tap can't retroactively
+    re-price the row (the user committed to what they saw).
     """
     if not await _guard(callback):
         return
     try:
-        _, cid, amt, date_iso = callback.data.split(":", 3)
+        _, cid, amt, date_iso, cur, rate_str = callback.data.split(":")
         cat_id = int(cid)
         amount = float(amt)
+        rate = float(rate_str)
     except (ValueError, IndexError):
         await callback.answer("Неверные данные.", show_alert=True)
         return
@@ -990,7 +1060,30 @@ async def cb_expense_apply(callback: CallbackQuery, state: FSMContext) -> None:
     # Same source-tag pattern as bot payments/debts.
     note = f"{user_note} · Telegram-бот" if user_note else "Telegram-бот"
 
-    ok, err = add_expense(date_iso, cat_id, amount, note=note)
+    # NB: we override the current pocket_price_tmt_rate for this one call
+    # by temporarily writing the confirmed rate — otherwise add_expense
+    # would re-fetch. Simpler: don't try to inject; just pass through the
+    # normal path and rely on the fact that the settings value hasn't
+    # meaningfully changed between screen render and tap (~seconds).
+    # If it DID change, we log a warning below.
+    from app.db.sqlite import get_expense_tmt_rate as _cur_rate
+    live_rate, _ = _cur_rate()
+    if cur == "TMT" and abs(live_rate - rate) > 0.001:
+        logger.warning("expense TMT rate drifted %.4f → %.4f mid-flow; using screen value",
+                       rate, live_rate)
+        # Preserve the on-screen contract by temporarily setting the rate,
+        # then restore it. Small race window but the user's expectation wins.
+        from app.db.sqlite import set_setting, get_setting
+        saved = get_setting("pocket_price_tmt_rate", "")
+        set_setting("pocket_price_tmt_rate", f"{rate}")
+        try:
+            ok, err = add_expense(date_iso, cat_id, note=note,
+                                  currency="TMT", amount_original=amount)
+        finally:
+            set_setting("pocket_price_tmt_rate", saved)
+    else:
+        ok, err = add_expense(date_iso, cat_id, note=note,
+                              currency=cur, amount_original=amount)
     if not ok:
         logger.error("bot expense add failed: cat=%s amt=%s date=%s err=%s",
                      cat_id, amount, date_iso, err)
@@ -999,10 +1092,15 @@ async def cb_expense_apply(callback: CallbackQuery, state: FSMContext) -> None:
 
     cat = _get_category(cat_id)
     kind_badge = "🛒 Личное" if cat and cat.get("kind") == "personal" else "📦 Бизнес"
+    if cur == "TMT" and rate > 0:
+        usd = amount / rate
+        amount_line = f"Сумма: <b>{amount:.2f} TMT</b> ≈ <b>{usd:.2f} $</b>  <i>(курс {rate:.2f})</i>"
+    else:
+        amount_line = f"Сумма: <b>{amount:.2f} $</b>"
     text = (
         f"✅ Расход добавлен.\n\n"
         f"<b>{_esc(cat['name']) if cat else ''}</b> ({kind_badge})\n"
-        f"Сумма: {amount:.2f} USD\n"
+        f"{amount_line}\n"
         f"Дата: {_esc(_fmt_date_ru(date_iso))}\n"
     )
     if user_note:
@@ -1012,7 +1110,9 @@ async def cb_expense_apply(callback: CallbackQuery, state: FSMContext) -> None:
     from datetime import date as _date
     today_iso = _date.today().isoformat()
     summary = get_expenses_summary(today_iso, today_iso)
-    text += f"\n💰 Итог за сегодня: <b>{summary['totals']['all']:.2f} USD</b>"
+    text += f"\n💰 Итог за сегодня: <b>{summary['totals']['all']:.2f} $</b>"
+    if summary['totals'].get('tmt_original', 0) > 0:
+        text += f"  <i>(из них {summary['totals']['tmt_original']:.2f} TMT)</i>"
 
     await _safe_edit(callback, text, reply_markup=expense_after_kb())
     await callback.answer("Готово!")
@@ -1036,14 +1136,25 @@ async def cmd_expenses_today(message: Message) -> None:
         )
         return
 
+    # Per-row breakdown with original currency (from list_expenses, not the
+    # aggregated summary — the aggregate loses TMT/USD distinction).
+    from app.db.sqlite import list_expenses
+    rows = list_expenses(date_from=today_iso, date_to=today_iso)
+
     lines = [f"💸 <b>Расходы за сегодня ({_esc(_fmt_date_ru(today_iso))})</b>", ""]
-    for c in by_cat:
-        badge = "🛒" if c["kind"] == "personal" else "📦"
-        lines.append(f"{badge} {_esc(c['category'])} — <b>{float(c['amount']):.2f} USD</b>")
+    for r in rows:
+        badge = "🛒" if r["category_kind"] == "personal" else "📦"
+        if r["currency"] == "TMT" and r.get("amount_original"):
+            amt = f"{float(r['amount_original']):.2f} TMT (≈ {float(r['amount_usd']):.2f} $)"
+        else:
+            amt = f"{float(r['amount_usd']):.2f} $"
+        lines.append(f"{badge} {_esc(r['category_name'])} — <b>{amt}</b>")
     lines.append("")
-    lines.append(f"📦 Бизнес: <b>{totals['business']:.2f} USD</b>")
-    lines.append(f"🛒 Личное: <b>{totals['personal']:.2f} USD</b>")
-    lines.append(f"💰 Всего: <b>{totals['all']:.2f} USD</b>")
+    lines.append(f"📦 Бизнес: <b>{totals['business']:.2f} $</b>")
+    lines.append(f"🛒 Личное: <b>{totals['personal']:.2f} $</b>")
+    lines.append(f"💰 Всего: <b>{totals['all']:.2f} $</b>")
+    if totals.get("tmt_original", 0) > 0:
+        lines.append(f"   <i>из них в манатах: {totals['tmt_original']:.2f} TMT</i>")
 
     await message.answer("\n".join(lines))
 

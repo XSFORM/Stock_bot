@@ -238,6 +238,34 @@ def _ensure_stock_ops_note_column(conn: sqlite3.Connection) -> None:
 # Fixed set — used to validate the kind column and to filter reports.
 EXPENSE_KINDS = ("business", "personal")
 
+# Phase 6 (bot idea): supported input currencies for /expenses.
+# USD stays for foreign-supplier fees and the like; TMT is the default
+# for the vast majority of local expenses (rent, salary, fuel, taxes).
+EXPENSE_CURRENCIES = ("USD", "TMT")
+_EXPENSE_RATE_FALLBACK = 19.50
+
+
+def get_expense_tmt_rate() -> tuple[float, bool]:
+    """
+    Same source of truth as Pocket Price (setting `pocket_price_tmt_rate`),
+    but the caller learns whether the value is explicit or a silent fallback.
+
+    Return: (rate, is_fallback).
+
+    For expense entry a silent fallback is dangerous — the user would
+    persist rows with a made-up rate and never know. The web form and the
+    bot both warn when is_fallback=True so the operator sets the real rate.
+    """
+    raw = get_setting("pocket_price_tmt_rate", "")
+    if raw:
+        try:
+            val = float(raw)
+            if val > 0:
+                return val, False
+        except (ValueError, TypeError):
+            pass
+    return _EXPENSE_RATE_FALLBACK, True
+
 
 def _ensure_expense_categories_table(conn: sqlite3.Connection) -> None:
     """
@@ -281,6 +309,44 @@ def _ensure_expenses_table(conn: sqlite3.Connection) -> None:
     # Helpful index for period filters.
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date)"
+    )
+
+
+def _ensure_expenses_currency_columns(conn: sqlite3.Connection) -> None:
+    """
+    Phase 6 (bot idea): store the original currency and the exchange rate
+    that was in effect at the moment the expense was created.
+
+    Why three new columns instead of just amount_usd:
+      * TMT (manats) is the currency the user actually pays in for most
+        expenses (rent, salaries, taxes). Keeping the original TMT amount
+        is what lets us print «1080 TMT (55.67 $)» later.
+      * rate_used is the CRITICAL FIELD. It's a snapshot — never touched
+        again after the row is created. Same lesson we already learned
+        with cost_price in Phase 1: if you re-price historical rows by
+        today's rate, closed months silently change value.
+      * amount_usd stays untouched. Every existing report (profit,
+        finance, monthly trend) keeps working without any code changes.
+
+    Backfill: old rows all become currency='USD', amount_original=amount_usd,
+    rate_used=1 — that's what they always were, no revaluation happens.
+    """
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(expenses)")}
+    if "currency" not in cols:
+        conn.execute("ALTER TABLE expenses ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD'")
+    if "amount_original" not in cols:
+        conn.execute("ALTER TABLE expenses ADD COLUMN amount_original REAL NOT NULL DEFAULT 0")
+    if "rate_used" not in cols:
+        conn.execute("ALTER TABLE expenses ADD COLUMN rate_used REAL NOT NULL DEFAULT 1")
+    # One-time backfill for legacy rows: they were all in USD.
+    # WHERE clause is defensive — only touch rows where the new columns
+    # are at their default sentinel values (amount_original = 0 or NULL).
+    conn.execute(
+        "UPDATE expenses"
+        "   SET amount_original = amount_usd,"
+        "       rate_used = 1,"
+        "       currency = 'USD'"
+        " WHERE amount_original = 0 OR amount_original IS NULL"
     )
 
 
@@ -451,6 +517,7 @@ def init_db() -> None:
         _ensure_stock_ops_note_column(conn)
         _ensure_expense_categories_table(conn)
         _ensure_expenses_table(conn)
+        _ensure_expenses_currency_columns(conn)
         _ensure_recurring_expenses_table(conn)
         _seed_default_expense_categories(conn)
         conn.commit()
@@ -1909,6 +1976,7 @@ def list_expenses(
     """
     sql = (
         "SELECT e.id, e.date, e.category_id, e.amount_usd, e.note, e.created_at,"
+        "       e.currency, e.amount_original, e.rate_used,"
         "       c.name AS category_name, c.kind AS category_kind,"
         "       c.archived AS category_archived"
         " FROM expenses e"
@@ -1950,20 +2018,73 @@ def get_expense(expense_id: int) -> Optional[dict[str, Any]]:
         return _row_to_dict(row) if row else None
 
 
+def _compute_usd_from_original(amount_original: float, currency: str, rate: float) -> float:
+    """
+    Convert amount_original to USD using the given rate. round_money keeps
+    the rounding aligned with the rest of the app (ROUND_HALF_UP).
+    """
+    from app.utils.money import round_money
+    if currency == "TMT":
+        return float(round_money(float(amount_original) / float(rate)))
+    return float(round_money(float(amount_original)))
+
+
 def add_expense(
-    date: str, category_id: int, amount_usd: float, note: str = ""
+    date: str,
+    category_id: int,
+    amount_usd: float | None = None,
+    note: str = "",
+    *,
+    currency: str = "USD",
+    amount_original: float | None = None,
 ) -> tuple[bool, str]:
+    """
+    Add an expense row.
+
+    Backwards-compat: legacy callers pass `amount_usd` positionally. New
+    callers pass `currency="TMT"` and `amount_original=<manats>` — the
+    USD amount is then computed from the current pocket_price_tmt_rate
+    and the rate itself is frozen into rate_used so that later reports
+    never re-price this row.
+    """
     date = (date or "").strip()
     if not date:
         return False, "date_required"
     if not category_id:
         return False, "category_required"
-    try:
-        amount_usd = float(amount_usd)
-    except (TypeError, ValueError):
+
+    currency = (currency or "USD").upper()
+    if currency not in EXPENSE_CURRENCIES:
+        return False, "bad_currency"
+
+    # Prefer the new-style pair (amount_original + currency).
+    if amount_original is not None:
+        try:
+            amt_orig = float(amount_original)
+        except (TypeError, ValueError):
+            return False, "amount_invalid"
+    elif amount_usd is not None:
+        # Legacy path: caller thinks in USD only.
+        try:
+            amt_orig = float(amount_usd)
+        except (TypeError, ValueError):
+            return False, "amount_invalid"
+        currency = "USD"
+    else:
         return False, "amount_invalid"
-    if amount_usd <= 0:
+
+    if amt_orig <= 0:
         return False, "amount_must_be_positive"
+
+    if currency == "TMT":
+        rate, _is_fallback = get_expense_tmt_rate()
+        if rate <= 0:
+            return False, "rate_invalid"
+    else:
+        rate = 1.0
+
+    usd = _compute_usd_from_original(amt_orig, currency, rate)
+
     try:
         with _connect() as conn:
             cat = conn.execute(
@@ -1972,9 +2093,14 @@ def add_expense(
             if not cat:
                 return False, "category_not_found"
             conn.execute(
-                "INSERT INTO expenses (date, category_id, amount_usd, note)"
-                " VALUES (?, ?, ?, ?)",
-                (date, int(category_id), round(amount_usd, 2), (note or "").strip()),
+                "INSERT INTO expenses"
+                " (date, category_id, amount_usd, note,"
+                "  currency, amount_original, rate_used)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    date, int(category_id), usd, (note or "").strip(),
+                    currency, round(amt_orig, 4), round(rate, 4),
+                ),
             )
             conn.commit()
         return True, ""
@@ -1986,20 +2112,29 @@ def update_expense(
     expense_id: int,
     date: str,
     category_id: int,
-    amount_usd: float,
+    amount_usd: float | None = None,
     note: str = "",
+    *,
+    currency: str | None = None,
+    amount_original: float | None = None,
 ) -> tuple[bool, str]:
+    """
+    Update an expense.
+
+    IMPORTANT: rate_used behaves like cost_price on invoices — a snapshot.
+    Rules:
+      * If the currency isn't changing, we keep the OLD rate_used. Editing
+        just the amount (e.g. correcting a typo) must not re-price the
+        row by today's rate.
+      * If the currency IS changing (USD → TMT or vice versa) we treat it
+        as a fresh valuation and take today's rate.
+    """
     date = (date or "").strip()
     if not date:
         return False, "date_required"
     if not category_id:
         return False, "category_required"
-    try:
-        amount_usd = float(amount_usd)
-    except (TypeError, ValueError):
-        return False, "amount_invalid"
-    if amount_usd <= 0:
-        return False, "amount_must_be_positive"
+
     try:
         with _connect() as conn:
             cat = conn.execute(
@@ -2008,17 +2143,61 @@ def update_expense(
             if not cat:
                 return False, "category_not_found"
             row = conn.execute(
-                "SELECT id FROM expenses WHERE id = ?", (expense_id,)
+                "SELECT currency, amount_original, rate_used, amount_usd"
+                " FROM expenses WHERE id = ?", (expense_id,),
             ).fetchone()
             if not row:
                 return False, "expense_not_found"
+
+            old_currency = str(row["currency"] or "USD").upper()
+            old_rate     = float(row["rate_used"] or 1.0)
+
+            # Resolve target currency + original amount from the args.
+            new_currency = (currency or old_currency).upper()
+            if new_currency not in EXPENSE_CURRENCIES:
+                return False, "bad_currency"
+
+            if amount_original is not None:
+                try:
+                    amt_orig = float(amount_original)
+                except (TypeError, ValueError):
+                    return False, "amount_invalid"
+            elif amount_usd is not None:
+                try:
+                    amt_orig = float(amount_usd)
+                except (TypeError, ValueError):
+                    return False, "amount_invalid"
+                new_currency = "USD"
+            else:
+                return False, "amount_invalid"
+
+            if amt_orig <= 0:
+                return False, "amount_must_be_positive"
+
+            # Rate policy (see docstring).
+            if new_currency == old_currency:
+                rate = old_rate
+                if new_currency == "USD":
+                    rate = 1.0  # heal any weird legacy value
+            else:
+                if new_currency == "TMT":
+                    rate, _fb = get_expense_tmt_rate()
+                    if rate <= 0:
+                        return False, "rate_invalid"
+                else:
+                    rate = 1.0
+
+            usd = _compute_usd_from_original(amt_orig, new_currency, rate)
+
             conn.execute(
                 "UPDATE expenses"
-                "   SET date = ?, category_id = ?, amount_usd = ?, note = ?"
+                "   SET date = ?, category_id = ?, amount_usd = ?, note = ?,"
+                "       currency = ?, amount_original = ?, rate_used = ?"
                 " WHERE id = ?",
                 (
-                    date, int(category_id), round(amount_usd, 2),
-                    (note or "").strip(), expense_id,
+                    date, int(category_id), usd, (note or "").strip(),
+                    new_currency, round(amt_orig, 4), round(rate, 4),
+                    expense_id,
                 ),
             )
             conn.commit()
@@ -2082,6 +2261,17 @@ def get_expenses_summary(
     totals["business"] = round(totals["business"], 2)
     totals["personal"] = round(totals["personal"], 2)
     totals["all"] = round(totals["business"] + totals["personal"], 2)
+
+    # Also surface the raw TMT sum — informational only, not added to totals.
+    # («из них в манатах: N TMT» line on /expenses.)
+    with _connect() as conn:
+        tmt_sum_row = conn.execute(
+            "SELECT COALESCE(SUM(amount_original), 0) AS tmt"
+            " FROM expenses"
+            " WHERE date BETWEEN ? AND ? AND currency = 'TMT'",
+            (date_from, date_to),
+        ).fetchone()
+    totals["tmt_original"] = round(float(tmt_sum_row["tmt"] or 0), 2)
     return {"totals": totals, "by_category": by_cat}
 
 

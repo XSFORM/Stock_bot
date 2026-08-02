@@ -75,6 +75,8 @@ from app.db.sqlite import (
     get_missing_monthly_recurring,
     # Phase 4: monthly finance trend
     get_finance_monthly_trend,
+    # Phase 6: TMT support
+    get_expense_tmt_rate,
     get_client_history,
     # suppliers
     list_suppliers,
@@ -2028,14 +2030,17 @@ def expenses_page(
 @app.get("/expenses/add", response_class=HTMLResponse)
 def expenses_add_form(request: Request):
     from datetime import date as _date
+    rate, is_fallback = get_expense_tmt_rate()
     return _render(
         request,
         "expenses_form.html",
         {
-            "expense":    None,
-            "today":      _date.today().isoformat(),
-            "categories": list_expense_categories(),
-            "action_url": "/expenses/add",
+            "expense":         None,
+            "today":           _date.today().isoformat(),
+            "categories":      list_expense_categories(),
+            "action_url":      "/expenses/add",
+            "tmt_rate":        rate,
+            "rate_is_fallback": is_fallback,
         },
     )
 
@@ -2044,10 +2049,15 @@ def expenses_add_form(request: Request):
 def expenses_add_submit(
     date: str = Form(...),
     category_id: int = Form(...),
-    amount_usd: float = Form(...),
+    amount_original: float = Form(...),
+    currency: str = Form("TMT"),
     note: str = Form(""),
 ):
-    ok, err = add_expense(date.strip(), int(category_id), float(amount_usd), note.strip())
+    ok, err = add_expense(
+        date.strip(), int(category_id),
+        note=note.strip(),
+        currency=currency, amount_original=float(amount_original),
+    )
     if not ok:
         return RedirectResponse(url=f"/expenses/add?msg=err:{quote(err, safe='')}", status_code=303)
     return RedirectResponse(url="/expenses?msg=added", status_code=303)
@@ -2058,15 +2068,16 @@ def expenses_edit_form(request: Request, expense_id: int):
     exp = get_expense(expense_id)
     if not exp:
         return RedirectResponse(url="/expenses?msg=not_found", status_code=303)
+    rate, is_fallback = get_expense_tmt_rate()
     return _render(
         request,
         "expenses_form.html",
         {
-            "expense":    exp,
-            # If the expense's own category is archived, still let user save it as-is
-            # by including all categories (archived flagged), so the dropdown isn't broken.
-            "categories": list_expense_categories(include_archived=True),
-            "action_url": f"/expenses/edit/{expense_id}",
+            "expense":         exp,
+            "categories":      list_expense_categories(include_archived=True),
+            "action_url":      f"/expenses/edit/{expense_id}",
+            "tmt_rate":        rate,
+            "rate_is_fallback": is_fallback,
         },
     )
 
@@ -2076,12 +2087,14 @@ def expenses_edit_submit(
     expense_id: int,
     date: str = Form(...),
     category_id: int = Form(...),
-    amount_usd: float = Form(...),
+    amount_original: float = Form(...),
+    currency: str = Form("TMT"),
     note: str = Form(""),
 ):
     ok, err = update_expense(
         expense_id, date.strip(), int(category_id),
-        float(amount_usd), note.strip(),
+        note=note.strip(),
+        currency=currency, amount_original=float(amount_original),
     )
     if not ok:
         return RedirectResponse(
@@ -2228,21 +2241,29 @@ def expenses_from_template(request: Request, rec_id: int):
     if not tpl:
         return RedirectResponse(url="/expenses?msg=err:template_not_found", status_code=303)
     from datetime import date as _date
+    rate, is_fallback = get_expense_tmt_rate()
+    # Templates store the USD amount (that's the historical schema). When
+    # pre-filling the /expenses/add form we treat that number as the input
+    # amount and let the user switch currency on the form if needed.
     return _render(
         request,
         "expenses_form.html",
         {
             "expense": {
-                "date":         _date.today().isoformat(),
-                "category_id":  tpl["category_id"],
-                "amount_usd":   tpl["amount_usd"],
-                "note":         tpl.get("note", ""),
+                "date":            _date.today().isoformat(),
+                "category_id":     tpl["category_id"],
+                "amount_usd":      tpl["amount_usd"],
+                "amount_original": tpl["amount_usd"],
+                "currency":        "USD",
+                "note":            tpl.get("note", ""),
             },
-            "today":       _date.today().isoformat(),
-            "categories":  list_expense_categories(include_archived=True),
-            "action_url":  "/expenses/add",   # save creates a new expense
-            "from_template": True,
-            "template_name": tpl.get("category_name", ""),
+            "today":           _date.today().isoformat(),
+            "categories":      list_expense_categories(include_archived=True),
+            "action_url":      "/expenses/add",
+            "from_template":   True,
+            "template_name":   tpl.get("category_name", ""),
+            "tmt_rate":        rate,
+            "rate_is_fallback": is_fallback,
         },
     )
 

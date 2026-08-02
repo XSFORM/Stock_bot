@@ -18,7 +18,16 @@
       {% elif _e == 'amount_invalid' %}{{ t.expenses_err_amount_invalid | default('Некорректная сумма.') }}
       {% elif _e == 'amount_must_be_positive' %}{{ t.expenses_err_amount_positive | default('Сумма должна быть больше 0.') }}
       {% elif _e == 'expense_not_found' %}{{ t.expenses_err_not_found | default('Запись не найдена.') }}
+      {% elif _e == 'bad_currency' %}{{ t.expenses_err_currency | default('Валюта должна быть TMT или USD.') }}
+      {% elif _e == 'rate_invalid' %}{{ t.expenses_err_rate | default('Курс не настроен или некорректный.') }}
       {% else %}❗ {{ _e | e }}{% endif %}
+    </div>
+  {% endif %}
+
+  {% if rate_is_fallback %}
+    <div class="alert alert-warning py-2 small mb-3">
+      ⚠️ {{ t.expenses_rate_fallback | default('Курс не настроен, используется запасной') }} <b>{{ '%.2f'|format(tmt_rate) }}</b>.
+      <a href="/admin/settings#pocket-price" target="_blank">{{ t.expenses_set_rate | default('Задать актуальный') }} →</a>
     </div>
   {% endif %}
 
@@ -58,11 +67,25 @@
       </div>
     </div>
 
+    {# Amount + currency toggle. TMT is default because most local
+       expenses (rent, salary, fuel) are actually paid in manats. #}
+    {% set _cur = (expense.currency if expense and expense.currency else 'TMT') %}
+    {% set _amt = (expense.amount_original if expense and expense.amount_original is defined and expense.amount_original else (expense.amount_usd if expense else '')) %}
     <div class="mb-3">
-      <label class="form-label form-label-sm">{{ t.expenses_amount | default('Сумма') }} (USD) <span class="text-danger">*</span></label>
-      <input type="number" step="0.01" min="0.01" name="amount_usd" required
-             class="form-control form-control-sm"
-             value="{{ '%.2f' | format(expense.amount_usd) if expense else '' }}">
+      <label class="form-label form-label-sm">{{ t.expenses_amount | default('Сумма') }} <span class="text-danger">*</span></label>
+      <div class="input-group input-group-sm">
+        <input type="number" step="0.01" min="0.01" name="amount_original" required
+               id="exp-amount"
+               class="form-control"
+               value="{% if _amt not in ('', none) %}{{ '%.2f'|format(_amt|float) }}{% endif %}">
+        <select name="currency" id="exp-currency" class="form-select" style="max-width:110px">
+          <option value="TMT"{% if _cur == 'TMT' %} selected{% endif %}>TMT</option>
+          <option value="USD"{% if _cur == 'USD' %} selected{% endif %}>USD</option>
+        </select>
+      </div>
+      <div class="form-text small" id="exp-preview" data-rate="{{ '%.4f'|format(tmt_rate) }}">
+        {# JS-заполняется #}
+      </div>
     </div>
 
     <div class="mb-3">
@@ -79,4 +102,33 @@
     <a href="/expenses" class="btn btn-outline-secondary btn-sm">{{ t.btn_cancel | default('Отмена') }}</a>
   </form>
 </div>
+
+<script>
+(function() {
+  var amt  = document.getElementById('exp-amount');
+  var cur  = document.getElementById('exp-currency');
+  var prev = document.getElementById('exp-preview');
+  if (!amt || !cur || !prev) return;
+  var rate = parseFloat(prev.getAttribute('data-rate')) || 0;
+
+  function fmt(n) { return (Math.round(n * 100) / 100).toFixed(2); }
+  function render() {
+    var v = parseFloat(amt.value.replace(',', '.'));
+    if (!isFinite(v) || v <= 0) { prev.textContent = ''; return; }
+    if (cur.value === 'TMT') {
+      if (rate > 0) {
+        var usd = v / rate;
+        prev.textContent = v + ' TMT ≈ ' + fmt(usd) + ' $ (курс ' + fmt(rate) + ')';
+      } else {
+        prev.textContent = 'Курс не задан.';
+      }
+    } else {
+      prev.textContent = fmt(v) + ' $';
+    }
+  }
+  amt.addEventListener('input', render);
+  cur.addEventListener('change', render);
+  render();
+})();
+</script>
 {% endblock %}

@@ -18,11 +18,14 @@ Formats:
     cn                 → cancel current action
 
     Phase 2 — expenses via bot:
-    xm                     → open /expense menu (category picker)
-    xc:<cat_id>            → category chosen; ask amount next
-    xn:<cat_id>:<amount>   → skip note; go straight to confirm
-    xd:<mode>:<cat>:<amt>  → toggle date on confirm screen; mode ∈ {t=today, y=yesterday}
-    xa:<cat>:<amt>:<date>  → apply expense (final confirm tap)
+    xm                                 → open /expense menu (category picker)
+    xc:<cat_id>                        → category chosen; ask amount next
+    xn:<cat_id>:<amount>               → skip note; go straight to confirm
+    xd:<mode>:<cat>:<amt>              → toggle date; mode ∈ {t=today, y=yesterday}
+    xt:<cat>:<amt>:<date>:<cur>        → toggle currency TMT↔USD
+    xa:<cat>:<amt>:<date>:<cur>:<rate> → apply expense (rate frozen in the button
+                                         so a mid-flow settings change can't
+                                         re-price the row after the confirm tap)
 """
 from __future__ import annotations
 
@@ -201,26 +204,42 @@ def expense_note_kb(cat_id: int, amount: float) -> InlineKeyboardMarkup:
     ]])
 
 
-def expense_confirm_kb(cat_id: int, amount: float, date_iso: str, is_today: bool) -> InlineKeyboardMarkup:
+def expense_confirm_kb(
+    cat_id: int, amount: float, date_iso: str,
+    is_today: bool, currency: str, rate: float,
+) -> InlineKeyboardMarkup:
     """
     Final confirm screen. Two rows:
-      [✅ Применить] [📅 Вчера | 📅 Сегодня] [❌ Отмена]
-    The date-toggle button flips today↔yesterday so the user can quickly
-    correct the date without cancelling the whole flow.
+        [✅ Применить] [💱 в USD/в TMT]
+        [📅 Вчера/Сегодня] [❌ Отмена]
+
+    The date-toggle button flips today↔yesterday; the currency-toggle flips
+    TMT↔USD in-place without leaving the wizard. `rate` travels inside the
+    apply callback so a mid-flow settings change can't re-price the row
+    after the user has committed on-screen.
     """
-    toggle_text = "📅 Вчера" if is_today else "📅 Сегодня"
-    toggle_mode = "y" if is_today else "t"   # what to switch TO
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text="✅ Применить",
-            callback_data=f"xa:{cat_id}:{amount:.2f}:{date_iso}",
-        ),
-        InlineKeyboardButton(
-            text=toggle_text,
-            callback_data=f"xd:{toggle_mode}:{cat_id}:{amount:.2f}",
-        ),
-        InlineKeyboardButton(text="❌ Отмена", callback_data="cn"),
-    ]])
+    date_toggle_text = "📅 Вчера" if is_today else "📅 Сегодня"
+    date_toggle_mode = "y" if is_today else "t"   # what to switch TO
+    cur_toggle_text  = "💱 в USD" if currency == "TMT" else "💱 в TMT"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="✅ Применить",
+                callback_data=f"xa:{cat_id}:{amount:.2f}:{date_iso}:{currency}:{rate:.4f}",
+            ),
+            InlineKeyboardButton(
+                text=cur_toggle_text,
+                callback_data=f"xt:{cat_id}:{amount:.2f}:{date_iso}:{currency}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=date_toggle_text,
+                callback_data=f"xd:{date_toggle_mode}:{cat_id}:{amount:.2f}",
+            ),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="cn"),
+        ],
+    ])
 
 
 def expense_after_kb() -> InlineKeyboardMarkup:
