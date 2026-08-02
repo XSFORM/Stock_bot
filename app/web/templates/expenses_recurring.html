@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h4 class="mb-0">⏰ {{ t.recurring_title | default('Регулярные расходы') }}</h4>
+    <a href="/expenses" class="btn btn-sm btn-outline-secondary">← {{ t.expenses_title | default('Расходы') }}</a>
+  </div>
+  <p class="text-muted small mb-3">
+    {{ t.recurring_subtitle | default('Шаблоны того, что нужно платить каждый месяц (аренда, зарплата, интернет…). Ничего не создаётся автоматически — если в текущем месяце какого-то шаблона нет, ты увидишь подсказку и сам решишь, вносить или нет. Сумму можно исправить перед сохранением, аренда могла измениться.') }}
+  </p>
+
+  {% set _msg = request.query_params.get('msg', '') %}
+  {% if _msg == 'added' %}<div class="alert alert-success py-2 small">✅ {{ t.recurring_added | default('Шаблон добавлен.') }}</div>{% endif %}
+  {% if _msg == 'updated' %}<div class="alert alert-success py-2 small">✅ {{ t.recurring_updated | default('Изменено.') }}</div>{% endif %}
+  {% if _msg == 'deleted' %}<div class="alert alert-success py-2 small">🗑️ {{ t.recurring_deleted | default('Шаблон удалён.') }}</div>{% endif %}
+  {% if _msg.startswith('err:') %}
+    {% set _e = _msg[4:] %}
+    <div class="alert alert-danger py-2 small">
+      {% if _e == 'category_required' or _e == 'category_not_found' %}{{ t.expenses_err_cat | default('Выберите категорию.') }}
+      {% elif _e == 'amount_invalid' %}{{ t.expenses_err_amount_invalid | default('Некорректная сумма.') }}
+      {% elif _e == 'amount_must_be_positive' %}{{ t.expenses_err_amount_positive | default('Сумма должна быть больше 0.') }}
+      {% elif _e == 'day_invalid' or _e == 'day_out_of_range' %}{{ t.recurring_err_day | default('День месяца должен быть от 1 до 31.') }}
+      {% elif _e == 'template_not_found' %}{{ t.recurring_err_not_found | default('Шаблон не найден.') }}
+      {% else %}❗ {{ _e | e }}{% endif %}
+    </div>
+  {% endif %}
+
+  {# ─── Missing this month ─────────────────────────────────────────── #}
+  {% if missing %}
+    <div class="alert alert-warning py-2 mb-3">
+      <div class="mb-2"><strong>⚠️ {{ t.recurring_missing_title | default('За этот месяц ещё не внесены:') }}</strong></div>
+      <table class="table table-sm table-borderless mb-0">
+        <tbody>
+          {% for m in missing %}
+            <tr>
+              <td>{% if m.category_kind == 'personal' %}🛒{% else %}📦{% endif %}
+                  <strong>{{ m.category_name }}</strong>
+                  {% if m.note %}<span class="text-muted">— {{ m.note }}</span>{% endif %}
+              </td>
+              <td class="text-end"><span class="fw-semibold">{{ '%.2f'|format(m.amount_usd) }} $</span></td>
+              <td class="text-end small text-muted">{{ t.recurring_day | default('~день') }} {{ m.day_of_month }}</td>
+              <td class="text-end">
+                <a href="/expenses/from-template/{{ m.id }}" class="btn btn-sm btn-primary">
+                  ＋ {{ t.recurring_apply | default('Внести') }}
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-success py-2 mb-3 small">
+      ✅ {{ t.recurring_all_paid | default('Все регулярные расходы за этот месяц уже внесены.') }}
+    </div>
+  {% endif %}
+
+  {# ─── Add new template ────────────────────────────────────────────── #}
+  <h5 class="mt-4">＋ {{ t.recurring_add_new | default('Новый шаблон') }}</h5>
+  <form method="post" action="/expenses/recurring/add" class="row g-2 align-items-end mb-4 p-2 border rounded bg-light">
+    <div class="col-md-4">
+      <label class="form-label form-label-sm mb-1">{{ t.expenses_category | default('Категория') }} <span class="text-danger">*</span></label>
+      <select name="category_id" required class="form-select form-select-sm">
+        <option value="">— {{ t.expenses_choose_cat | default('выберите') }} —</option>
+        {% for group in ['business', 'personal'] %}
+          <optgroup label="{% if group == 'business' %}📦 {{ t.expenses_kind_business | default('Бизнес') }}{% else %}🛒 {{ t.expenses_kind_personal | default('Личное') }}{% endif %}">
+            {% for c in categories %}
+              {% if c.kind == group %}<option value="{{ c.id }}">{{ c.name }}</option>{% endif %}
+            {% endfor %}
+          </optgroup>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label form-label-sm mb-1">{{ t.expenses_amount | default('Сумма') }} (USD) <span class="text-danger">*</span></label>
+      <input type="number" step="0.01" min="0.01" name="amount_usd" required class="form-control form-control-sm">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label form-label-sm mb-1">{{ t.recurring_day_of_month | default('День') }}</label>
+      <input type="number" min="1" max="31" name="day_of_month" value="1" class="form-control form-control-sm">
+    </div>
+    <div class="col-md">
+      <label class="form-label form-label-sm mb-1">{{ t.expenses_note | default('Заметка') }}</label>
+      <input type="text" name="note" maxlength="200" class="form-control form-control-sm"
+             placeholder="{{ t.recurring_note_placeholder | default('например: аренда магазина 15 м²') }}">
+    </div>
+    <div class="col-md-auto">
+      <button type="submit" class="btn btn-sm btn-primary">＋ {{ t.btn_add | default('Добавить') }}</button>
+    </div>
+  </form>
+
+  {# ─── Templates list ─────────────────────────────────────────────── #}
+  {% if items %}
+    <h5>📋 {{ t.recurring_all_templates | default('Все шаблоны') }}</h5>
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>{{ t.expenses_category | default('Категория') }}</th>
+            <th class="text-end">{{ t.expenses_amount | default('Сумма') }}</th>
+            <th>{{ t.recurring_day_of_month | default('День') }}</th>
+            <th>{{ t.expenses_note | default('Заметка') }}</th>
+            <th class="text-end">{{ t.lbl_actions | default('Действия') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in items %}
+            <tr class="{% if not it.active %}text-muted{% endif %}">
+              <td>
+                {% if it.category_kind == 'personal' %}🛒{% else %}📦{% endif %}
+                <strong>{{ it.category_name }}</strong>
+                {% if not it.active %} <span class="badge bg-secondary">выкл</span>{% endif %}
+              </td>
+              <td class="text-end fw-semibold">{{ '%.2f'|format(it.amount_usd) }} $</td>
+              <td>{{ it.day_of_month }}</td>
+              <td class="small">{{ it.note or '—' }}</td>
+              <td class="text-end">
+                {% if it.active %}
+                  <form method="post" action="/expenses/recurring/toggle/{{ it.id }}" class="d-inline">
+                    <input type="hidden" name="active" value="0">
+                    <button type="submit" class="btn btn-sm btn-outline-warning">{{ t.recurring_disable | default('Выкл') }}</button>
+                  </form>
+                {% else %}
+                  <form method="post" action="/expenses/recurring/toggle/{{ it.id }}" class="d-inline">
+                    <input type="hidden" name="active" value="1">
+                    <button type="submit" class="btn btn-sm btn-outline-success">{{ t.recurring_enable | default('Вкл') }}</button>
+                  </form>
+                {% endif %}
+                <form method="post" action="/expenses/recurring/delete/{{ it.id }}" class="d-inline rec-del-form"
+                      data-name="{{ it.category_name }}" data-amount="{{ '%.2f'|format(it.amount_usd) }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger">{{ t.btn_delete | default('Удалить') }}</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="text-muted small">{{ t.recurring_no_templates | default('Шаблонов пока нет. Добавь первый выше.') }}</div>
+  {% endif %}
+</div>
+
+<script>
+document.querySelectorAll('form.rec-del-form').forEach(function(f) {
+  f.addEventListener('submit', function(e) {
+    var n = f.getAttribute('data-name');
+    var a = f.getAttribute('data-amount');
+    var msg = 'Удалить шаблон «' + n + '» (' + a + ' $)?\n\nДействие необратимо. Уже созданные расходы по этой категории останутся.';
+    if (!confirm(msg)) { e.preventDefault(); return false; }
+  });
+});
+</script>
+{% endblock %}

@@ -22,6 +22,13 @@
     </div>
   {% endif %}
 
+  {% if from_template %}
+    <div class="alert alert-info py-2 small mb-3">
+      ⏰ {{ t.from_template_hint | default('Заполнено из регулярного шаблона') }}
+      {% if template_name %}«{{ template_name }}»{% endif %}. {{ t.from_template_hint2 | default('Сумму можно исправить, если она изменилась.') }}
+    </div>
+  {% endif %}
+
   <form method="post" action="{{ action_url }}">
     <div class="mb-3">
       <label class="form-label form-label-sm">{{ t.lbl_date | default('Дата') }} <span class="text-danger">*</span></label>

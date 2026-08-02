@@ -16,6 +16,13 @@ Formats:
     ap:<id>:<amount>   → confirm-apply payment (comes from the ✅ button)
     ad:<id>:<amount>   → confirm-apply debt
     cn                 → cancel current action
+
+    Phase 2 — expenses via bot:
+    xm                     → open /expense menu (category picker)
+    xc:<cat_id>            → category chosen; ask amount next
+    xn:<cat_id>:<amount>   → skip note; go straight to confirm
+    xd:<mode>:<cat>:<amt>  → toggle date on confirm screen; mode ∈ {t=today, y=yesterday}
+    xa:<cat>:<amt>:<date>  → apply expense (final confirm tap)
 """
 from __future__ import annotations
 
@@ -55,6 +62,9 @@ def main_menu_kb(recent_clients: list[dict[str, Any]]) -> InlineKeyboardMarkup:
     rows.append([
         InlineKeyboardButton(text="🔍 Поиск клиента", callback_data="search"),
         InlineKeyboardButton(text="📊 Топ должников", callback_data="top"),
+    ])
+    rows.append([
+        InlineKeyboardButton(text="💸 Добавить расход", callback_data="xm"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -142,4 +152,80 @@ def cancel_kb() -> InlineKeyboardMarkup:
     """Shown while waiting for free-text input (amount, search query)."""
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="❌ Отмена", callback_data="cn"),
+    ]])
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Phase 2 — expenses via the bot
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+def expense_categories_kb(categories: list[dict[str, Any]]) -> InlineKeyboardMarkup:
+    """
+    Two-columns of category buttons. Business rows first, then personal.
+    Callback: xc:<id>.
+
+    `categories` should already be filtered to non-archived. The caller
+    typically passes list_expense_categories() (which excludes archived).
+    """
+    biz = [c for c in categories if c.get("kind") == "business"]
+    per = [c for c in categories if c.get("kind") == "personal"]
+
+    def _pairs(items: list[dict[str, Any]], emoji: str) -> list[list[InlineKeyboardButton]]:
+        rows: list[list[InlineKeyboardButton]] = []
+        row: list[InlineKeyboardButton] = []
+        for c in items:
+            row.append(InlineKeyboardButton(
+                text=f"{emoji} {c['name']}",
+                callback_data=f"xc:{c['id']}",
+            ))
+            if len(row) == 2:
+                rows.append(row)
+                row = []
+        if row:
+            rows.append(row)
+        return rows
+
+    rows: list[list[InlineKeyboardButton]] = []
+    rows.extend(_pairs(biz, "📦"))
+    rows.extend(_pairs(per, "🛒"))
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cn")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def expense_note_kb(cat_id: int, amount: float) -> InlineKeyboardMarkup:
+    """After amount is entered — offer to skip the optional note."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⏭ Пропустить", callback_data=f"xn:{cat_id}:{amount:.2f}"),
+        InlineKeyboardButton(text="❌ Отмена", callback_data="cn"),
+    ]])
+
+
+def expense_confirm_kb(cat_id: int, amount: float, date_iso: str, is_today: bool) -> InlineKeyboardMarkup:
+    """
+    Final confirm screen. Two rows:
+      [✅ Применить] [📅 Вчера | 📅 Сегодня] [❌ Отмена]
+    The date-toggle button flips today↔yesterday so the user can quickly
+    correct the date without cancelling the whole flow.
+    """
+    toggle_text = "📅 Вчера" if is_today else "📅 Сегодня"
+    toggle_mode = "y" if is_today else "t"   # what to switch TO
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="✅ Применить",
+            callback_data=f"xa:{cat_id}:{amount:.2f}:{date_iso}",
+        ),
+        InlineKeyboardButton(
+            text=toggle_text,
+            callback_data=f"xd:{toggle_mode}:{cat_id}:{amount:.2f}",
+        ),
+        InlineKeyboardButton(text="❌ Отмена", callback_data="cn"),
+    ]])
+
+
+def expense_after_kb() -> InlineKeyboardMarkup:
+    """Shown after an expense was successfully added."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="💸 Ещё расход", callback_data="xm"),
+        InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu"),
     ]])

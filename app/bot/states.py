@@ -19,3 +19,15 @@ class Payment(StatesGroup):
 class ClientSearch(StatesGroup):
     """User is typing a substring to look up a client by name."""
     waiting_query = State()
+
+
+class ExpenseFlow(StatesGroup):
+    """
+    /expense wizard:
+      1. category chosen (inline button)  → waiting_amount
+      2. amount typed as text             → waiting_note
+      3. note typed OR "Пропустить"       → confirmation screen (no state)
+      4. confirm tap                      → add_expense() and done
+    """
+    waiting_amount = State()
+    waiting_note = State()

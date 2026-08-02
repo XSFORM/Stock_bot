@@ -284,6 +284,38 @@ def _ensure_expenses_table(conn: sqlite3.Connection) -> None:
     )
 
 
+def _ensure_recurring_expenses_table(conn: sqlite3.Connection) -> None:
+    """
+    Phase 3 — templates for recurring monthly expenses (rent, salary, etc.).
+
+    Deliberately NOT touching `expenses` schema. Templates are just a
+    lookup — actual rows in `expenses` are still created by the user via
+    the «Внести» button (with the option to edit the amount). We never
+    materialise templates automatically; missing months are only surfaced
+    as suggestions.
+
+    Columns:
+        day_of_month:  1..31, purely informational (used only for sorting
+                       and reminding the user roughly when it's due).
+        active:        soft-disable; inactive templates don't generate
+                       reminders but stay for history.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS recurring_expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id INTEGER NOT NULL,
+            amount_usd REAL NOT NULL,
+            day_of_month INTEGER NOT NULL DEFAULT 1,
+            note TEXT NOT NULL DEFAULT '',
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (category_id) REFERENCES expense_categories(id) ON DELETE RESTRICT
+        )
+        """
+    )
+
+
 def _seed_default_expense_categories(conn: sqlite3.Connection) -> None:
     """
     First-run seed. Only inserts categories that don't exist by name.
@@ -419,6 +451,7 @@ def init_db() -> None:
         _ensure_stock_ops_note_column(conn)
         _ensure_expense_categories_table(conn)
         _ensure_expenses_table(conn)
+        _ensure_recurring_expenses_table(conn)
         _seed_default_expense_categories(conn)
         conn.commit()
 
@@ -2050,6 +2083,263 @@ def get_expenses_summary(
     totals["personal"] = round(totals["personal"], 2)
     totals["all"] = round(totals["business"] + totals["personal"], 2)
     return {"totals": totals, "by_category": by_cat}
+
+
+# ── Phase 4 (bot idea): monthly trend for /reports/finance ─────────────────
+#
+# Explicitly reuses get_profit_report + get_expenses_summary rather than
+# writing a parallel monthly SQL — two implementations of profit maths would
+# eventually drift and quietly mismatch. Same cost-price=0 exclusion applies,
+# because that's baked into get_profit_report.
+
+def _iter_month_slices(date_from: str, date_to: str):
+    """
+    Yield (year_month, start_iso, end_iso) tuples where each slice is the
+    intersection of a calendar month with [date_from, date_to]. Guarantees
+    that summing the slice-level numbers exactly reproduces the total for
+    the full range — the first / last month may be partial.
+    """
+    from datetime import date as _date, timedelta as _td
+    d1 = _date.fromisoformat(date_from)
+    d2 = _date.fromisoformat(date_to)
+    if d2 < d1:
+        return
+    cur = d1.replace(day=1)
+    while cur <= d2:
+        # Move to the 28th and add 4 days: lands us in the next month
+        # regardless of month length, then snap to the 1st.
+        next_month = (cur.replace(day=28) + _td(days=4)).replace(day=1)
+        last_of_month = next_month - _td(days=1)
+        slice_start = max(d1, cur)
+        slice_end   = min(d2, last_of_month)
+        yield f"{cur.year:04d}-{cur.month:02d}", slice_start.isoformat(), slice_end.isoformat()
+        cur = next_month
+
+
+def get_finance_monthly_trend(
+    date_from: str,
+    date_to: str,
+    warehouse_codes: Optional[list[str]] = None,
+) -> list[dict[str, Any]]:
+    """
+    Month-by-month breakdown for the finance report.
+
+    Each row has:
+        month             'YYYY-MM'
+        revenue           net revenue (sales − returns), same as the header
+                          KPI on /reports/finance
+        gross_profit      unchanged from get_profit_report — excludes rows
+                          with cost_price = 0 automatically
+        business_expenses total of expenses tagged business in that month
+        business_net      gross_profit − business_expenses
+        personal_expenses total of expenses tagged personal
+        wallet_net        business_net − personal_expenses
+    """
+    trend: list[dict[str, Any]] = []
+    for month_iso, start_iso, end_iso in _iter_month_slices(date_from, date_to):
+        profit = get_profit_report(start_iso, end_iso, warehouse_codes=warehouse_codes)
+        exp = get_expenses_summary(start_iso, end_iso)
+
+        net_revenue  = round(float(profit["totals"]["revenue"])
+                             - float(profit["totals"]["ret_revenue"]), 2)
+        gross_profit = round(float(profit["totals"]["profit"]), 2)
+        biz_exp      = float(exp["totals"]["business"])
+        pers_exp     = float(exp["totals"]["personal"])
+        business_net = round(gross_profit - biz_exp, 2)
+        wallet_net   = round(business_net - pers_exp, 2)
+
+        trend.append({
+            "month":             month_iso,
+            "date_from":         start_iso,
+            "date_to":           end_iso,
+            "revenue":           net_revenue,
+            "gross_profit":      gross_profit,
+            "business_expenses": biz_exp,
+            "business_net":      business_net,
+            "personal_expenses": pers_exp,
+            "wallet_net":        wallet_net,
+        })
+    return trend
+
+
+# ── Phase 3 (bot idea): Recurring expense templates ─────────────────────────
+#
+# Deliberately no automatic materialisation. Templates only feed:
+#   - the «Управление шаблонами» page   (list + CRUD)
+#   - the "not yet entered this month" hint on /expenses
+# When the user clicks «Внести», they land on a pre-filled add_expense
+# form so they can *edit the amount* before saving (rent may have changed).
+
+def list_recurring_expenses(include_inactive: bool = False) -> list[dict[str, Any]]:
+    """
+    Return recurring templates joined with category info.
+    Sorted by active-first, then business/personal, then day_of_month.
+    """
+    sql = (
+        "SELECT r.id, r.category_id, r.amount_usd, r.day_of_month, r.note,"
+        "       r.active, r.created_at,"
+        "       c.name AS category_name, c.kind AS category_kind,"
+        "       c.archived AS category_archived"
+        " FROM recurring_expenses r"
+        " JOIN expense_categories c ON c.id = r.category_id"
+    )
+    if not include_inactive:
+        sql += " WHERE r.active = 1"
+    sql += " ORDER BY r.active DESC, c.kind, r.day_of_month, c.name"
+    with _connect() as conn:
+        rows = conn.execute(sql).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
+def get_recurring_expense(rec_id: int) -> Optional[dict[str, Any]]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT r.*, c.name AS category_name, c.kind AS category_kind"
+            " FROM recurring_expenses r"
+            " JOIN expense_categories c ON c.id = r.category_id"
+            " WHERE r.id = ?",
+            (rec_id,),
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+
+
+def _validate_recurring_input(
+    category_id: int, amount_usd: float, day_of_month: int
+) -> Optional[str]:
+    """Return an error key or None."""
+    if not category_id:
+        return "category_required"
+    try:
+        amount = float(amount_usd)
+    except (TypeError, ValueError):
+        return "amount_invalid"
+    if amount <= 0:
+        return "amount_must_be_positive"
+    try:
+        day = int(day_of_month)
+    except (TypeError, ValueError):
+        return "day_invalid"
+    if not (1 <= day <= 31):
+        return "day_out_of_range"
+    return None
+
+
+def add_recurring_expense(
+    category_id: int, amount_usd: float, day_of_month: int = 1, note: str = ""
+) -> tuple[bool, str]:
+    err = _validate_recurring_input(category_id, amount_usd, day_of_month)
+    if err:
+        return False, err
+    try:
+        with _connect() as conn:
+            cat = conn.execute(
+                "SELECT id FROM expense_categories WHERE id = ?", (category_id,)
+            ).fetchone()
+            if not cat:
+                return False, "category_not_found"
+            conn.execute(
+                "INSERT INTO recurring_expenses"
+                " (category_id, amount_usd, day_of_month, note)"
+                " VALUES (?, ?, ?, ?)",
+                (int(category_id), round(float(amount_usd), 2),
+                 int(day_of_month), (note or "").strip()),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def update_recurring_expense(
+    rec_id: int, category_id: int, amount_usd: float,
+    day_of_month: int, note: str = "",
+) -> tuple[bool, str]:
+    err = _validate_recurring_input(category_id, amount_usd, day_of_month)
+    if err:
+        return False, err
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM recurring_expenses WHERE id = ?", (rec_id,)
+            ).fetchone()
+            if not row:
+                return False, "template_not_found"
+            cat = conn.execute(
+                "SELECT id FROM expense_categories WHERE id = ?", (category_id,)
+            ).fetchone()
+            if not cat:
+                return False, "category_not_found"
+            conn.execute(
+                "UPDATE recurring_expenses"
+                "   SET category_id = ?, amount_usd = ?,"
+                "       day_of_month = ?, note = ?"
+                " WHERE id = ?",
+                (int(category_id), round(float(amount_usd), 2),
+                 int(day_of_month), (note or "").strip(), int(rec_id)),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def set_recurring_expense_active(rec_id: int, active: bool) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE recurring_expenses SET active = ? WHERE id = ?",
+                (1 if active else 0, int(rec_id)),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def delete_recurring_expense(rec_id: int) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "DELETE FROM recurring_expenses WHERE id = ?", (int(rec_id),)
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def get_missing_monthly_recurring(month_iso: Optional[str] = None) -> list[dict[str, Any]]:
+    """
+    Return active templates for which NO expense row exists in the given
+    month (default: current month). Determined *only* by category_id, not
+    by amount — the user may have paid a slightly different rent this month
+    and we still consider the obligation as fulfilled.
+
+    `month_iso`: 'YYYY-MM' string. When None, uses local current month.
+    """
+    if not month_iso:
+        from datetime import date as _date
+        month_iso = _date.today().strftime("%Y-%m")
+
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT r.id, r.category_id, r.amount_usd, r.day_of_month, r.note,
+                   c.name AS category_name, c.kind AS category_kind
+            FROM recurring_expenses r
+            JOIN expense_categories c ON c.id = r.category_id
+            WHERE r.active = 1
+              AND c.archived = 0
+              AND NOT EXISTS (
+                  SELECT 1 FROM expenses e
+                  WHERE e.category_id = r.category_id
+                    AND strftime('%Y-%m', e.date) = ?
+              )
+            ORDER BY c.kind, r.day_of_month, c.name
+            """,
+            (month_iso,),
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
 
 
 # ── Phase 3: Payment discipline stats ────────────────────────────────────────

@@ -155,5 +155,50 @@
       </div>
     </div>
   </div>
+
+  {# ═══ Monthly trend (Phase 4) ═══ #}
+  {% if monthly and monthly|length > 1 %}
+    <h5 class="mt-5 mb-2">📅 {{ t.finance_monthly_trend | default('Тренд по месяцам') }}</h5>
+    <p class="text-muted small mb-2">
+      {{ t.finance_monthly_hint | default('Каждая строка — пересечение месяца с выбранным периодом. Суммы всех строк равны общим итогам выше (первый/последний месяц могут быть неполными).') }}
+    </p>
+    <div class="table-responsive">
+      <table class="table table-sm table-striped table-hover align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>{{ t.finance_col_month | default('Месяц') }}</th>
+            <th class="text-end">{{ t.profit_kpi_revenue | default('Чистая выручка') }}</th>
+            <th class="text-end">{{ t.profit_kpi_profit | default('Валовая прибыль') }}</th>
+            <th class="text-end">{{ t.finance_biz_exp | default('Бизнес-расходы') }}</th>
+            <th class="text-end">{{ t.finance_business_net | default('Чистая прибыль бизнеса') }}</th>
+            <th class="text-end">{{ t.finance_personal_exp | default('Личные расходы') }}</th>
+            <th class="text-end">{{ t.finance_wallet_net | default('Итог кошелька') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in monthly %}
+            <tr>
+              <td>
+                <strong>{{ m.month }}</strong>
+                <div class="small text-muted">{{ m.date_from }} → {{ m.date_to }}</div>
+              </td>
+              <td class="text-end">{{ "%.2f"|format(m.revenue) }}</td>
+              <td class="text-end {% if m.gross_profit > 0 %}text-success{% elif m.gross_profit < 0 %}text-danger{% endif %}">
+                {{ "%+.2f"|format(m.gross_profit) }}
+              </td>
+              <td class="text-end text-danger">-{{ "%.2f"|format(m.business_expenses) }}</td>
+              <td class="text-end fw-semibold {% if m.business_net > 0 %}text-success{% elif m.business_net < 0 %}text-danger{% endif %}">
+                {{ "%+.2f"|format(m.business_net) }}
+              </td>
+              <td class="text-end text-danger">-{{ "%.2f"|format(m.personal_expenses) }}</td>
+              <td class="text-end fw-bold {% if m.wallet_net > 0 %}text-success{% elif m.wallet_net < 0 %}text-danger{% endif %}">
+                {{ "%+.2f"|format(m.wallet_net) }}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
 </div>
 {% endblock %}

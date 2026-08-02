@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import html
 import logging
+from collections import OrderedDict
+from typing import Tuple
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -46,22 +48,29 @@ from app.bot.keyboards import (
     client_card_kb,
     confirm_debt_kb,
     confirm_payment_kb,
+    expense_after_kb,
+    expense_categories_kb,
+    expense_confirm_kb,
+    expense_note_kb,
     fmt_balance,
     main_menu_kb,
     search_results_kb,
 )
-from app.bot.states import ClientSearch, Payment
+from app.bot.states import ClientSearch, ExpenseFlow, Payment
 from app.config import settings
 from app.db.sqlite import (
     add_client_adjustment,
     add_client_debt,
+    add_expense,
     find_clients_by_name,
     get_client,
     get_client_balance,
     get_client_history,
+    get_expenses_summary,
     get_recent_active_clients,
     get_top_debtors,
     get_total_clients_debt,
+    list_expense_categories,
 )
 
 logger = logging.getLogger(__name__)
@@ -100,6 +109,58 @@ def _esc(v) -> str:
     a 400, which shows up as «button does nothing» to the user.
     """
     return html.escape(str(v or ""), quote=False)
+
+
+# ─── Idempotency for money-changing callbacks ────────────────────────────────
+#
+# The user is often out in the field on a flaky mobile connection. A tap on
+# "✅ Yes" that stalls will get tapped again a second later — without a guard
+# we'd write the same client_ledger row twice and quietly overwrite the debt.
+#
+# Two-layer protection:
+#   1) edit_reply_markup(None) is called *before* the DB write, so after the
+#      first tap the buttons vanish physically.
+#   2) A tiny LRU set of (chat_id, message_id, callback.data) tuples catches
+#      the race window where two callbacks arrived before the edit landed.
+#
+# The set is bounded (last 500 tuples). More than enough: even 100 taps a day
+# would fill it in a week, and we'd never lose a legitimate second attempt to
+# false-positive because *the same button on the same message* is what forms
+# the key — a new confirmation for the same client generates a new message_id.
+
+_PROCESSED_CALLBACKS: "OrderedDict[Tuple[int, int, str], None]" = OrderedDict()
+_PROCESSED_CALLBACKS_MAX = 500
+
+
+def _callback_key(callback: CallbackQuery) -> Tuple[int, int, str]:
+    msg = callback.message
+    chat_id = msg.chat.id if msg and msg.chat else 0
+    message_id = msg.message_id if msg else 0
+    return (int(chat_id), int(message_id), str(callback.data or ""))
+
+
+def _mark_processed(key: Tuple[int, int, str]) -> bool:
+    """
+    Register the key as processed. Returns True if it was already there
+    (i.e. this is a duplicate tap and the caller should abort).
+    """
+    if key in _PROCESSED_CALLBACKS:
+        return True
+    _PROCESSED_CALLBACKS[key] = None
+    # Trim from the oldest end.
+    while len(_PROCESSED_CALLBACKS) > _PROCESSED_CALLBACKS_MAX:
+        _PROCESSED_CALLBACKS.popitem(last=False)
+    return False
+
+
+async def _lock_confirmation(callback: CallbackQuery) -> None:
+    """Strip the inline keyboard so the button can't be tapped again."""
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except TelegramBadRequest as exc:
+        # Message could be too old to edit or the markup already gone —
+        # not fatal, the LRU still protects us from double writes.
+        logger.debug("edit_reply_markup(None) failed: %s", exc)
 
 
 async def _safe_edit(callback: CallbackQuery, text: str, reply_markup=None) -> None:
@@ -179,14 +240,17 @@ async def cmd_help(message: Message) -> None:
     if not await _guard(message):
         return
     text = (
-        "<b>Stock_bot — учёт долгов клиентов</b>\n\n"
+        "<b>Stock_bot — учёт долгов и расходов</b>\n\n"
+        "<b>Клиенты</b>\n"
         "/start — главное меню (недавние клиенты + поиск)\n"
         "/clients — то же, что /start\n"
         "/debt — общий долг клиентов передо мной\n"
-        "/top_debtors — топ-10 должников\n"
+        "/top_debtors — топ-10 должников\n\n"
+        "<b>Расходы</b>\n"
+        "/expense — внести расход (бензин, грузчик, аренда…)\n"
+        "/expenses_today — сколько потратил сегодня\n\n"
         "/cancel — отменить текущий шаг\n\n"
-        "Товары, приходы, склад и продажи — теперь только в вэб-версии.\n"
-        "Здесь только быстрая работа с долгом: тап по клиенту → сумма → подтвердить."
+        "Товары, приходы, склад и продажи — только в вэб-версии."
     )
     await message.answer(text)
 
@@ -541,7 +605,16 @@ async def on_debt_note_typed(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("ap:"))
 async def cb_apply_payment(callback: CallbackQuery, state: FSMContext) -> None:
-    """Apply a payment. Note is intentionally empty — same as web behaviour."""
+    """
+    Apply a payment. Note is intentionally minimal ("Telegram-бот") so it's
+    obvious in the client history where the entry came from — the web form
+    doesn't set a note automatically, so this label is the only marker.
+
+    Protected against double-tap on flaky mobile connections:
+      • The confirm button is removed *before* the DB write.
+      • A LRU set of processed (chat, message, data) tuples catches the race
+        where two callbacks arrive within a few ms of each other.
+    """
     if not await _guard(callback):
         return
     try:
@@ -551,8 +624,16 @@ async def cb_apply_payment(callback: CallbackQuery, state: FSMContext) -> None:
     except (ValueError, IndexError):
         await callback.answer("Неверные данные.", show_alert=True)
         return
+
+    # Idempotency guard #1: LRU set catches the race window.
+    if _mark_processed(_callback_key(callback)):
+        await callback.answer("Уже обработано", show_alert=True)
+        return
+    # Idempotency guard #2: strip the confirm keyboard so no more taps land.
+    await _lock_confirmation(callback)
+
     await state.clear()  # in case user came here from a half-typed flow
-    ok, err = add_client_adjustment(client_id, amount, note="")
+    ok, err = add_client_adjustment(client_id, amount, note="Telegram-бот")
     if not ok:
         logger.error("bot payment failed: client=%s amt=%s err=%s", client_id, amount, err)
         await callback.answer(f"Ошибка: {err}", show_alert=True)
@@ -574,6 +655,8 @@ async def cb_apply_debt(callback: CallbackQuery, state: FSMContext) -> None:
     """
     Apply a debt entry. The reason note lives in FSM state (set by
     on_debt_note_typed just before we drew the confirmation keyboard).
+
+    Same double-tap protection as cb_apply_payment.
     """
     if not await _guard(callback):
         return
@@ -584,10 +667,17 @@ async def cb_apply_debt(callback: CallbackQuery, state: FSMContext) -> None:
     except (ValueError, IndexError):
         await callback.answer("Неверные данные.", show_alert=True)
         return
+
+    # Idempotency guard (LRU + strip keyboard) — see cb_apply_payment for details.
+    if _mark_processed(_callback_key(callback)):
+        await callback.answer("Уже обработано", show_alert=True)
+        return
+    await _lock_confirmation(callback)
+
     data = await state.get_data()
-    note = str(data.get("note") or "").strip()
+    user_note = str(data.get("note") or "").strip()
     await state.clear()
-    if not note:
+    if not user_note:
         # Shouldn't happen in a normal flow, but guard against a stale
         # confirmation button being tapped from an old chat message.
         await callback.answer(
@@ -595,6 +685,9 @@ async def cb_apply_debt(callback: CallbackQuery, state: FSMContext) -> None:
             show_alert=True,
         )
         return
+    # Append the source label to the user's note (don't overwrite —
+    # the reason the user typed is what matters most in the ledger view).
+    note = f"{user_note} · Telegram-бот"
     ok, err = add_client_debt(client_id, amount, note=note)
     if not ok:
         logger.error("bot debt failed: client=%s amt=%s err=%s", client_id, amount, err)
@@ -633,6 +726,326 @@ async def on_search_query(message: Message, state: FSMContext) -> None:
         f"Нашёл {len(results)}:",
         reply_markup=search_results_kb(results),
     )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Phase 2 — /expense wizard
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# Small expenses (fuel, porter, taxi) happen in the field. If they can only be
+# recorded from a desktop later, they get forgotten and the finance report
+# ends up lying about profit. This wizard makes it a 30-second, 4-tap job on
+# the phone.
+#
+# Callback prefixes (see keyboards.py for the master list):
+#   xm                     open category picker
+#   xc:<id>                category chosen → ask amount
+#   xn:<id>:<amt>          skip note → confirm screen
+#   xd:<t|y>:<id>:<amt>    toggle date on confirm screen
+#   xa:<id>:<amt>:<date>   final apply (idempotency-protected)
+
+
+def _fmt_date_ru(date_iso: str) -> str:
+    """'2026-08-02' → '02.08.2026', gracefully returns the input on failure."""
+    try:
+        y, m, d = date_iso.split("-")
+        return f"{d}.{m}.{y}"
+    except (ValueError, AttributeError):
+        return date_iso
+
+
+def _get_category(cat_id: int) -> dict | None:
+    for c in list_expense_categories(include_archived=True):
+        if int(c["id"]) == int(cat_id):
+            return c
+    return None
+
+
+def _expense_confirm_text(cat: dict, amount: float, date_iso: str, note: str) -> str:
+    kind_badge = "🛒 Личное" if cat.get("kind") == "personal" else "📦 Бизнес"
+    parts = [
+        f"💸 <b>Проверь расход:</b>",
+        f"",
+        f"Категория: <b>{_esc(cat['name'])}</b> ({kind_badge})",
+        f"Сумма: <b>{amount:.2f} USD</b>",
+        f"Дата: <b>{_esc(_fmt_date_ru(date_iso))}</b>",
+    ]
+    if note:
+        parts.append(f"Заметка: <i>{_esc(note)}</i>")
+    return "\n".join(parts)
+
+
+# ─── Entry points ────────────────────────────────────────────────────────────
+
+@router.message(Command("expense"))
+async def cmd_expense(message: Message, state: FSMContext) -> None:
+    if not await _guard(message):
+        return
+    await state.clear()
+    cats = list_expense_categories()  # non-archived only
+    if not cats:
+        await message.answer("Категории расходов не настроены. Открой /help.")
+        return
+    await message.answer("Выбери категорию расхода:", reply_markup=expense_categories_kb(cats))
+
+
+@router.callback_query(F.data == "xm")
+async def cb_expense_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    """Same as /expense but from a button (used from main menu and after add)."""
+    if not await _guard(callback):
+        return
+    await state.clear()
+    cats = list_expense_categories()
+    if not cats:
+        await callback.answer("Категории расходов не настроены.", show_alert=True)
+        return
+    await _safe_edit(callback, "Выбери категорию расхода:", reply_markup=expense_categories_kb(cats))
+    await callback.answer()
+
+
+# ─── Step 1: category chosen → ask amount ────────────────────────────────────
+
+@router.callback_query(F.data.startswith("xc:"))
+async def cb_expense_category(callback: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(callback):
+        return
+    try:
+        cat_id = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    cat = _get_category(cat_id)
+    if not cat:
+        await callback.answer("Категория не найдена.", show_alert=True)
+        return
+    await state.set_state(ExpenseFlow.waiting_amount)
+    await state.update_data(cat_id=cat_id)
+    kind_badge = "🛒" if cat.get("kind") == "personal" else "📦"
+    await callback.message.answer(
+        f"{kind_badge} <b>{_esc(cat['name'])}</b>\n\n"
+        f"💰 Введи сумму в USD (например 12.50):",
+        reply_markup=cancel_kb(),
+    )
+    await callback.answer()
+
+
+# ─── Step 2: amount typed → ask note (with Пропустить button) ───────────────
+
+@router.message(ExpenseFlow.waiting_amount)
+async def on_expense_amount(message: Message, state: FSMContext) -> None:
+    if not await _guard(message):
+        return
+    raw = (message.text or "").strip().replace(",", ".")
+    try:
+        amount = float(raw)
+    except ValueError:
+        await message.answer("Не понял сумму. Введи число, например 12.50",
+                             reply_markup=cancel_kb())
+        return
+    if amount <= 0:
+        await message.answer("Сумма должна быть больше 0.", reply_markup=cancel_kb())
+        return
+
+    data = await state.get_data()
+    cat_id = int(data.get("cat_id", 0))
+    cat = _get_category(cat_id)
+    if not cat:
+        await state.clear()
+        await message.answer("Категория не найдена. Начни заново: /expense")
+        return
+
+    await state.set_state(ExpenseFlow.waiting_note)
+    await state.update_data(amount=amount)
+    await message.answer(
+        f"📝 Заметка (например «АЗС Мерседес», «грузчик рынок»)\n\n"
+        f"Или нажми «Пропустить» — заметка необязательна.",
+        reply_markup=expense_note_kb(cat_id, amount),
+    )
+
+
+# ─── Step 3a: user typed a note → confirm screen ────────────────────────────
+
+@router.message(ExpenseFlow.waiting_note)
+async def on_expense_note(message: Message, state: FSMContext) -> None:
+    if not await _guard(message):
+        return
+    note = (message.text or "").strip()
+    if len(note) > 200:
+        note = note[:200]
+
+    data = await state.get_data()
+    cat_id = int(data.get("cat_id", 0))
+    amount = float(data.get("amount", 0))
+    cat = _get_category(cat_id)
+    if not cat:
+        await state.clear()
+        await message.answer("Категория не найдена. Начни заново: /expense")
+        return
+
+    from datetime import date as _date
+    date_iso = _date.today().isoformat()
+    # Keep note in state — the apply-callback will read it back.
+    await state.update_data(note=note, date=date_iso)
+
+    await message.answer(
+        _expense_confirm_text(cat, amount, date_iso, note),
+        reply_markup=expense_confirm_kb(cat_id, amount, date_iso, is_today=True),
+    )
+
+
+# ─── Step 3b: user tapped «Пропустить» → confirm screen with empty note ─────
+
+@router.callback_query(F.data.startswith("xn:"))
+async def cb_expense_skip_note(callback: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(callback):
+        return
+    try:
+        _, cid, amt = callback.data.split(":")
+        cat_id = int(cid)
+        amount = float(amt)
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    cat = _get_category(cat_id)
+    if not cat:
+        await callback.answer("Категория не найдена.", show_alert=True)
+        return
+
+    from datetime import date as _date
+    date_iso = _date.today().isoformat()
+    await state.update_data(cat_id=cat_id, amount=amount, note="", date=date_iso)
+
+    await _safe_edit(
+        callback,
+        _expense_confirm_text(cat, amount, date_iso, ""),
+        reply_markup=expense_confirm_kb(cat_id, amount, date_iso, is_today=True),
+    )
+    await callback.answer()
+
+
+# ─── Step 3.5: toggle date today ↔ yesterday on the confirm screen ──────────
+
+@router.callback_query(F.data.startswith("xd:"))
+async def cb_expense_toggle_date(callback: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(callback):
+        return
+    try:
+        _, mode, cid, amt = callback.data.split(":")
+        cat_id = int(cid)
+        amount = float(amt)
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    cat = _get_category(cat_id)
+    if not cat:
+        await callback.answer("Категория не найдена.", show_alert=True)
+        return
+
+    from datetime import date as _date, timedelta as _td
+    is_today = mode == "t"
+    d = _date.today() if is_today else _date.today() - _td(days=1)
+    date_iso = d.isoformat()
+
+    # note may have been stored earlier; preserve it.
+    data = await state.get_data()
+    note = str(data.get("note") or "")
+    await state.update_data(date=date_iso)
+
+    await _safe_edit(
+        callback,
+        _expense_confirm_text(cat, amount, date_iso, note),
+        reply_markup=expense_confirm_kb(cat_id, amount, date_iso, is_today=is_today),
+    )
+    await callback.answer("Дата обновлена")
+
+
+# ─── Step 4: apply — with the same double-tap protection as payments ───────
+
+@router.callback_query(F.data.startswith("xa:"))
+async def cb_expense_apply(callback: CallbackQuery, state: FSMContext) -> None:
+    """
+    Final apply. Same idempotency guard as cb_apply_payment:
+      1) LRU-set on (chat, message, data) key
+      2) Strip keyboard before the DB write.
+    """
+    if not await _guard(callback):
+        return
+    try:
+        _, cid, amt, date_iso = callback.data.split(":", 3)
+        cat_id = int(cid)
+        amount = float(amt)
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+
+    if _mark_processed(_callback_key(callback)):
+        await callback.answer("Уже обработано", show_alert=True)
+        return
+    await _lock_confirmation(callback)
+
+    data = await state.get_data()
+    user_note = str(data.get("note") or "").strip()
+    await state.clear()
+
+    # Same source-tag pattern as bot payments/debts.
+    note = f"{user_note} · Telegram-бот" if user_note else "Telegram-бот"
+
+    ok, err = add_expense(date_iso, cat_id, amount, note=note)
+    if not ok:
+        logger.error("bot expense add failed: cat=%s amt=%s date=%s err=%s",
+                     cat_id, amount, date_iso, err)
+        await callback.answer(f"Ошибка: {err}", show_alert=True)
+        return
+
+    cat = _get_category(cat_id)
+    kind_badge = "🛒 Личное" if cat and cat.get("kind") == "personal" else "📦 Бизнес"
+    text = (
+        f"✅ Расход добавлен.\n\n"
+        f"<b>{_esc(cat['name']) if cat else ''}</b> ({kind_badge})\n"
+        f"Сумма: {amount:.2f} USD\n"
+        f"Дата: {_esc(_fmt_date_ru(date_iso))}\n"
+    )
+    if user_note:
+        text += f"Заметка: <i>{_esc(user_note)}</i>\n"
+
+    # Quick self-check: today's total after this row.
+    from datetime import date as _date
+    today_iso = _date.today().isoformat()
+    summary = get_expenses_summary(today_iso, today_iso)
+    text += f"\n💰 Итог за сегодня: <b>{summary['totals']['all']:.2f} USD</b>"
+
+    await _safe_edit(callback, text, reply_markup=expense_after_kb())
+    await callback.answer("Готово!")
+
+
+# ─── /expenses_today — quick self-check summary ─────────────────────────────
+
+@router.message(Command("expenses_today"))
+async def cmd_expenses_today(message: Message) -> None:
+    if not await _guard(message):
+        return
+    from datetime import date as _date
+    today_iso = _date.today().isoformat()
+    summary = get_expenses_summary(today_iso, today_iso)
+    totals = summary["totals"]
+    by_cat = summary["by_category"]
+
+    if not by_cat:
+        await message.answer(
+            f"💸 Расходов за сегодня ({_esc(_fmt_date_ru(today_iso))}) нет."
+        )
+        return
+
+    lines = [f"💸 <b>Расходы за сегодня ({_esc(_fmt_date_ru(today_iso))})</b>", ""]
+    for c in by_cat:
+        badge = "🛒" if c["kind"] == "personal" else "📦"
+        lines.append(f"{badge} {_esc(c['category'])} — <b>{float(c['amount']):.2f} USD</b>")
+    lines.append("")
+    lines.append(f"📦 Бизнес: <b>{totals['business']:.2f} USD</b>")
+    lines.append(f"🛒 Личное: <b>{totals['personal']:.2f} USD</b>")
+    lines.append(f"💰 Всего: <b>{totals['all']:.2f} USD</b>")
+
+    await message.answer("\n".join(lines))
 
 
 # ─── Fallback: raw text outside FSM = quick search ───────────────────────────

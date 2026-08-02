@@ -65,6 +65,16 @@ from app.db.sqlite import (
     update_expense,
     delete_expense,
     get_expenses_summary,
+    # Phase 3: recurring expense templates
+    list_recurring_expenses,
+    get_recurring_expense,
+    add_recurring_expense,
+    update_recurring_expense,
+    set_recurring_expense_active,
+    delete_recurring_expense,
+    get_missing_monthly_recurring,
+    # Phase 4: monthly finance trend
+    get_finance_monthly_trend,
     get_client_history,
     # suppliers
     list_suppliers,
@@ -1971,7 +1981,10 @@ def expenses_page(
     request: Request,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-    category_id: Optional[int] = None,
+    # NB: accept as str (not int!) — the filter form submits an empty
+    # `category_id=` when the user picks «Все», and FastAPI's int parser
+    # rejects an empty string with 422. We coerce to int manually below.
+    category_id: str = "",
     kind: Optional[str] = None,
     search: str = "",
 ):
@@ -1983,7 +1996,10 @@ def expenses_page(
         date_to = today.isoformat()
 
     kind_norm = kind if kind in ("business", "personal") else None
-    cat_id = int(category_id) if category_id else None
+    try:
+        cat_id = int(category_id) if category_id else None
+    except (TypeError, ValueError):
+        cat_id = None
 
     items = list_expenses(
         date_from=date_from, date_to=date_to,
@@ -1999,6 +2015,7 @@ def expenses_page(
             "items":         items,
             "categories":    categories,
             "summary":       summary,
+            "missing":       get_missing_monthly_recurring(),
             "date_from":     date_from,
             "date_to":       date_to,
             "category_id":   cat_id,
@@ -2122,6 +2139,112 @@ def expense_categories_archive(category_id: int, archived: str = Form("1")):
     if not ok:
         return RedirectResponse(url=f"/expenses/categories?msg=err:{quote(err, safe='')}", status_code=303)
     return RedirectResponse(url="/expenses/categories?msg=updated", status_code=303)
+
+
+# ─── Phase 3: recurring expense templates ─────────────────────────────────
+
+@app.get("/expenses/recurring", response_class=HTMLResponse)
+def recurring_expenses_page(request: Request):
+    """Manage recurring templates and see which are missing this month."""
+    return _render(
+        request,
+        "expenses_recurring.html",
+        {
+            "items":         list_recurring_expenses(include_inactive=True),
+            "missing":       get_missing_monthly_recurring(),
+            "categories":    list_expense_categories(),
+        },
+    )
+
+
+@app.post("/expenses/recurring/add")
+def recurring_expenses_add(
+    category_id: int = Form(...),
+    amount_usd: float = Form(...),
+    day_of_month: int = Form(1),
+    note: str = Form(""),
+):
+    ok, err = add_recurring_expense(
+        int(category_id), float(amount_usd), int(day_of_month), note.strip(),
+    )
+    if not ok:
+        return RedirectResponse(
+            url=f"/expenses/recurring?msg=err:{quote(err, safe='')}",
+            status_code=303,
+        )
+    return RedirectResponse(url="/expenses/recurring?msg=added", status_code=303)
+
+
+@app.post("/expenses/recurring/edit/{rec_id}")
+def recurring_expenses_edit(
+    rec_id: int,
+    category_id: int = Form(...),
+    amount_usd: float = Form(...),
+    day_of_month: int = Form(1),
+    note: str = Form(""),
+):
+    ok, err = update_recurring_expense(
+        rec_id, int(category_id), float(amount_usd),
+        int(day_of_month), note.strip(),
+    )
+    if not ok:
+        return RedirectResponse(
+            url=f"/expenses/recurring?msg=err:{quote(err, safe='')}",
+            status_code=303,
+        )
+    return RedirectResponse(url="/expenses/recurring?msg=updated", status_code=303)
+
+
+@app.post("/expenses/recurring/toggle/{rec_id}")
+def recurring_expenses_toggle(rec_id: int, active: str = Form("0")):
+    ok, err = set_recurring_expense_active(rec_id, active == "1")
+    if not ok:
+        return RedirectResponse(
+            url=f"/expenses/recurring?msg=err:{quote(err, safe='')}",
+            status_code=303,
+        )
+    return RedirectResponse(url="/expenses/recurring?msg=updated", status_code=303)
+
+
+@app.post("/expenses/recurring/delete/{rec_id}")
+def recurring_expenses_delete(rec_id: int):
+    ok, err = delete_recurring_expense(rec_id)
+    if not ok:
+        return RedirectResponse(
+            url=f"/expenses/recurring?msg=err:{quote(err, safe='')}",
+            status_code=303,
+        )
+    return RedirectResponse(url="/expenses/recurring?msg=deleted", status_code=303)
+
+
+@app.get("/expenses/from-template/{rec_id}", response_class=HTMLResponse)
+def expenses_from_template(request: Request, rec_id: int):
+    """
+    Pre-fill the /expenses/add form with the template's category, amount and
+    note. The user can still edit the amount before saving — rent might have
+    changed, and we intentionally never auto-materialise a template.
+    """
+    tpl = get_recurring_expense(rec_id)
+    if not tpl:
+        return RedirectResponse(url="/expenses?msg=err:template_not_found", status_code=303)
+    from datetime import date as _date
+    return _render(
+        request,
+        "expenses_form.html",
+        {
+            "expense": {
+                "date":         _date.today().isoformat(),
+                "category_id":  tpl["category_id"],
+                "amount_usd":   tpl["amount_usd"],
+                "note":         tpl.get("note", ""),
+            },
+            "today":       _date.today().isoformat(),
+            "categories":  list_expense_categories(include_archived=True),
+            "action_url":  "/expenses/add",   # save creates a new expense
+            "from_template": True,
+            "template_name": tpl.get("category_name", ""),
+        },
+    )
 
 
 @app.get("/inventory", response_class=HTMLResponse)
@@ -2295,6 +2418,7 @@ def reports_finance_page(
 
     profit = get_profit_report(date_from, date_to, warehouse_codes=selected_wh)
     expenses = get_expenses_summary(date_from, date_to)
+    monthly = get_finance_monthly_trend(date_from, date_to, warehouse_codes=selected_wh)
 
     gross_profit = float(profit["totals"]["profit"])
     biz_exp = float(expenses["totals"]["business"])
@@ -2308,6 +2432,7 @@ def reports_finance_page(
         {
             "profit":              profit,
             "expenses":            expenses,
+            "monthly":             monthly,
             "gross_profit":        gross_profit,
             "business_expenses":   biz_exp,
             "personal_expenses":   pers_exp,

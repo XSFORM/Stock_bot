@@ -5,6 +5,9 @@
     <h4 class="mb-0">💸 {{ t.expenses_title | default('Расходы') }}</h4>
     <div>
       <a href="/expenses/add" class="btn btn-sm btn-primary">＋ {{ t.expenses_add | default('Добавить расход') }}</a>
+      <a href="/expenses/recurring" class="btn btn-sm btn-outline-warning">⏰ {{ t.expenses_recurring_link | default('Регулярные') }}
+        {% if missing %}<span class="badge bg-danger ms-1">{{ missing|length }}</span>{% endif %}
+      </a>
       <a href="/expenses/categories" class="btn btn-sm btn-outline-secondary">🏷️ {{ t.expenses_categories_link | default('Категории') }}</a>
       <a href="/reports/finance" class="btn btn-sm btn-outline-success">📈 {{ t.expenses_finance_link | default('Финотчёт') }}</a>
     </div>
@@ -20,6 +23,26 @@
   {% if _msg == 'deleted' %}<div class="alert alert-success py-2 small">🗑️ {{ t.expenses_deleted | default('Удалено.') }}</div>{% endif %}
   {% if _msg == 'not_found' %}<div class="alert alert-warning py-2 small">{{ t.expenses_not_found | default('Запись не найдена.') }}</div>{% endif %}
   {% if _msg.startswith('del_err:') %}<div class="alert alert-danger py-2 small">{{ _msg[8:] | e }}</div>{% endif %}
+
+  {# ─── Missing recurring this month (Phase 3) ─── #}
+  {% if missing %}
+    <div class="alert alert-warning py-2 mb-3">
+      <div class="d-flex align-items-center justify-content-between mb-1">
+        <strong>⏰ {{ t.recurring_missing_short | default('Регулярные за этот месяц не внесены:') }}</strong>
+        <a href="/expenses/recurring" class="btn btn-sm btn-outline-secondary py-0">{{ t.recurring_manage | default('Управлять') }}</a>
+      </div>
+      <div class="small">
+        {% for m in missing %}
+          <a href="/expenses/from-template/{{ m.id }}" class="badge bg-primary text-decoration-none me-1 mb-1"
+             style="font-size:0.9em; padding:6px 10px">
+             {% if m.category_kind == 'personal' %}🛒{% else %}📦{% endif %}
+             {{ m.category_name }} — {{ '%.2f'|format(m.amount_usd) }} $
+             <span class="ms-1">＋</span>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
 
   {# ─── Filters ─── #}
   <form method="get" action="/expenses" class="row g-2 align-items-end mb-3">
