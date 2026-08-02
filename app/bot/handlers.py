@@ -840,9 +840,12 @@ async def cb_expense_category(callback: CallbackQuery, state: FSMContext) -> Non
     await state.set_state(ExpenseFlow.waiting_amount)
     await state.update_data(cat_id=cat_id)
     kind_badge = "🛒" if cat.get("kind") == "personal" else "📦"
+    # Ввод считается манатами по умолчанию — валюту всегда можно
+    # переключить на USD одним тапом на экране подтверждения.
     await callback.message.answer(
         f"{kind_badge} <b>{_esc(cat['name'])}</b>\n\n"
-        f"💰 Введи сумму в USD (например 12.50):",
+        f"💰 Введи сумму (например 1080):\n"
+        f"<i>По умолчанию TMT (манаты). Переключить на USD можно на следующем экране.</i>",
         reply_markup=cancel_kb(),
     )
     await callback.answer()
