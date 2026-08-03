@@ -104,7 +104,13 @@
                   <div class="text-success">+{{ "%.2f"|format(it.amount_usd) }} $</div>
                 {% endif %}
               </td>
-              <td>{{ it.note or '' }}</td>
+              <td>
+                {%- set _n = it.note or '' -%}
+                {%- set _has_bot = _n.endswith('Telegram-бот') -%}
+                {%- set _clean = _n | replace(' · Telegram-бот', '') | replace('Telegram-бот', '') | trim -%}
+                {%- if _clean %}{{ _clean }}{% endif -%}
+                {%- if _has_bot %} <span class="badge rounded-pill bg-info bg-opacity-25 text-info-emphasis border border-info-subtle ms-1" title="Добавлено через Telegram-бот">🤖 Telegram</span>{%- endif -%}
+              </td>
               <td class="text-end">
                 <a href="/incomes/edit/{{ it.id }}" class="btn btn-sm btn-outline-primary">{{ t.btn_edit | default('Редактировать') }}</a>
                 <form method="post" action="/incomes/delete/{{ it.id }}" class="d-inline inc-del-form"

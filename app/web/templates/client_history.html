@@ -137,7 +137,13 @@
             <span class="text-muted">0.00 USD</span>
           {% endif %}
         </td>
-        <td class="col-note">{{ ev.get('note') or '—' }}</td>
+        <td class="col-note">
+          {%- set _n = ev.get('note') or '' -%}
+          {%- set _has_bot = _n.endswith('Telegram-бот') -%}
+          {%- set _clean = _n | replace(' · Telegram-бот', '') | replace('Telegram-бот', '') | trim -%}
+          {%- if _clean %}{{ _clean }}{% elif not _has_bot %}—{% endif -%}
+          {%- if _has_bot %} <span class="badge rounded-pill bg-info bg-opacity-25 text-info-emphasis border border-info-subtle ms-1" title="Добавлено через Telegram-бот">🤖 Telegram</span>{%- endif -%}
+        </td>
         <td>
           {% if ev.get('kind') == 'INVOICE' and ev.get('view_url') and ev.get('download_url') %}
             <a class="btn btn-sm btn-outline-primary" href="{{ ev.get('view_url') }}" target="_blank">{{ t.btn_view }}</a>
