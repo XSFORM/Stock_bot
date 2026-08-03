@@ -124,6 +124,7 @@
             <th>{{ t.expenses_kind | default('Тип') }}</th>
             <th class="text-end">{{ t.expenses_amount | default('Сумма') }}</th>
             <th>{{ t.expenses_note | default('Заметка') }}</th>
+            <th>{{ t.expenses_source | default('Источник') }}</th>
             <th class="text-end">{{ t.lbl_actions | default('Действия') }}</th>
           </tr>
         </thead>
@@ -149,12 +150,14 @@
                   <div class="text-danger">-{{ "%.2f"|format(it.amount_usd) }} $</div>
                 {% endif %}
               </td>
+              {%- set _n = it.note or '' -%}
+              {%- set _has_bot = _n.endswith('Telegram-бот') -%}
+              {%- set _clean = _n | replace(' · Telegram-бот', '') | replace('Telegram-бот', '') | trim -%}
+              <td>{% if _clean %}{{ _clean }}{% endif %}</td>
               <td>
-                {%- set _n = it.note or '' -%}
-                {%- set _has_bot = _n.endswith('Telegram-бот') -%}
-                {%- set _clean = _n | replace(' · Telegram-бот', '') | replace('Telegram-бот', '') | trim -%}
-                {%- if _clean %}{{ _clean }}{% endif -%}
-                {%- if _has_bot %} <span class="badge rounded-pill bg-info bg-opacity-25 text-info-emphasis border border-info-subtle ms-1" title="Добавлено через Telegram-бот">🤖 Telegram</span>{%- endif -%}
+                {%- if _has_bot -%}
+                  <span class="badge rounded-pill bg-info bg-opacity-25 text-info-emphasis border border-info-subtle" title="Добавлено через Telegram-бот">🤖 Telegram</span>
+                {%- endif -%}
               </td>
               <td class="text-end">
                 <a href="/expenses/edit/{{ it.id }}" class="btn btn-sm btn-outline-primary">{{ t.btn_edit | default('Редактировать') }}</a>
