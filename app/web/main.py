@@ -77,6 +77,17 @@ from app.db.sqlite import (
     get_finance_monthly_trend,
     # Phase 6: TMT support
     get_expense_tmt_rate,
+    # Phase 7: service incomes
+    list_income_categories,
+    add_income_category,
+    update_income_category,
+    set_income_category_archived,
+    list_incomes,
+    get_income,
+    add_income,
+    update_income,
+    delete_income,
+    get_incomes_summary,
     get_client_history,
     # suppliers
     list_suppliers,
@@ -2154,6 +2165,166 @@ def expense_categories_archive(category_id: int, archived: str = Form("1")):
     return RedirectResponse(url="/expenses/categories?msg=updated", status_code=303)
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# Phase 7 (bot idea): service incomes — mirror of the /expenses module.
+# Same URL/route/template patterns so future edits stay symmetric.
+# ══════════════════════════════════════════════════════════════════════════
+
+@app.get("/incomes", response_class=HTMLResponse)
+def incomes_page(
+    request: Request,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    category_id: str = "",
+    search: str = "",
+):
+    from datetime import date as _date
+    today = _date.today()
+    if not date_from:
+        date_from = today.replace(day=1).isoformat()
+    if not date_to:
+        date_to = today.isoformat()
+
+    try:
+        cat_id = int(category_id) if category_id else None
+    except (TypeError, ValueError):
+        cat_id = None
+
+    items      = list_incomes(date_from=date_from, date_to=date_to,
+                              category_id=cat_id, search=search.strip())
+    categories = list_income_categories()
+    summary    = get_incomes_summary(date_from, date_to)
+
+    return _render(
+        request,
+        "incomes.html",
+        {
+            "items":       items,
+            "categories":  categories,
+            "summary":     summary,
+            "date_from":   date_from,
+            "date_to":     date_to,
+            "category_id": cat_id,
+            "search":      search,
+        },
+    )
+
+
+@app.get("/incomes/add", response_class=HTMLResponse)
+def incomes_add_form(request: Request):
+    from datetime import date as _date
+    rate, is_fallback = get_expense_tmt_rate()
+    return _render(
+        request,
+        "incomes_form.html",
+        {
+            "income":            None,
+            "today":             _date.today().isoformat(),
+            "categories":        list_income_categories(),
+            "action_url":        "/incomes/add",
+            "tmt_rate":          rate,
+            "rate_is_fallback":  is_fallback,
+        },
+    )
+
+
+@app.post("/incomes/add")
+def incomes_add_submit(
+    date: str = Form(...),
+    category_id: int = Form(...),
+    amount_original: float = Form(...),
+    currency: str = Form("TMT"),
+    note: str = Form(""),
+):
+    ok, err = add_income(
+        date.strip(), int(category_id),
+        note=note.strip(),
+        currency=currency, amount_original=float(amount_original),
+    )
+    if not ok:
+        return RedirectResponse(url=f"/incomes/add?msg=err:{quote(err, safe='')}", status_code=303)
+    return RedirectResponse(url="/incomes?msg=added", status_code=303)
+
+
+@app.get("/incomes/edit/{income_id}", response_class=HTMLResponse)
+def incomes_edit_form(request: Request, income_id: int):
+    inc = get_income(income_id)
+    if not inc:
+        return RedirectResponse(url="/incomes?msg=not_found", status_code=303)
+    rate, is_fallback = get_expense_tmt_rate()
+    return _render(
+        request,
+        "incomes_form.html",
+        {
+            "income":            inc,
+            "categories":        list_income_categories(include_archived=True),
+            "action_url":        f"/incomes/edit/{income_id}",
+            "tmt_rate":          rate,
+            "rate_is_fallback":  is_fallback,
+        },
+    )
+
+
+@app.post("/incomes/edit/{income_id}")
+def incomes_edit_submit(
+    income_id: int,
+    date: str = Form(...),
+    category_id: int = Form(...),
+    amount_original: float = Form(...),
+    currency: str = Form("TMT"),
+    note: str = Form(""),
+):
+    ok, err = update_income(
+        income_id, date.strip(), int(category_id),
+        note=note.strip(),
+        currency=currency, amount_original=float(amount_original),
+    )
+    if not ok:
+        return RedirectResponse(url=f"/incomes/edit/{income_id}?msg=err:{quote(err, safe='')}", status_code=303)
+    return RedirectResponse(url="/incomes?msg=updated", status_code=303)
+
+
+@app.post("/incomes/delete/{income_id}")
+def incomes_delete_submit(income_id: int):
+    ok, err = delete_income(income_id)
+    if not ok:
+        return RedirectResponse(url=f"/incomes?msg=del_err:{quote(err, safe='')}", status_code=303)
+    return RedirectResponse(url="/incomes?msg=deleted", status_code=303)
+
+
+@app.get("/incomes/categories", response_class=HTMLResponse)
+def income_categories_page(request: Request):
+    return _render(
+        request,
+        "income_categories.html",
+        {"categories": list_income_categories(include_archived=True)},
+    )
+
+
+@app.post("/incomes/categories/add")
+def income_categories_add(name: str = Form(...)):
+    ok, err = add_income_category(name.strip())
+    if not ok:
+        return RedirectResponse(url=f"/incomes/categories?msg=err:{quote(err, safe='')}", status_code=303)
+    return RedirectResponse(url="/incomes/categories?msg=added", status_code=303)
+
+
+@app.post("/incomes/categories/edit/{category_id}")
+def income_categories_edit(category_id: int, name: str = Form(...)):
+    ok, err = update_income_category(category_id, name.strip())
+    if not ok:
+        return RedirectResponse(url=f"/incomes/categories?msg=err:{quote(err, safe='')}", status_code=303)
+    return RedirectResponse(url="/incomes/categories?msg=updated", status_code=303)
+
+
+@app.post("/incomes/categories/archive/{category_id}")
+def income_categories_archive(category_id: int, archived: str = Form("1")):
+    ok, err = set_income_category_archived(category_id, archived == "1")
+    if not ok:
+        return RedirectResponse(url=f"/incomes/categories?msg=err:{quote(err, safe='')}", status_code=303)
+    return RedirectResponse(url="/incomes/categories?msg=updated", status_code=303)
+
+
 # ─── Phase 3: recurring expense templates ─────────────────────────────────
 
 @app.get("/expenses/recurring", response_class=HTMLResponse)
@@ -2439,13 +2610,16 @@ def reports_finance_page(
 
     profit = get_profit_report(date_from, date_to, warehouse_codes=selected_wh)
     expenses = get_expenses_summary(date_from, date_to)
-    monthly = get_finance_monthly_trend(date_from, date_to, warehouse_codes=selected_wh)
+    incomes  = get_incomes_summary(date_from, date_to)
+    monthly  = get_finance_monthly_trend(date_from, date_to, warehouse_codes=selected_wh)
 
-    gross_profit = float(profit["totals"]["profit"])
-    biz_exp = float(expenses["totals"]["business"])
-    pers_exp = float(expenses["totals"]["personal"])
-    business_net = round(gross_profit - biz_exp, 2)
-    wallet_net = round(business_net - pers_exp, 2)
+    gross_profit   = float(profit["totals"]["profit"])
+    service_income = float(incomes["totals"]["all"])
+    total_income   = round(gross_profit + service_income, 2)
+    biz_exp        = float(expenses["totals"]["business"])
+    pers_exp       = float(expenses["totals"]["personal"])
+    business_net   = round(total_income - biz_exp, 2)
+    wallet_net     = round(business_net - pers_exp, 2)
 
     return _render(
         request,
@@ -2453,8 +2627,11 @@ def reports_finance_page(
         {
             "profit":              profit,
             "expenses":            expenses,
+            "incomes":             incomes,
             "monthly":             monthly,
             "gross_profit":        gross_profit,
+            "service_income":      service_income,
+            "total_income":        total_income,
             "business_expenses":   biz_exp,
             "personal_expenses":   pers_exp,
             "business_net":        business_net,

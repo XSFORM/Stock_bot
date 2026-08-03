@@ -53,25 +53,32 @@ from app.bot.keyboards import (
     expense_confirm_kb,
     expense_note_kb,
     fmt_balance,
+    income_after_kb,
+    income_categories_kb,
+    income_confirm_kb,
+    income_note_kb,
     main_menu_kb,
     search_results_kb,
 )
-from app.bot.states import ClientSearch, ExpenseFlow, Payment
+from app.bot.states import ClientSearch, ExpenseFlow, IncomeFlow, Payment
 from app.config import settings
 from app.db.sqlite import (
     add_client_adjustment,
     add_client_debt,
     add_expense,
+    add_income,
     find_clients_by_name,
     get_client,
     get_client_balance,
     get_client_history,
     get_expense_tmt_rate,
     get_expenses_summary,
+    get_incomes_summary,
     get_recent_active_clients,
     get_top_debtors,
     get_total_clients_debt,
     list_expense_categories,
+    list_income_categories,
 )
 
 logger = logging.getLogger(__name__)
@@ -250,6 +257,9 @@ async def cmd_help(message: Message) -> None:
         "<b>Расходы</b>\n"
         "/expense — внести расход (бензин, грузчик, аренда…)\n"
         "/expenses_today — сколько потратил сегодня\n\n"
+        "<b>Доходы от услуг</b>\n"
+        "/income — внести доход от услуги (ремонт, установка ПО…)\n"
+        "/income_today — сколько заработал на услугах сегодня\n\n"
         "/cancel — отменить текущий шаг\n\n"
         "Товары, приходы, склад и продажи — только в вэб-версии."
     )
@@ -1158,6 +1168,406 @@ async def cmd_expenses_today(message: Message) -> None:
     lines.append(f"💰 Всего: <b>{totals['all']:.2f} $</b>")
     if totals.get("tmt_original", 0) > 0:
         lines.append(f"   <i>из них в манатах: {totals['tmt_original']:.2f} TMT</i>")
+
+    await message.answer("\n".join(lines))
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Phase 7 (bot idea) — /income wizard (service income, mirror of /expense)
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# Service jobs (ремонт PC, PlayStation, установка антивируса) happen on-site.
+# The owner needs a one-tap way to capture the payment so it lands in
+# get_incomes_summary and, downstream, in the finance report's separate
+# «Доход от услуг» line — WITHOUT touching the trading margin, ever.
+#
+# Callback prefixes (see keyboards.py):
+#   im                                 open category picker
+#   ic:<id>                            category chosen → ask amount
+#   in:<id>:<amt>                      skip note → confirm screen
+#   id:<t|y>:<id>:<amt>                toggle date on confirm screen
+#   it:<id>:<amt>:<date>:<cur>         toggle currency TMT↔USD
+#   ia:<id>:<amt>:<date>:<cur>:<rate>  final apply (idempotency-protected)
+
+
+def _get_income_category(cat_id: int) -> dict | None:
+    for c in list_income_categories(include_archived=True):
+        if int(c["id"]) == int(cat_id):
+            return c
+    return None
+
+
+def _income_confirm_text(
+    cat: dict, amount: float, date_iso: str, note: str,
+    currency: str, rate: float, rate_is_fallback: bool = False,
+) -> str:
+    """Same shape as _expense_confirm_text, but with 💵 badge and no kind split."""
+    if currency == "TMT" and rate > 0:
+        usd = amount / rate
+        amount_line = (
+            f"Сумма: <b>{amount:.2f} TMT</b> ≈ <b>{usd:.2f} $</b>"
+            f"  <i>(курс {rate:.2f})</i>"
+        )
+    else:
+        amount_line = f"Сумма: <b>{amount:.2f} $</b>"
+    parts = [
+        f"💵 <b>Проверь доход:</b>",
+        f"",
+        f"Услуга: <b>{_esc(cat['name'])}</b>",
+        amount_line,
+        f"Дата: <b>{_esc(_fmt_date_ru(date_iso))}</b>",
+    ]
+    if note:
+        parts.append(f"Заметка: <i>{_esc(note)}</i>")
+    if currency == "TMT" and rate_is_fallback:
+        parts.append("")
+        parts.append(f"⚠️ Курс не настроен, используется запасной {rate:.2f}.")
+    parts.append("")
+    parts.append("<i>Доход от услуг не смешивается с торговой выручкой.</i>")
+    return "\n".join(parts)
+
+
+# ─── Entry points ────────────────────────────────────────────────────────────
+
+@router.message(Command("income"))
+async def cmd_income(message: Message, state: FSMContext) -> None:
+    if not await _guard(message):
+        return
+    await state.clear()
+    cats = list_income_categories()
+    if not cats:
+        await message.answer("Категории доходов не настроены. Открой /help.")
+        return
+    await message.answer("Выбери услугу:", reply_markup=income_categories_kb(cats))
+
+
+@router.callback_query(F.data == "im")
+async def cb_income_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    """Same as /income but from a button (main menu and after add)."""
+    if not await _guard(callback):
+        return
+    await state.clear()
+    cats = list_income_categories()
+    if not cats:
+        await callback.answer("Категории доходов не настроены.", show_alert=True)
+        return
+    await _safe_edit(callback, "Выбери услугу:", reply_markup=income_categories_kb(cats))
+    await callback.answer()
+
+
+# ─── Step 1: category chosen → ask amount ────────────────────────────────────
+
+@router.callback_query(F.data.startswith("ic:"))
+async def cb_income_category(callback: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(callback):
+        return
+    try:
+        cat_id = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    cat = _get_income_category(cat_id)
+    if not cat:
+        await callback.answer("Категория не найдена.", show_alert=True)
+        return
+    await state.set_state(IncomeFlow.waiting_amount)
+    await state.update_data(cat_id=cat_id)
+    await callback.message.answer(
+        f"🛠️ <b>{_esc(cat['name'])}</b>\n\n"
+        f"💰 Введи сумму (например 250):\n"
+        f"<i>По умолчанию TMT (манаты). Переключить на USD можно на следующем экране.</i>",
+        reply_markup=cancel_kb(),
+    )
+    await callback.answer()
+
+
+# ─── Step 2: amount typed → ask note (with Пропустить) ──────────────────────
+
+@router.message(IncomeFlow.waiting_amount)
+async def on_income_amount(message: Message, state: FSMContext) -> None:
+    if not await _guard(message):
+        return
+    raw = (message.text or "").strip().replace(",", ".")
+    try:
+        amount = float(raw)
+    except ValueError:
+        await message.answer("Не понял сумму. Введи число, например 250",
+                             reply_markup=cancel_kb())
+        return
+    if amount <= 0:
+        await message.answer("Сумма должна быть больше 0.", reply_markup=cancel_kb())
+        return
+
+    data = await state.get_data()
+    cat_id = int(data.get("cat_id", 0))
+    cat = _get_income_category(cat_id)
+    if not cat:
+        await state.clear()
+        await message.answer("Категория не найдена. Начни заново: /income")
+        return
+
+    await state.set_state(IncomeFlow.waiting_note)
+    await state.update_data(amount=amount)
+    await message.answer(
+        f"📝 Заметка (например «Kaspersky Иван», «PS4 замена привода»)\n\n"
+        f"Или нажми «Пропустить» — заметка необязательна.",
+        reply_markup=income_note_kb(cat_id, amount),
+    )
+
+
+# ─── Step 3a: user typed a note → confirm screen ────────────────────────────
+
+@router.message(IncomeFlow.waiting_note)
+async def on_income_note(message: Message, state: FSMContext) -> None:
+    if not await _guard(message):
+        return
+    note = (message.text or "").strip()
+    if len(note) > 200:
+        note = note[:200]
+
+    data = await state.get_data()
+    cat_id = int(data.get("cat_id", 0))
+    amount = float(data.get("amount", 0))
+    cat = _get_income_category(cat_id)
+    if not cat:
+        await state.clear()
+        await message.answer("Категория не найдена. Начни заново: /income")
+        return
+
+    from datetime import date as _date
+    date_iso = _date.today().isoformat()
+    rate, is_fallback = get_expense_tmt_rate()
+    await state.update_data(note=note, date=date_iso, currency="TMT")
+
+    await message.answer(
+        _income_confirm_text(cat, amount, date_iso, note, "TMT", rate, is_fallback),
+        reply_markup=income_confirm_kb(cat_id, amount, date_iso,
+                                       is_today=True, currency="TMT", rate=rate),
+    )
+
+
+# ─── Step 3b: skip note → confirm screen ────────────────────────────────────
+
+@router.callback_query(F.data.startswith("in:"))
+async def cb_income_skip_note(callback: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(callback):
+        return
+    try:
+        _, cid, amt = callback.data.split(":")
+        cat_id = int(cid)
+        amount = float(amt)
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    cat = _get_income_category(cat_id)
+    if not cat:
+        await callback.answer("Категория не найдена.", show_alert=True)
+        return
+
+    from datetime import date as _date
+    date_iso = _date.today().isoformat()
+    rate, is_fallback = get_expense_tmt_rate()
+    await state.update_data(cat_id=cat_id, amount=amount, note="",
+                            date=date_iso, currency="TMT")
+
+    await _safe_edit(
+        callback,
+        _income_confirm_text(cat, amount, date_iso, "", "TMT", rate, is_fallback),
+        reply_markup=income_confirm_kb(cat_id, amount, date_iso,
+                                       is_today=True, currency="TMT", rate=rate),
+    )
+    await callback.answer()
+
+
+# ─── Step 3.5: toggle date on confirm screen ────────────────────────────────
+
+@router.callback_query(F.data.startswith("id:"))
+async def cb_income_toggle_date(callback: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(callback):
+        return
+    try:
+        _, mode, cid, amt = callback.data.split(":")
+        cat_id = int(cid)
+        amount = float(amt)
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    cat = _get_income_category(cat_id)
+    if not cat:
+        await callback.answer("Категория не найдена.", show_alert=True)
+        return
+
+    from datetime import date as _date, timedelta as _td
+    is_today = mode == "t"
+    d = _date.today() if is_today else _date.today() - _td(days=1)
+    date_iso = d.isoformat()
+
+    data = await state.get_data()
+    note = str(data.get("note") or "")
+    currency = str(data.get("currency") or "TMT")
+    rate, is_fallback = get_expense_tmt_rate()
+    await state.update_data(date=date_iso)
+
+    await _safe_edit(
+        callback,
+        _income_confirm_text(cat, amount, date_iso, note, currency, rate, is_fallback),
+        reply_markup=income_confirm_kb(cat_id, amount, date_iso,
+                                       is_today=is_today, currency=currency, rate=rate),
+    )
+    await callback.answer("Дата обновлена")
+
+
+# ─── Step 3.6: toggle currency TMT ↔ USD ────────────────────────────────────
+
+@router.callback_query(F.data.startswith("it:"))
+async def cb_income_toggle_currency(callback: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(callback):
+        return
+    try:
+        _, cid, amt, date_iso, cur = callback.data.split(":")
+        cat_id = int(cid)
+        amount = float(amt)
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+    cat = _get_income_category(cat_id)
+    if not cat:
+        await callback.answer("Категория не найдена.", show_alert=True)
+        return
+
+    new_currency = "USD" if cur == "TMT" else "TMT"
+    rate, is_fallback = get_expense_tmt_rate()
+
+    data = await state.get_data()
+    note = str(data.get("note") or "")
+    await state.update_data(currency=new_currency)
+
+    from datetime import date as _date
+    is_today = date_iso == _date.today().isoformat()
+
+    await _safe_edit(
+        callback,
+        _income_confirm_text(cat, amount, date_iso, note, new_currency, rate, is_fallback),
+        reply_markup=income_confirm_kb(cat_id, amount, date_iso,
+                                       is_today=is_today, currency=new_currency, rate=rate),
+    )
+    await callback.answer(f"→ {new_currency}")
+
+
+# ─── Step 4: apply — same idempotency guard as /expense ─────────────────────
+
+@router.callback_query(F.data.startswith("ia:"))
+async def cb_income_apply(callback: CallbackQuery, state: FSMContext) -> None:
+    """
+    Final apply. Same protection as cb_expense_apply — LRU-set + strip
+    keyboard before the DB write, and honour the rate the user saw on
+    screen even if the setting drifted mid-flow.
+    """
+    if not await _guard(callback):
+        return
+    try:
+        _, cid, amt, date_iso, cur, rate_str = callback.data.split(":")
+        cat_id = int(cid)
+        amount = float(amt)
+        rate = float(rate_str)
+    except (ValueError, IndexError):
+        await callback.answer("Неверные данные.", show_alert=True)
+        return
+
+    if _mark_processed(_callback_key(callback)):
+        await callback.answer("Уже обработано", show_alert=True)
+        return
+    await _lock_confirmation(callback)
+
+    data = await state.get_data()
+    user_note = str(data.get("note") or "").strip()
+    await state.clear()
+
+    note = f"{user_note} · Telegram-бот" if user_note else "Telegram-бот"
+
+    from app.db.sqlite import get_expense_tmt_rate as _cur_rate
+    live_rate, _ = _cur_rate()
+    if cur == "TMT" and abs(live_rate - rate) > 0.001:
+        logger.warning("income TMT rate drifted %.4f → %.4f mid-flow; using screen value",
+                       rate, live_rate)
+        from app.db.sqlite import set_setting, get_setting
+        saved = get_setting("pocket_price_tmt_rate", "")
+        set_setting("pocket_price_tmt_rate", f"{rate}")
+        try:
+            ok, err = add_income(date_iso, cat_id, note=note,
+                                 currency="TMT", amount_original=amount)
+        finally:
+            set_setting("pocket_price_tmt_rate", saved)
+    else:
+        ok, err = add_income(date_iso, cat_id, note=note,
+                             currency=cur, amount_original=amount)
+    if not ok:
+        logger.error("bot income add failed: cat=%s amt=%s date=%s err=%s",
+                     cat_id, amount, date_iso, err)
+        await callback.answer(f"Ошибка: {err}", show_alert=True)
+        return
+
+    cat = _get_income_category(cat_id)
+    if cur == "TMT" and rate > 0:
+        usd = amount / rate
+        amount_line = f"Сумма: <b>{amount:.2f} TMT</b> ≈ <b>{usd:.2f} $</b>  <i>(курс {rate:.2f})</i>"
+    else:
+        amount_line = f"Сумма: <b>{amount:.2f} $</b>"
+    text = (
+        f"✅ Доход добавлен.\n\n"
+        f"<b>{_esc(cat['name']) if cat else ''}</b>\n"
+        f"{amount_line}\n"
+        f"Дата: {_esc(_fmt_date_ru(date_iso))}\n"
+    )
+    if user_note:
+        text += f"Заметка: <i>{_esc(user_note)}</i>\n"
+
+    from datetime import date as _date
+    today_iso = _date.today().isoformat()
+    summary = get_incomes_summary(today_iso, today_iso)
+    text += f"\n💵 Доход от услуг за сегодня: <b>+{summary['totals']['all']:.2f} $</b>"
+    if summary['totals'].get('tmt_original', 0) > 0:
+        text += f"  <i>(из них {summary['totals']['tmt_original']:.2f} TMT)</i>"
+    text += "\n<i>Не влияет на торговую маржу.</i>"
+
+    await _safe_edit(callback, text, reply_markup=income_after_kb())
+    await callback.answer("Готово!")
+
+
+# ─── /income_today — quick self-check summary ───────────────────────────────
+
+@router.message(Command("income_today"))
+async def cmd_income_today(message: Message) -> None:
+    if not await _guard(message):
+        return
+    from datetime import date as _date
+    today_iso = _date.today().isoformat()
+    summary = get_incomes_summary(today_iso, today_iso)
+    totals = summary["totals"]
+    by_cat = summary["by_category"]
+
+    if not by_cat:
+        await message.answer(
+            f"💵 Доходов от услуг за сегодня ({_esc(_fmt_date_ru(today_iso))}) нет."
+        )
+        return
+
+    from app.db.sqlite import list_incomes
+    rows = list_incomes(date_from=today_iso, date_to=today_iso)
+
+    lines = [f"💵 <b>Доход от услуг за сегодня ({_esc(_fmt_date_ru(today_iso))})</b>", ""]
+    for r in rows:
+        if r["currency"] == "TMT" and r.get("amount_original"):
+            amt = f"+{float(r['amount_original']):.2f} TMT (≈ +{float(r['amount_usd']):.2f} $)"
+        else:
+            amt = f"+{float(r['amount_usd']):.2f} $"
+        lines.append(f"🛠️ {_esc(r['category_name'])} — <b>{amt}</b>")
+    lines.append("")
+    lines.append(f"💵 Всего: <b>+{totals['all']:.2f} $</b>")
+    if totals.get("tmt_original", 0) > 0:
+        lines.append(f"   <i>из них в манатах: {totals['tmt_original']:.2f} TMT</i>")
+    lines.append("")
+    lines.append("<i>Не смешивается с выручкой от товаров.</i>")
 
     await message.answer("\n".join(lines))
 

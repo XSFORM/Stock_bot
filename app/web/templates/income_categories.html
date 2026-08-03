@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h4 class="mb-0">🏷️ {{ t.income_categories_title | default('Категории доходов от услуг') }}</h4>
+    <a href="/incomes" class="btn btn-sm btn-outline-secondary">← {{ t.btn_back | default('Назад') }}</a>
+  </div>
+
+  {% set _msg = request.query_params.get('msg', '') %}
+  {% if _msg == 'added' %}<div class="alert alert-success py-2 small">✅ {{ t.income_cat_added | default('Категория добавлена.') }}</div>{% endif %}
+  {% if _msg == 'updated' %}<div class="alert alert-success py-2 small">✅ {{ t.income_cat_updated | default('Изменено.') }}</div>{% endif %}
+  {% if _msg.startswith('err:') %}<div class="alert alert-danger py-2 small">{{ _msg[4:] | e }}</div>{% endif %}
+
+  <form method="post" action="/incomes/categories/add" class="row g-2 mb-4">
+    <div class="col-auto flex-grow-1">
+      <input type="text" name="name" class="form-control form-control-sm"
+             placeholder="{{ t.income_cat_new_placeholder | default('Название новой категории (например: Настройка роутера)') }}"
+             required maxlength="100">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sm btn-success">＋ {{ t.btn_add | default('Добавить') }}</button>
+    </div>
+  </form>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>{{ t.income_cat_name | default('Название') }}</th>
+          <th>{{ t.income_cat_status | default('Статус') }}</th>
+          <th class="text-end">{{ t.lbl_actions | default('Действия') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in categories %}
+        <tr class="{% if c.archived %}text-muted{% endif %}">
+          <td>{{ c.id }}</td>
+          <td>
+            <form method="post" action="/incomes/categories/edit/{{ c.id }}" class="d-flex gap-2">
+              <input type="text" name="name" value="{{ c.name }}" class="form-control form-control-sm" maxlength="100" required>
+              <button type="submit" class="btn btn-sm btn-outline-primary">💾</button>
+            </form>
+          </td>
+          <td>
+            {% if c.archived %}
+              <span class="badge bg-secondary">{{ t.expenses_archived | default('Архив') }}</span>
+            {% else %}
+              <span class="badge bg-success">{{ t.expenses_active | default('Активна') }}</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <form method="post" action="/incomes/categories/archive/{{ c.id }}" class="d-inline">
+              <input type="hidden" name="archived" value="{% if c.archived %}0{% else %}1{% endif %}">
+              <button type="submit" class="btn btn-sm btn-outline-warning">
+                {% if c.archived %}↩ {{ t.btn_unarchive | default('Восстановить') }}{% else %}📦 {{ t.btn_archive | default('В архив') }}{% endif %}
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="text-muted small mt-3">
+    {{ t.income_cat_hint | default('Категорию нельзя удалить, если по ней уже есть доходы — переведите её в архив, тогда она не будет мешать в списках, но исторические записи сохранятся.') }}
+  </p>
+</div>
+{% endblock %}

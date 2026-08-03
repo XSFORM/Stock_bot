@@ -31,3 +31,14 @@ class ExpenseFlow(StatesGroup):
     """
     waiting_amount = State()
     waiting_note = State()
+
+
+class IncomeFlow(StatesGroup):
+    """
+    /income wizard — service income (не связан с торговлей).
+    Same shape as ExpenseFlow: category → amount → note → confirm.
+    Income categories have no business/personal split, all are
+    treated as business earnings of a service (ремонт, установка ПО и т.п.).
+    """
+    waiting_amount = State()
+    waiting_note = State()

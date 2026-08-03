@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h4 class="mb-0">💵 {{ t.incomes_title | default('Доходы от услуг') }}</h4>
+    <div>
+      <a href="/incomes/add" class="btn btn-sm btn-primary">＋ {{ t.incomes_add | default('Добавить доход') }}</a>
+      <a href="/incomes/categories" class="btn btn-sm btn-outline-secondary">🏷️ {{ t.incomes_categories_link | default('Категории') }}</a>
+      <a href="/reports/finance" class="btn btn-sm btn-outline-success">📈 {{ t.expenses_finance_link | default('Финотчёт') }}</a>
+    </div>
+  </div>
+  <p class="text-muted small mb-3">
+    {{ t.incomes_subtitle | default('Доходы от услуг вне торговли: ремонт ПК, PlayStation, установка ПО и т.п. Не смешиваются с выручкой от товаров, чтобы не портить торговую маржу — попадают в финотчёт отдельной строкой.') }}
+  </p>
+
+  {% set _msg = request.query_params.get('msg', '') %}
+  {% if _msg == 'added' %}<div class="alert alert-success py-2 small">✅ {{ t.incomes_added | default('Доход добавлен.') }}</div>{% endif %}
+  {% if _msg == 'updated' %}<div class="alert alert-success py-2 small">✅ {{ t.incomes_updated | default('Изменено.') }}</div>{% endif %}
+  {% if _msg == 'deleted' %}<div class="alert alert-success py-2 small">🗑️ {{ t.incomes_deleted | default('Удалено.') }}</div>{% endif %}
+  {% if _msg == 'not_found' %}<div class="alert alert-warning py-2 small">{{ t.incomes_not_found | default('Запись не найдена.') }}</div>{% endif %}
+  {% if _msg.startswith('del_err:') %}<div class="alert alert-danger py-2 small">{{ _msg[8:] | e }}</div>{% endif %}
+
+  <form method="get" action="/incomes" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.reports_from | default('С') }}</label>
+      <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.reports_to | default('По') }}</label>
+      <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.income_category | default('Категория') }}</label>
+      <select name="category_id" class="form-select form-select-sm">
+        <option value="">{{ t.expenses_all_categories | default('Все') }}</option>
+        {% for c in categories %}
+          <option value="{{ c.id }}"{% if category_id == c.id %} selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto flex-grow-1">
+      <label class="form-label form-label-sm mb-1">{{ t.expenses_search | default('Поиск') }}</label>
+      <input type="text" name="search" value="{{ search }}" class="form-control form-control-sm"
+             placeholder="{{ t.expenses_search_placeholder | default('заметка или категория…') }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sm btn-primary">{{ t.btn_apply | default('Применить') }}</button>
+      <a href="/incomes" class="btn btn-sm btn-outline-secondary">{{ t.btn_reset | default('Сброс') }}</a>
+    </div>
+  </form>
+
+  <div class="row g-2 mb-3">
+    <div class="col-sm-6">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted small">💵 {{ t.incomes_kpi_total | default('Всего за период') }}</div>
+        <div class="fs-5 fw-bold text-success">+{{ "%.2f"|format(summary.totals.all) }} $</div>
+        {% if summary.totals.tmt_original and summary.totals.tmt_original > 0 %}
+          <div class="small text-muted mt-1">
+            {{ t.expenses_of_which_tmt | default('из них в манатах:') }}
+            <b>{{ "%.2f"|format(summary.totals.tmt_original) }} TMT</b>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-sm-6">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted small">🛠️ {{ t.incomes_kpi_top | default('Топ услуга') }}</div>
+        {% if summary.by_category %}
+          <div class="fs-6 fw-semibold">{{ summary.by_category[0].category }}</div>
+          <div class="small text-muted">+{{ "%.2f"|format(summary.by_category[0].amount) }} $</div>
+        {% else %}
+          <div class="fs-6 text-muted">—</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if not items %}
+    <div class="text-muted small">{{ t.incomes_empty | default('Нет доходов за выбранный период.') }}</div>
+  {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>{{ t.lbl_date | default('Дата') }}</th>
+            <th>{{ t.income_category | default('Категория') }}</th>
+            <th class="text-end">{{ t.income_amount | default('Сумма') }}</th>
+            <th>{{ t.expenses_note | default('Заметка') }}</th>
+            <th class="text-end">{{ t.lbl_actions | default('Действия') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in items %}
+            <tr>
+              <td>{{ it.date }}</td>
+              <td>{{ it.category_name }}{% if it.category_archived %} <span class="badge bg-secondary" title="архивная категория">A</span>{% endif %}</td>
+              <td class="text-end fw-semibold">
+                {% if it.currency == 'TMT' and it.amount_original %}
+                  <div>+{{ "%.2f"|format(it.amount_original) }} TMT</div>
+                  <div class="small text-muted">≈ +{{ "%.2f"|format(it.amount_usd) }} $
+                    <span title="курс на момент создания">(курс {{ "%.2f"|format(it.rate_used) }})</span>
+                  </div>
+                {% else %}
+                  <div class="text-success">+{{ "%.2f"|format(it.amount_usd) }} $</div>
+                {% endif %}
+              </td>
+              <td>{{ it.note or '' }}</td>
+              <td class="text-end">
+                <a href="/incomes/edit/{{ it.id }}" class="btn btn-sm btn-outline-primary">{{ t.btn_edit | default('Редактировать') }}</a>
+                <form method="post" action="/incomes/delete/{{ it.id }}" class="d-inline inc-del-form"
+                      data-date="{{ it.date }}" data-cat="{{ it.category_name }}"
+                      data-amount="{{ '%.2f' | format(it.amount_usd) }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger">{{ t.btn_delete | default('Удалить') }}</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+
+<script>
+document.querySelectorAll('form.inc-del-form').forEach(function(f) {
+  f.addEventListener('submit', function(e) {
+    var d = f.getAttribute('data-date');
+    var c = f.getAttribute('data-cat');
+    var a = f.getAttribute('data-amount');
+    var msg = 'Удалить доход?\n' + d + ' — ' + c + ' — ' + a + ' USD\n\nДействие необратимо.';
+    if (!confirm(msg)) { e.preventDefault(); return false; }
+  });
+});
+</script>
+{% endblock %}

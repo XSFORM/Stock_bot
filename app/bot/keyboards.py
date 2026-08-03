@@ -68,6 +68,7 @@ def main_menu_kb(recent_clients: list[dict[str, Any]]) -> InlineKeyboardMarkup:
     ])
     rows.append([
         InlineKeyboardButton(text="💸 Добавить расход", callback_data="xm"),
+        InlineKeyboardButton(text="💵 Внести доход",   callback_data="im"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -246,5 +247,80 @@ def expense_after_kb() -> InlineKeyboardMarkup:
     """Shown after an expense was successfully added."""
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="💸 Ещё расход", callback_data="xm"),
+        InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu"),
+    ]])
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Phase 7 (bot idea): incomes via the bot — mirror of expenses.
+# Callback prefixes:
+#   im                                 → open /income menu (category picker)
+#   ic:<cat_id>                        → category chosen; ask amount next
+#   in:<cat_id>:<amount>               → skip note; go straight to confirm
+#   id:<mode>:<cat>:<amt>              → toggle date; mode ∈ {t=today, y=yesterday}
+#   it:<cat>:<amt>:<date>:<cur>        → toggle currency TMT↔USD
+#   ia:<cat>:<amt>:<date>:<cur>:<rate> → apply income (rate frozen in the button)
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+def income_categories_kb(categories: list[dict[str, Any]]) -> InlineKeyboardMarkup:
+    """Two-columns of category buttons; incomes have no kind split."""
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for c in categories:
+        row.append(InlineKeyboardButton(
+            text=f"🛠️ {c['name']}",
+            callback_data=f"ic:{c['id']}",
+        ))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cn")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def income_note_kb(cat_id: int, amount: float) -> InlineKeyboardMarkup:
+    """After amount is entered — offer to skip the optional note."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⏭ Пропустить", callback_data=f"in:{cat_id}:{amount:.2f}"),
+        InlineKeyboardButton(text="❌ Отмена", callback_data="cn"),
+    ]])
+
+
+def income_confirm_kb(
+    cat_id: int, amount: float, date_iso: str,
+    is_today: bool, currency: str, rate: float,
+) -> InlineKeyboardMarkup:
+    """Final confirm screen — mirror of expense_confirm_kb but with `i*` prefixes."""
+    date_toggle_text = "📅 Вчера" if is_today else "📅 Сегодня"
+    date_toggle_mode = "y" if is_today else "t"
+    cur_toggle_text  = "💱 в USD" if currency == "TMT" else "💱 в TMT"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="✅ Внести доход",
+                callback_data=f"ia:{cat_id}:{amount:.2f}:{date_iso}:{currency}:{rate:.4f}",
+            ),
+            InlineKeyboardButton(
+                text=cur_toggle_text,
+                callback_data=f"it:{cat_id}:{amount:.2f}:{date_iso}:{currency}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=date_toggle_text,
+                callback_data=f"id:{date_toggle_mode}:{cat_id}:{amount:.2f}",
+            ),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="cn"),
+        ],
+    ])
+
+
+def income_after_kb() -> InlineKeyboardMarkup:
+    """Shown after an income was successfully added."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="💵 Ещё доход", callback_data="im"),
         InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu"),
     ]])

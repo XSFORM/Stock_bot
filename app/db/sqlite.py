@@ -312,6 +312,66 @@ def _ensure_expenses_table(conn: sqlite3.Connection) -> None:
     )
 
 
+def _ensure_income_categories_table(conn: sqlite3.Connection) -> None:
+    """
+    Phase 7 (bot idea): incomes from services (PC repair, PlayStation, etc.).
+
+    Deliberately simpler than expense_categories — no `kind` field, because
+    services don't split into business/personal. Everything is business.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS income_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            archived INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+
+
+def _ensure_incomes_table(conn: sqlite3.Connection) -> None:
+    """
+    Phase 7 — actual income entries. Mirror of `expenses` (currency /
+    amount_original / rate_used snapshot) so the same anti-drift lesson
+    applies here too.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS incomes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            category_id INTEGER NOT NULL,
+            currency TEXT NOT NULL DEFAULT 'USD',
+            amount_original REAL NOT NULL DEFAULT 0,
+            rate_used REAL NOT NULL DEFAULT 1,
+            amount_usd REAL NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (category_id) REFERENCES income_categories(id) ON DELETE RESTRICT
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_incomes_date ON incomes(date)")
+
+
+def _seed_default_income_categories(conn: sqlite3.Connection) -> None:
+    """First-run seed. Idempotent — INSERT OR IGNORE by unique name."""
+    defaults = [
+        "Антивирус/ПО",
+        "Ремонт ПК",
+        "Ремонт PlayStation",
+        "Запись игр",
+        "Прошивка/чиповка",
+        "Прочие услуги",
+    ]
+    for name in defaults:
+        conn.execute(
+            "INSERT OR IGNORE INTO income_categories (name) VALUES (?)",
+            (name,),
+        )
+
+
 def _ensure_expenses_currency_columns(conn: sqlite3.Connection) -> None:
     """
     Phase 6 (bot idea): store the original currency and the exchange rate
@@ -520,6 +580,9 @@ def init_db() -> None:
         _ensure_expenses_currency_columns(conn)
         _ensure_recurring_expenses_table(conn)
         _seed_default_expense_categories(conn)
+        _ensure_income_categories_table(conn)
+        _ensure_incomes_table(conn)
+        _seed_default_income_categories(conn)
         conn.commit()
 
 
@@ -2275,6 +2338,335 @@ def get_expenses_summary(
     return {"totals": totals, "by_category": by_cat}
 
 
+# ── Phase 7 (bot idea): incomes from services ───────────────────────────────
+#
+# Mirror of the expenses module. Same TMT/USD snapshot rules — a rate change
+# tomorrow must NEVER re-price today's row. Structure is deliberately kept
+# symmetric so future edits happen in both places at once.
+
+
+def list_income_categories(include_archived: bool = False) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        if include_archived:
+            rows = conn.execute("SELECT * FROM income_categories ORDER BY name").fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM income_categories WHERE archived = 0 ORDER BY name"
+            ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
+def add_income_category(name: str) -> tuple[bool, str]:
+    name = (name or "").strip()
+    if not name:
+        return False, "name_required"
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "INSERT INTO income_categories (name) VALUES (?)", (name,)
+            )
+            conn.commit()
+        return True, ""
+    except sqlite3.IntegrityError:
+        return False, "duplicate_name"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def update_income_category(category_id: int, name: str) -> tuple[bool, str]:
+    name = (name or "").strip()
+    if not name:
+        return False, "name_required"
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE income_categories SET name = ? WHERE id = ?",
+                (name, category_id),
+            )
+            conn.commit()
+        return True, ""
+    except sqlite3.IntegrityError:
+        return False, "duplicate_name"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def set_income_category_archived(category_id: int, archived: bool) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE income_categories SET archived = ? WHERE id = ?",
+                (1 if archived else 0, category_id),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def list_incomes(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    category_id: Optional[int] = None,
+    search: str = "",
+) -> list[dict[str, Any]]:
+    """Newest date first. Joins category name for display."""
+    sql = (
+        "SELECT i.id, i.date, i.category_id, i.amount_usd, i.note, i.created_at,"
+        "       i.currency, i.amount_original, i.rate_used,"
+        "       c.name AS category_name,"
+        "       c.archived AS category_archived"
+        " FROM incomes i"
+        " JOIN income_categories c ON c.id = i.category_id"
+        " WHERE 1=1"
+    )
+    params: list[Any] = []
+    if date_from:
+        sql += " AND i.date >= ?"; params.append(date_from)
+    if date_to:
+        sql += " AND i.date <= ?"; params.append(date_to)
+    if category_id:
+        sql += " AND i.category_id = ?"; params.append(int(category_id))
+    if search:
+        sql += " AND (i.note LIKE ? OR c.name LIKE ?)"
+        s = f"%{search.strip()}%"
+        params.extend([s, s])
+    sql += " ORDER BY i.date DESC, i.id DESC"
+    with _connect() as conn:
+        rows = conn.execute(sql, params).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
+def get_income(income_id: int) -> Optional[dict[str, Any]]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT i.*, c.name AS category_name"
+            " FROM incomes i"
+            " JOIN income_categories c ON c.id = i.category_id"
+            " WHERE i.id = ?",
+            (income_id,),
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+
+
+def add_income(
+    date: str,
+    category_id: int,
+    amount_usd: float | None = None,
+    note: str = "",
+    *,
+    currency: str = "USD",
+    amount_original: float | None = None,
+) -> tuple[bool, str]:
+    """
+    Add a service-income row. Same TMT/USD semantics as add_expense —
+    see docstring there for the rationale on the rate snapshot.
+    """
+    date = (date or "").strip()
+    if not date:
+        return False, "date_required"
+    if not category_id:
+        return False, "category_required"
+
+    currency = (currency or "USD").upper()
+    if currency not in EXPENSE_CURRENCIES:
+        return False, "bad_currency"
+
+    if amount_original is not None:
+        try:
+            amt_orig = float(amount_original)
+        except (TypeError, ValueError):
+            return False, "amount_invalid"
+    elif amount_usd is not None:
+        try:
+            amt_orig = float(amount_usd)
+        except (TypeError, ValueError):
+            return False, "amount_invalid"
+        currency = "USD"
+    else:
+        return False, "amount_invalid"
+
+    if amt_orig <= 0:
+        return False, "amount_must_be_positive"
+
+    if currency == "TMT":
+        rate, _fb = get_expense_tmt_rate()
+        if rate <= 0:
+            return False, "rate_invalid"
+    else:
+        rate = 1.0
+
+    usd = _compute_usd_from_original(amt_orig, currency, rate)
+
+    try:
+        with _connect() as conn:
+            cat = conn.execute(
+                "SELECT id FROM income_categories WHERE id = ?", (category_id,)
+            ).fetchone()
+            if not cat:
+                return False, "category_not_found"
+            conn.execute(
+                "INSERT INTO incomes"
+                " (date, category_id, amount_usd, note,"
+                "  currency, amount_original, rate_used)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    date, int(category_id), usd, (note or "").strip(),
+                    currency, round(amt_orig, 4), round(rate, 4),
+                ),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def update_income(
+    income_id: int,
+    date: str,
+    category_id: int,
+    amount_usd: float | None = None,
+    note: str = "",
+    *,
+    currency: str | None = None,
+    amount_original: float | None = None,
+) -> tuple[bool, str]:
+    """
+    Edit an income row. Same snapshot rule as update_expense: if the
+    currency isn't changing we keep the OLD rate_used. Changing currency
+    is treated as a fresh valuation and takes today's rate.
+    """
+    date = (date or "").strip()
+    if not date:
+        return False, "date_required"
+    if not category_id:
+        return False, "category_required"
+
+    try:
+        with _connect() as conn:
+            cat = conn.execute(
+                "SELECT id FROM income_categories WHERE id = ?", (category_id,)
+            ).fetchone()
+            if not cat:
+                return False, "category_not_found"
+            row = conn.execute(
+                "SELECT currency, amount_original, rate_used, amount_usd"
+                " FROM incomes WHERE id = ?", (income_id,),
+            ).fetchone()
+            if not row:
+                return False, "income_not_found"
+
+            old_currency = str(row["currency"] or "USD").upper()
+            old_rate     = float(row["rate_used"] or 1.0)
+
+            new_currency = (currency or old_currency).upper()
+            if new_currency not in EXPENSE_CURRENCIES:
+                return False, "bad_currency"
+
+            if amount_original is not None:
+                try:
+                    amt_orig = float(amount_original)
+                except (TypeError, ValueError):
+                    return False, "amount_invalid"
+            elif amount_usd is not None:
+                try:
+                    amt_orig = float(amount_usd)
+                except (TypeError, ValueError):
+                    return False, "amount_invalid"
+                new_currency = "USD"
+            else:
+                return False, "amount_invalid"
+
+            if amt_orig <= 0:
+                return False, "amount_must_be_positive"
+
+            if new_currency == old_currency:
+                rate = old_rate
+                if new_currency == "USD":
+                    rate = 1.0
+            else:
+                if new_currency == "TMT":
+                    rate, _fb = get_expense_tmt_rate()
+                    if rate <= 0:
+                        return False, "rate_invalid"
+                else:
+                    rate = 1.0
+
+            usd = _compute_usd_from_original(amt_orig, new_currency, rate)
+
+            conn.execute(
+                "UPDATE incomes"
+                "   SET date = ?, category_id = ?, amount_usd = ?, note = ?,"
+                "       currency = ?, amount_original = ?, rate_used = ?"
+                " WHERE id = ?",
+                (
+                    date, int(category_id), usd, (note or "").strip(),
+                    new_currency, round(amt_orig, 4), round(rate, 4),
+                    income_id,
+                ),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def delete_income(income_id: int) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM incomes WHERE id = ?", (income_id,)
+            ).fetchone()
+            if not row:
+                return False, "income_not_found"
+            conn.execute("DELETE FROM incomes WHERE id = ?", (income_id,))
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def get_incomes_summary(date_from: str, date_to: str) -> dict[str, Any]:
+    """
+    Aggregate service incomes per category + totals.
+
+    Returns:
+        {
+            "totals": {"all": float, "tmt_original": float},
+            "by_category": [{"category_id", "category", "amount"}, …],
+        }
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT c.id AS category_id, c.name AS category,
+                   COALESCE(SUM(i.amount_usd), 0) AS amount
+            FROM income_categories c
+            LEFT JOIN incomes i
+                   ON i.category_id = c.id
+                  AND i.date BETWEEN ? AND ?
+            GROUP BY c.id, c.name
+            HAVING amount > 0
+            ORDER BY amount DESC
+            """,
+            (date_from, date_to),
+        ).fetchall()
+        by_cat = [_row_to_dict(r) for r in rows]
+        for r in by_cat:
+            r["amount"] = round(float(r["amount"]), 2)
+
+        totals = {"all": round(sum(r["amount"] for r in by_cat), 2)}
+
+        tmt_row = conn.execute(
+            "SELECT COALESCE(SUM(amount_original), 0) AS tmt"
+            " FROM incomes WHERE date BETWEEN ? AND ? AND currency = 'TMT'",
+            (date_from, date_to),
+        ).fetchone()
+        totals["tmt_original"] = round(float(tmt_row["tmt"] or 0), 2)
+
+    return {"totals": totals, "by_category": by_cat}
+
+
 # ── Phase 4 (bot idea): monthly trend for /reports/finance ─────────────────
 #
 # Explicitly reuses get_profit_report + get_expenses_summary rather than
@@ -2315,28 +2707,33 @@ def get_finance_monthly_trend(
     Month-by-month breakdown for the finance report.
 
     Each row has:
-        month             'YYYY-MM'
-        revenue           net revenue (sales − returns), same as the header
-                          KPI on /reports/finance
-        gross_profit      unchanged from get_profit_report — excludes rows
-                          with cost_price = 0 automatically
-        business_expenses total of expenses tagged business in that month
-        business_net      gross_profit − business_expenses
-        personal_expenses total of expenses tagged personal
-        wallet_net        business_net − personal_expenses
+        month              'YYYY-MM'
+        revenue            net revenue from trading (sales − returns)
+        gross_profit       trading gross profit (excludes cost_price=0 rows)
+        service_income     income from services (Phase 7) — NOT trading revenue,
+                           added to the wallet only at the *profit* level so it
+                           can't distort trading margin
+        total_income       gross_profit + service_income
+        business_expenses  business expenses in that month
+        business_net       total_income − business_expenses
+        personal_expenses  personal expenses
+        wallet_net         business_net − personal_expenses
     """
     trend: list[dict[str, Any]] = []
     for month_iso, start_iso, end_iso in _iter_month_slices(date_from, date_to):
         profit = get_profit_report(start_iso, end_iso, warehouse_codes=warehouse_codes)
         exp = get_expenses_summary(start_iso, end_iso)
+        inc = get_incomes_summary(start_iso, end_iso)
 
-        net_revenue  = round(float(profit["totals"]["revenue"])
-                             - float(profit["totals"]["ret_revenue"]), 2)
-        gross_profit = round(float(profit["totals"]["profit"]), 2)
-        biz_exp      = float(exp["totals"]["business"])
-        pers_exp     = float(exp["totals"]["personal"])
-        business_net = round(gross_profit - biz_exp, 2)
-        wallet_net   = round(business_net - pers_exp, 2)
+        net_revenue    = round(float(profit["totals"]["revenue"])
+                               - float(profit["totals"]["ret_revenue"]), 2)
+        gross_profit   = round(float(profit["totals"]["profit"]), 2)
+        service_income = round(float(inc["totals"]["all"]), 2)
+        total_income   = round(gross_profit + service_income, 2)
+        biz_exp        = float(exp["totals"]["business"])
+        pers_exp       = float(exp["totals"]["personal"])
+        business_net   = round(total_income - biz_exp, 2)
+        wallet_net     = round(business_net - pers_exp, 2)
 
         trend.append({
             "month":             month_iso,
@@ -2344,6 +2741,8 @@ def get_finance_monthly_trend(
             "date_to":           end_iso,
             "revenue":           net_revenue,
             "gross_profit":      gross_profit,
+            "service_income":    service_income,
+            "total_income":      total_income,
             "business_expenses": biz_exp,
             "business_net":      business_net,
             "personal_expenses": pers_exp,

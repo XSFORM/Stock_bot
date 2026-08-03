@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm" style="max-width:640px;">
+  <h4 class="mb-3">
+    {% if income %}✏️ {{ t.incomes_edit_title | default('Изменить доход') }}
+    {% else %}➕ {{ t.incomes_add_title | default('Новый доход от услуг') }}{% endif %}
+  </h4>
+
+  {% set _msg = request.query_params.get('msg', '') %}
+  {% if _msg.startswith('err:') %}
+    <div class="alert alert-danger py-2 small">{{ _msg[4:] | e }}</div>
+  {% endif %}
+
+  <form method="post" action="{{ action_url }}" class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label">{{ t.lbl_date | default('Дата') }}</label>
+      <input type="date" name="date" class="form-control"
+             value="{{ income.date if income else today }}" required>
+    </div>
+
+    <div class="col-md-8">
+      <label class="form-label">{{ t.income_category | default('Категория') }}</label>
+      <select name="category_id" class="form-select" required>
+        {% for c in categories %}
+          <option value="{{ c.id }}"
+            {% if income and income.category_id == c.id %} selected{% endif %}>
+            {{ c.name }}{% if c.archived %} (архив){% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">{{ t.income_currency | default('Валюта') }}</label>
+      <select name="currency" class="form-select">
+        <option value="TMT"
+          {% if not income or income.currency == 'TMT' %} selected{% endif %}>TMT (манат)</option>
+        <option value="USD"
+          {% if income and income.currency == 'USD' %} selected{% endif %}>USD</option>
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">{{ t.income_amount | default('Сумма') }}</label>
+      <input type="number" step="0.01" min="0.01" name="amount_original" class="form-control"
+             value="{{ '%.2f' | format(income.amount_original) if income and income.amount_original else '' }}"
+             required>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">{{ t.income_rate_hint | default('Курс TMT/USD') }}</label>
+      <input type="text" class="form-control" value="{{ '%.2f'|format(tmt_rate) }}" disabled>
+      <small class="text-muted">
+        {% if rate_is_fallback %}
+          {{ t.expenses_rate_fallback | default('дефолтный курс') }}
+        {% else %}
+          {{ t.expenses_rate_today | default('курс на сегодня') }}
+        {% endif %}
+      </small>
+    </div>
+
+    <div class="col-12">
+      <label class="form-label">{{ t.expenses_note | default('Заметка') }} <span class="text-muted small">({{ t.opt | default('необязательно') }})</span></label>
+      <textarea name="note" class="form-control" rows="2">{{ income.note if income else '' }}</textarea>
+    </div>
+
+    <div class="col-12">
+      <div class="alert alert-info py-2 small mb-2">
+        {{ t.incomes_isolation_note | default('Доход от услуг НЕ добавляется к выручке от товаров и НЕ влияет на торговую маржу. Он показывается отдельной строкой «Доход от услуг» в финотчёте и включается в «Итого доход».') }}
+      </div>
+
+      <button type="submit" class="btn btn-success">
+        {% if income %}💾 {{ t.btn_save | default('Сохранить') }}{% else %}➕ {{ t.btn_add | default('Добавить') }}{% endif %}
+      </button>
+      <a href="/incomes" class="btn btn-outline-secondary">{{ t.btn_cancel | default('Отмена') }}</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
