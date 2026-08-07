@@ -40,6 +40,7 @@
           <li><a href="#ru-finance-report">Финотчёт (доходы vs расходы)</a></li>
         </ul>
       </li>
+      <li><a href="#ru-incomes">Доходы от услуг</a></li>
       <li><a href="#ru-brands">Бренды</a></li>
       <li><a href="#ru-clients">Клиенты</a>
         <ul class="mt-1"><li><a href="#ru-payments">Дисциплина платежей</a></li></ul>
@@ -340,8 +341,10 @@
   <p><strong>Структура отчёта:</strong></p>
   <ol>
     <li><strong>📦 Торговля</strong> — те же цифры, что в Отчёте по прибыли: Чистая выручка, Себестоимость, <em>Валовая прибыль</em>, Маржа %.</li>
+    <li><strong>🛠️ Доход от услуг</strong> — таблица по категориям (ремонт ПК, PlayStation, установка ПО и т.п.) и итог. Показывается отдельной строкой, чтобы <em>не смешиваться с торговой выручкой</em> — торговая маржа остаётся чистой.</li>
+    <li><strong>= Итого доход</strong> — Валовая прибыль + Доход от услуг. Общая сумма, которую заработал бизнес за период (товары + услуги).</li>
     <li><strong>💼 Бизнес-расходы</strong> — таблица по категориям (аренда, зарплата и т.д.) и итоговая сумма.</li>
-    <li><strong>= Чистая прибыль бизнеса</strong> — <em>главная</em> цифра: Валовая прибыль − Бизнес-расходы. Именно она показывает, зарабатывает торговля или проедает деньги.</li>
+    <li><strong>= Чистая прибыль бизнеса</strong> — <em>главная</em> цифра: Итого доход − Бизнес-расходы. Именно она показывает, зарабатывает бизнес или проедает деньги.</li>
     <li><strong>🛒 Личные расходы</strong> — таблица по категориям и итог. Показывается отдельно, чтобы личные траты не искажали финрез торговли.</li>
     <li><strong>= Итог кошелька</strong> — Чистая прибыль бизнеса − Личные расходы. Реальный остаток от бизнеса на руках за период.</li>
   </ol>
@@ -350,6 +353,47 @@
   </p>
   <div class="alert alert-warning">
     <strong>⚠️ Про «Нераскрытую себестоимость».</strong> Если в Отчёте по прибыли есть жёлтая плашка о cost=0 строках — эта же сумма выручки не входит в Валовую прибыль здесь, и значит не участвует в расчёте Чистой прибыли бизнеса. Финотчёт показывает подсказку с количеством и суммой таких строк, если они есть.
+  </div>
+
+  {# 8e. Service incomes #}
+  <h4 id="ru-incomes" class="mt-4">11a. Доходы от услуг (/incomes)</h4>
+  <p>
+    Отдельный раздел для денег, которые бизнес зарабатывает <strong>не на продаже товара</strong>, а на услугах:
+    ремонт ПК, ремонт PlayStation, установка антивируса/ПО, запись игр, прошивка/чиповка и т.п.
+  </p>
+
+  <div class="alert alert-info">
+    <strong>Зачем отдельно от продаж?</strong> Услуги не имеют себестоимости, и если засунуть их в продажи товара —
+    маржа взлетит до потолка и <em>перестанет</em> показывать, работает ли торговля в плюс.
+    Поэтому Доходы от услуг живут отдельно и <strong>не смешиваются</strong> с торговой выручкой и торговой маржой.
+    В финотчёте они видны отдельной строкой «🛠️ Доход от услуг» и складываются с Валовой прибылью в «Итого доход».
+  </div>
+
+  <p><strong>Как работает:</strong></p>
+  <ol>
+    <li>Меню → <strong>Доходы</strong> → «＋ Добавить доход».</li>
+    <li>Дата, услуга (категория), валюта (по умолчанию TMT), сумма, заметка. Сохранить.</li>
+    <li>На главной странице раздела — фильтры (период, категория, поиск), KPI «Всего за период» и «Топ услуга», список с бейджем 🤖 Telegram для записей из бота.</li>
+  </ol>
+
+  <p><strong>Категории по умолчанию:</strong> Антивирус/ПО, Ремонт ПК, Ремонт PlayStation, Запись игр, Прошивка/чиповка, Прочие услуги. Свои категории (например «Настройка роутера») добавляй в <strong>Доходы → Категории</strong>. Категорию с записями удалить нельзя — только в архив (как в Расходах).</p>
+
+  <p><strong>TMT-манат:</strong> валюта по умолчанию — TMT. Курс TMT→USD берётся из настройки <em>«Pocket Price TMT rate»</em> в момент создания записи и <strong>больше никогда не пересчитывается</strong>. Изменил курс через месяц — старые записи стоят по своему историческому курсу.</p>
+
+  <p><strong>Что заносить в Доходы:</strong></p>
+  <ul>
+    <li>Ремонт компьютеров, ноутбуков, планшетов</li>
+    <li>Ремонт PlayStation, приставок</li>
+    <li>Установка/переустановка Windows, антивируса</li>
+    <li>Запись игр, прошивка/чиповка</li>
+    <li>Настройка роутера/Wi-Fi, консультации</li>
+    <li>Любая другая услуга без продажи товара клиенту</li>
+  </ul>
+
+  <div class="alert alert-warning">
+    <strong>Не путать с продажей товара.</strong> Если клиент купил у тебя жёсткий диск и попросил установить Windows на него —
+    жёсткий диск идёт через обычную <strong>Продажу</strong> (там маржа), а работа установки — в <strong>Доходы от услуг</strong>.
+    Так торговая маржа остаётся точной, а доход от услуги видно отдельной строкой.
   </div>
 
   {# 9. Brands #}
@@ -556,10 +600,14 @@
 
   <p><strong>Команды:</strong></p>
   <ul>
-    <li><code>/start</code> — главное меню: недавние клиенты (кто платил за последние 7 дней) + кнопки поиска и топ должников</li>
+    <li><code>/start</code> — главное меню: недавние клиенты (кто платил за последние 7 дней) + кнопки поиска, топ должников, «💸 Расход» и «💵 Доход»</li>
     <li><code>/clients</code> — то же самое, что <code>/start</code></li>
     <li><code>/debt</code> — сколько мне вообще должны в сумме</li>
     <li><code>/top_debtors</code> — топ-10 должников с пометкой «сколько дней без оплаты»</li>
+    <li><code>/expense</code> — визард быстрого расхода (бензин, грузчик, аренда, личное…)</li>
+    <li><code>/expenses_today</code> — сколько потратил сегодня (сводка по категориям)</li>
+    <li><code>/income</code> — визард быстрого дохода от услуги (ремонт ПК, PlayStation, установка ПО…)</li>
+    <li><code>/income_today</code> — сколько заработал на услугах сегодня</li>
     <li><code>/help</code> — короткая шпаргалка</li>
     <li><code>/cancel</code> — отменить текущий шаг</li>
   </ul>
@@ -588,14 +636,16 @@
     <li><strong>Добавление долга</strong> — заметка обязательна (объясняет причину).</li>
   </ul>
 
-  <p><strong>Связь с вэб:</strong> любая операция из бота — та же самая запись в <code>client_ledger</code>,
-  что при работе через вэб. Долг клиента, DEB в правом верхнем углу вэб-меню, история клиента —
-  всё обновляется мгновенно. Открой историю клиента в вэб — увидишь строки, сделанные через Telegram, вперемешку с обычными.</p>
+  <p><strong>Расходы через бота (/expense):</strong> тап «💸 Расход» из главного меню или команда <code>/expense</code> → выбор категории (📦 бизнес / 🛒 личное) → сумма (по умолчанию TMT, тумблер на USD) → заметка (или «Пропустить») → экран подтверждения с текущим курсом → «✅ Применить». Через <code>/expenses_today</code> — сводка за сегодня. Курс TMT фиксируется в момент подтверждения и потом не пересчитывается.</p>
+
+  <p><strong>Доходы от услуг через бота (/income):</strong> тап «💵 Доход» или <code>/income</code> → выбор услуги (Ремонт ПК, PlayStation, Антивирус/ПО…) → сумма (TMT/USD) → заметка → «✅ Внести доход». Через <code>/income_today</code> — сводка за сегодня. Доход от услуг попадает отдельной строкой в финотчёт и <strong>не смешивается</strong> с торговой маржой.</p>
+
+  <p><strong>Связь с вэб:</strong> любая операция из бота — та же запись в БД, что при работе через вэб. Долг клиента, DEB в шапке, история клиента, /expenses, /incomes, финотчёт — всё обновляется мгновенно. В таблицах расходов/доходов записи из бота помечены бейджем <span class="badge rounded-pill bg-info bg-opacity-25 text-info-emphasis border border-info-subtle">🤖 Telegram</span> в отдельной колонке «Источник».</p>
 
   <p><strong>Кто может пользоваться:</strong> только владелец (по <code>ADMIN_ID</code> в конфиге сервера).
   Если кто-то посторонний найдёт бот и напишет <code>/start</code> — получит «Доступ запрещён».</p>
 
-  <p><strong>Что бот НЕ умеет специально:</strong> добавлять товары, приходы, склад, продажи, накладные, отчёты, инвентаризацию, расходы.
+  <p><strong>Что бот НЕ умеет специально:</strong> добавлять товары, приходы, склад, продажи, накладные, отчёты, инвентаризацию.
   Всё это уже отлично работает в вэб — дублировать нет смысла. Через мобильный тап-экран
   сложные формы с товарами и ценами — только мучение.</p>
 
@@ -791,6 +841,7 @@
       <li><a href="#tm-expenses">Çykdajylar</a>
         <ul class="mt-1"><li><a href="#tm-finance-report">Maliýe hasabaty</a></li></ul>
       </li>
+      <li><a href="#tm-incomes">Hyzmatlardan girdeji</a></li>
       <li><a href="#tm-brands">Brendler</a></li>
       <li><a href="#tm-clients">Müşderiler</a>
         <ul class="mt-1"><li><a href="#tm-payments">Töleg düzgün-nyzamy</a></li></ul>
@@ -1048,12 +1099,23 @@
   <p><strong>Gurluşy:</strong></p>
   <ol>
     <li><strong>📦 Söwda</strong> — Peýda hasabatyndaky sanlar (Arassa girdeji, Özüne düşýän gymmat, Umumy peýda, Marja %).</li>
+    <li><strong>🛠️ Hyzmatlardan girdeji</strong> — kategoriýalar boýunça tablisa we jem. Söwda girdejisi bilen <em>garyşdyrylanok</em>, söwda marjasyna täsir etmeýär.</li>
+    <li><strong>= Umumy girdeji</strong> — Umumy peýda + Hyzmatlardan girdeji.</li>
     <li><strong>💼 Biznes-çykdajylar</strong> — kategoriýalar boýunça tablisa we jem.</li>
-    <li><strong>= Biznesiň arassa peýdasy</strong> — esasy san: Umumy peýda − Biznes-çykdajylar.</li>
+    <li><strong>= Biznesiň arassa peýdasy</strong> — esasy san: Umumy girdeji − Biznes-çykdajylar.</li>
     <li><strong>🛒 Şahsy çykdajylar</strong> — aýratyn tablisa.</li>
     <li><strong>= Gapjyk jemi</strong> — Biznesiň arassa peýdasy − Şahsy çykdajylar.</li>
   </ol>
   <p><strong>Süzgüçler:</strong> döwür (deslapky — häzirki aý) we ammar (diňe söwda böleginde ulanylýar).</p>
+
+  {# 8e. Service incomes #}
+  <h4 id="tm-incomes" class="mt-4">11a. Hyzmatlardan girdeji (/incomes)</h4>
+  <p>Söwdadan <strong>daşary</strong> gazançlar üçin bölüm: kompýuter/PlayStation abatlaýyş, antiwirus/programma gurnama, oýun ýazgysy, çipleme we ş.m.</p>
+  <div class="alert alert-info">
+    <strong>Näme üçin aýratyn?</strong> Hyzmatlaryň özüne düşýän bahasy ýok — olary söwda içine goşsaň, marja «şişer» we söwda peýdaly işleýärmi diýip bilip bolmaz. Şonuň üçin hyzmat girdejisi <strong>aýratyn</strong> saklanýar we Maliýe hasabatynda «🛠️ Hyzmatlardan girdeji» ady bilen aýratyn setirde görkezilýär.</p>
+  </div>
+  <p><strong>Nähili işleýär:</strong> Menýu → <strong>Girdejiler</strong> → «＋ Girdeji goş». Sene, hyzmat, walýuta (deslapky — TMT), mukdar, bellik. TMT üçin bahalanma <em>«Pocket Price TMT rate»</em> sazlamasyndan alynýar we soň gaýtadan hasaplanmaýar.</p>
+  <p><strong>Deslapky kategoriýalar:</strong> Antiwirus/PO, Kompýuter abatlaýyş, PlayStation abatlaýyş, Oýun ýazgysy, Çipleme/programma, Beýleki hyzmatlar. Öz kategoriýaňy <strong>Girdejiler → Kategoriýalar</strong> menýusynda goşup bolýar.</p>
 
   {# 9. Brands #}
   <h4 id="tm-brands" class="mt-4">12. Brendler</h4>
@@ -1259,6 +1321,10 @@
     <li><code>/clients</code> — <code>/start</code> bilen deň</li>
     <li><code>/debt</code> — maňa jemi näçe bergilidiginiň jemi</li>
     <li><code>/top_debtors</code> — iň köp berdiliniň onlugy, näçe gün tölegsiz</li>
+    <li><code>/expense</code> — çalt çykdajy goşmak (benzin, kärende, şahsy…)</li>
+    <li><code>/expenses_today</code> — şu gün näçe harçladym</li>
+    <li><code>/income</code> — hyzmatdan girdeji goşmak (PK abatlaýyş, PS, programma…)</li>
+    <li><code>/income_today</code> — şu gün hyzmatlardan näçe gazandym</li>
     <li><code>/help</code> — gysga gollanma</li>
     <li><code>/cancel</code> — häzirki ädimi ýatyrmak</li>
   </ul>
@@ -1431,6 +1497,7 @@
       <li><a href="#en-expenses">Expenses</a>
         <ul class="mt-1"><li><a href="#en-finance-report">Finance report</a></li></ul>
       </li>
+      <li><a href="#en-incomes">Service incomes</a></li>
       <li><a href="#en-brands">Brands</a></li>
       <li><a href="#en-clients">Clients</a>
         <ul class="mt-1"><li><a href="#en-payments">Payment discipline</a></li></ul>
@@ -1701,12 +1768,23 @@
   <p><strong>Structure:</strong></p>
   <ol>
     <li><strong>📦 Trading</strong> — same numbers as Profit report (Net revenue, Cost, Gross profit, Margin %).</li>
+    <li><strong>🛠️ Service income</strong> — table by category and total. Kept <em>separate</em> from trading revenue so it never dilutes the trading margin.</li>
+    <li><strong>= Total income</strong> — Gross profit + Service income.</li>
     <li><strong>💼 Business expenses</strong> — table by category and total.</li>
-    <li><strong>= Business net profit</strong> — the key number: Gross profit − Business expenses.</li>
+    <li><strong>= Business net profit</strong> — the key number: Total income − Business expenses.</li>
     <li><strong>🛒 Personal expenses</strong> — separate table.</li>
     <li><strong>= Wallet net</strong> — Business net profit − Personal expenses.</li>
   </ol>
   <p><strong>Filters:</strong> period (defaults to current month) and warehouse (only affects the Trading section).</p>
+
+  {# 8e. Service incomes #}
+  <h4 id="en-incomes" class="mt-4">11a. Service incomes (/incomes)</h4>
+  <p>Separate section for money earned <strong>outside of product sales</strong>: PC repair, PlayStation repair, antivirus/software install, game recording, chipping and so on.</p>
+  <div class="alert alert-info">
+    <strong>Why kept separate?</strong> Services have no cost of goods sold. If you mixed them into product sales, margin would jump to the ceiling and stop telling you whether trading is actually profitable. Service incomes therefore live on their own and are shown as a dedicated «🛠️ Service income» line in the finance report — never mixed with trading revenue or margin.
+  </div>
+  <p><strong>How it works:</strong> Incomes → «＋ Add income» → date, service (category), currency (defaults to TMT), amount, note → Save. TMT/USD rate is snapshotted at creation from the <em>«Pocket Price TMT rate»</em> setting and never re-computed later.</p>
+  <p><strong>Default categories:</strong> Antivirus/Software, PC repair, PlayStation repair, Game recording, Chipping/firmware, Other services. Manage your own at Incomes → Categories.</p>
 
   {# 9. Brands #}
   <h4 id="en-brands" class="mt-4">12. Brands</h4>
@@ -1920,6 +1998,10 @@
     <li><code>/clients</code> — same as <code>/start</code></li>
     <li><code>/debt</code> — total outstanding debt owed to you</li>
     <li><code>/top_debtors</code> — top 10 debtors with «days since last payment»</li>
+    <li><code>/expense</code> — quick expense wizard (fuel, porter, rent, personal…)</li>
+    <li><code>/expenses_today</code> — how much I spent today</li>
+    <li><code>/income</code> — quick service-income wizard (PC repair, PlayStation, software…)</li>
+    <li><code>/income_today</code> — how much I earned on services today</li>
     <li><code>/help</code> — short cheat sheet</li>
     <li><code>/cancel</code> — cancel the current step</li>
   </ul>
