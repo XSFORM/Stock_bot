@@ -15,6 +15,18 @@ timedatectl set-timezone Asia/Ashgabat
 
 > **Примечание:** бот не меняет системную TZ автоматически — это необходимо настроить вручную на сервере.
 
+## Сверка с десктопной версией
+
+Ядро (`app/db/`, `app/utils/`, `app/services/`) синхронизировано между `Stock_bot` (веб) и `Stock_bot_desktop` (HASAPCY). После **любой** правки в общем ядре — прогнать сверку:
+
+```bash
+python tools/compare_versions.py . ../Stock_bot_desktop
+```
+
+Exit-code `0` — тождественны, `1` — есть расхождения (список с указанием файла и функции). Инструмент сравнивает **логику AST**, а не текст: комментарии, docstring'и и пробелы игнорируются. Денежные функции (`get_profit_report`, `add_expense`, `add_income`, `apply_inventory_adjustments`, `_compute_usd_from_original` и др.) помечаются как `!! MONEY` — эти расхождения тихо смещают цифры в отчётах, их надо чинить в первую очередь.
+
+Известные легитимные различия (уже в списке исключений внутри скрипта): `app/utils/network.py`, `app/utils/ssl_cert.py`, функция `wipe_database`.
+
 ## Change log
 
 История изменений ведётся в файле [CHANGELOG.md](CHANGELOG.md).

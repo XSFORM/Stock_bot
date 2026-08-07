@@ -372,7 +372,21 @@ def _get_ui_theme(request: Request) -> str:
 # Site-lock middleware
 # ──────────────────────────────────────────────────────────────────────────────
 
-_LOCK_BYPASS_PREFIXES = ("/static", "/unlock", "/api/", "/price", "/catalog")
+# WARNING: keep this list narrow. A blanket "/api/" bypass here previously
+# left POST /api/products/upsert-by-barcode and read-only /api/stock,
+# /api/products-search reachable without password. On the server nginx +
+# basic-auth is in front, so exposure was limited — but that's a single
+# point of failure: any misconfigured proxy_pass, any direct-to-8000 test
+# tunnel, and the internal APIs are open. Defense in depth: only the
+# token-guarded Pocket Price / Catalog APIs bypass site lock here.
+_LOCK_BYPASS_PREFIXES = (
+    "/static",
+    "/unlock",
+    "/api/price",     # Pocket Price — guarded by _require_price_token
+    "/api/catalog",   # Catalog       — guarded by _require_catalog_token
+    "/price",         # HTML pages for Pocket Price (token in URL)
+    "/catalog",       # HTML pages for Catalog       (token in URL)
+)
 
 
 @app.middleware("http")
