@@ -66,7 +66,8 @@
         </tr>
       </thead>
       <tbody>
-        {% for it in invoice.items %}
+        {# Jinja2: dict.items() is a built-in method, use [] to force key lookup. #}
+        {% for it in invoice['items'] %}
           <tr class="{% if it.delta > 0 %}table-success{% elif it.delta < 0 %}table-danger{% endif %}">
             <td>{{ loop.index }}</td>
             <td>
