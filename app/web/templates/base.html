@@ -52,6 +52,7 @@
             </a>
             <ul class="dropdown-menu">
               <li><a class="dropdown-item" href="/invoices">{{ t.nav_invoices if t is defined else 'Invoices' }}</a></li>
+              <li><a class="dropdown-item" href="/documents/inventory">{{ t.nav_inventory_invoices if t is defined else 'Inventories' }}</a></li>
               <li><a class="dropdown-item" href="/history">{{ t.nav_history if t is defined else 'History' }}</a></li>
             </ul>
           </div>

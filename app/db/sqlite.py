@@ -233,6 +233,179 @@ def _ensure_stock_ops_note_column(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE stock_ops ADD COLUMN note TEXT NOT NULL DEFAULT ''")
 
 
+# ── Phase 8 — Inventory invoices ───────────────────────────────────────────
+# Historically an inventory just wrote ADJUST rows into stock_ops and that
+# was it: no document to open later, no XLSX to send, nothing in the per-
+# product history. Phase 8 introduces a real inventory_invoice with a number,
+# an itemised snapshot (system_qty / actual_qty / delta + cost_price), and
+# wires inventory_invoice_id into stock_ops so the per-product history can
+# link ADJUST rows to the parent document.
+#
+# For data that was created BEFORE this migration ran, _backfill_legacy_
+# inventory_invoices below reconstructs invoices from the orphan ADJUST
+# rows so the user's existing inventory still shows up in reports and
+# per-product history.
+
+def _ensure_inventory_invoices_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inventory_invoices (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            number          INTEGER NOT NULL UNIQUE,
+            warehouse_code  TEXT    NOT NULL,
+            status          TEXT    NOT NULL DEFAULT 'DONE',  -- DONE / CANCELLED
+            note            TEXT    NOT NULL DEFAULT '',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (warehouse_code) REFERENCES warehouses(code)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_inventory_invoices_created_at"
+        "  ON inventory_invoices(created_at)"
+    )
+
+
+def _ensure_inventory_items_table(conn: sqlite3.Connection) -> None:
+    """
+    One row per product counted on an inventory. We store BOTH quantities
+    plus the delta so a later audit can see exactly what the operator saw
+    on screen before pressing Apply — not just the resulting correction.
+    cost_price is a snapshot of the product's purchase_price at the moment
+    of counting; it's used to value the discrepancy in USD on the invoice.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inventory_items (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_id      INTEGER NOT NULL,
+            product_id      INTEGER NOT NULL,
+            system_qty      REAL    NOT NULL,
+            actual_qty      REAL    NOT NULL,
+            delta           REAL    NOT NULL,
+            cost_price      REAL    NOT NULL DEFAULT 0,
+            FOREIGN KEY (invoice_id) REFERENCES inventory_invoices(id) ON DELETE CASCADE,
+            FOREIGN KEY (product_id) REFERENCES products(id)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_inventory_items_invoice"
+        "  ON inventory_items(invoice_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_inventory_items_product"
+        "  ON inventory_items(product_id)"
+    )
+
+
+def _ensure_stock_ops_inventory_invoice_id_column(conn: sqlite3.Connection) -> None:
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(stock_ops)")}
+    if "inventory_invoice_id" not in cols:
+        conn.execute(
+            "ALTER TABLE stock_ops ADD COLUMN inventory_invoice_id INTEGER"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_stock_ops_inventory_invoice_id"
+            "  ON stock_ops(inventory_invoice_id)"
+        )
+
+
+def _backfill_legacy_inventory_invoices(conn: sqlite3.Connection) -> None:
+    """
+    Reconstruct inventory_invoices from existing orphan ADJUST rows
+    (inventory_invoice_id IS NULL). Groups by (warehouse_code, date part of
+    created_at, note) — the same tuple that identifies a single physical
+    inventory session. Creates one invoice per group, back-dates its
+    created_at to match the first ADJUST, writes inventory_items with
+    actual_qty = system_qty + delta (we only know the delta post-fact so
+    system_qty is reconstructed by subtracting it from the current stock
+    is NOT safe — downstream sales may have moved stock — but the DELTA
+    is the ground truth of what the inventory corrected, so we store
+    system_qty = 0 and actual_qty = delta here with a note that this is
+    reconstructed). Finally, points each ADJUST row at its new invoice.
+    This runs once; after it, there are no orphans left to backfill.
+    """
+    # Only run if there's anything to backfill.
+    orphans = conn.execute(
+        "SELECT COUNT(*) AS n FROM stock_ops"
+        "  WHERE op_type = 'ADJUST' AND inventory_invoice_id IS NULL"
+    ).fetchone()
+    if not orphans or int(orphans["n"]) == 0:
+        return
+
+    # Group orphan ADJUSTs: one invoice per (warehouse, calendar day, note).
+    groups = conn.execute(
+        """
+        SELECT warehouse_code,
+               substr(created_at, 1, 10) AS day,
+               COALESCE(note, '')         AS note,
+               MIN(created_at)            AS first_at
+        FROM stock_ops
+        WHERE op_type = 'ADJUST' AND inventory_invoice_id IS NULL
+        GROUP BY warehouse_code, day, note
+        ORDER BY first_at
+        """
+    ).fetchall()
+
+    # Find current MAX(number) so legacy invoices get numbers before any
+    # future ones. If future ones already exist (shouldn't on first run but
+    # be safe), insert legacy ones at a block starting from max+1.
+    max_row = conn.execute(
+        "SELECT COALESCE(MAX(number), 0) AS m FROM inventory_invoices"
+    ).fetchone()
+    next_number = int(max_row["m"]) + 1
+
+    for g in groups:
+        wh   = g["warehouse_code"]
+        day  = g["day"]
+        note = g["note"]
+        first_at = g["first_at"]
+
+        # Mark the invoice note so an operator can tell it was reconstructed.
+        inv_note = note if note else "(исторические данные)"
+        if "историч" not in inv_note.lower() and "legacy" not in inv_note.lower():
+            inv_note = f"{inv_note} · восстановлено"
+
+        conn.execute(
+            "INSERT INTO inventory_invoices"
+            "  (number, warehouse_code, status, note, created_at)"
+            " VALUES (?, ?, 'DONE', ?, ?)",
+            (next_number, wh, inv_note, first_at),
+        )
+        invoice_id = int(conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"])
+
+        # Grab orphan ADJUSTs in this group and attach them to the new invoice.
+        for row in conn.execute(
+            "SELECT id, product_id, qty FROM stock_ops"
+            "  WHERE op_type = 'ADJUST' AND inventory_invoice_id IS NULL"
+            "    AND warehouse_code = ?"
+            "    AND substr(created_at, 1, 10) = ?"
+            "    AND COALESCE(note, '') = ?",
+            (wh, day, note),
+        ).fetchall():
+            delta  = float(row["qty"])
+            pid    = int(row["product_id"])
+            # Pull current purchase_price for the snapshot. For legacy data
+            # we don't know what it was at inventory time, so we use today's;
+            # auditors should treat the «восстановлено» note as the signal.
+            cp_row = conn.execute(
+                "SELECT COALESCE(purchase_price, 0) AS pp FROM products WHERE id = ?", (pid,),
+            ).fetchone()
+            cost_price = float(cp_row["pp"] or 0) if cp_row else 0.0
+            conn.execute(
+                "INSERT INTO inventory_items"
+                "  (invoice_id, product_id, system_qty, actual_qty, delta, cost_price)"
+                " VALUES (?, ?, 0, ?, ?, ?)",
+                (invoice_id, pid, delta, delta, cost_price),
+            )
+            conn.execute(
+                "UPDATE stock_ops SET inventory_invoice_id = ? WHERE id = ?",
+                (invoice_id, int(row["id"])),
+            )
+        next_number += 1
+
+
 # ── Phase 5 — Expenses ─────────────────────────────────────────────────────
 
 # Fixed set — used to validate the kind column and to filter reports.
@@ -575,6 +748,10 @@ def init_db() -> None:
         _ensure_return_items_free_columns(conn)
         _ensure_items_cost_price_column(conn)
         _ensure_stock_ops_note_column(conn)
+        _ensure_inventory_invoices_table(conn)
+        _ensure_inventory_items_table(conn)
+        _ensure_stock_ops_inventory_invoice_id_column(conn)
+        _backfill_legacy_inventory_invoices(conn)
         _ensure_expense_categories_table(conn)
         _ensure_expenses_table(conn)
         _ensure_expenses_currency_columns(conn)
@@ -1806,33 +1983,105 @@ def apply_inventory_adjustments(
     Apply a batch of ADJUST operations produced by a physical count.
 
     Each item in `adjustments` must be a dict:
-        {"product_id": int, "delta": float}
-    where delta is (actual_qty - system_qty). Positive = surplus (add to stock),
-    negative = shortage (subtract from stock).
+        {"product_id": int, "delta": float}                              — legacy
+    or:
+        {"product_id": int, "system_qty": float, "actual_qty": float}    — new
 
-    Items with delta == 0 are skipped (no discrepancy → no journal entry).
+    When only `delta` is supplied (legacy caller), we read current stock to
+    reconstruct system_qty / actual_qty for the invoice snapshot. Items with
+    delta == 0 are skipped (no discrepancy → no document line).
 
-    Returns (ok, error, n_applied). All in one transaction — if anything
-    fails, nothing is committed.
+    Side effects, all in one transaction:
+      1. Create a new inventory_invoices row with a fresh number.
+      2. Insert one inventory_items row per changed product (system/actual/
+         delta + cost_price snapshot).
+      3. Update stock levels.
+      4. Journal each change in stock_ops with inventory_invoice_id set.
+
+    Returns (ok, error, n_applied). Compatible with the previous signature
+    so existing callers (bot, HTTP route) work unchanged, but new callers
+    get a real invoice they can open and export.
     """
     note = (note or "").strip()
     if not note:
         return False, "note_required", 0
 
-    # Filter out zero-deltas
-    real_adjustments = [
-        a for a in adjustments
-        if float(a.get("delta") or 0) != 0
-    ]
-    if not real_adjustments:
+    # Normalise rows and filter out no-ops.
+    normalised: list[dict[str, Any]] = []
+    for a in adjustments:
+        pid = int(a["product_id"])
+        if "system_qty" in a and "actual_qty" in a:
+            system_qty = float(a.get("system_qty") or 0)
+            actual_qty = float(a.get("actual_qty") or 0)
+            delta = actual_qty - system_qty
+        else:
+            delta = float(a.get("delta") or 0)
+            system_qty = None
+            actual_qty = None
+        if delta == 0:
+            continue
+        normalised.append({
+            "product_id": pid,
+            "system_qty": system_qty,
+            "actual_qty": actual_qty,
+            "delta":      delta,
+        })
+
+    if not normalised:
         return False, "no_changes", 0
 
     try:
         with _connect() as conn:
+            # Allocate the next invoice number.
+            max_row = conn.execute(
+                "SELECT COALESCE(MAX(number), 0) AS m FROM inventory_invoices"
+            ).fetchone()
+            number = int(max_row["m"]) + 1
+
+            conn.execute(
+                "INSERT INTO inventory_invoices"
+                "  (number, warehouse_code, status, note, created_at)"
+                " VALUES (?, ?, 'DONE', ?, datetime('now','localtime'))",
+                (number, warehouse_code, note),
+            )
+            invoice_id = int(conn.execute(
+                "SELECT last_insert_rowid() AS id"
+            ).fetchone()["id"])
+
             n = 0
-            for a in real_adjustments:
-                pid = int(a["product_id"])
-                delta = float(a["delta"])
+            for a in normalised:
+                pid   = a["product_id"]
+                delta = a["delta"]
+                sys_q = a["system_qty"]
+                act_q = a["actual_qty"]
+
+                # If caller didn't pass qty snapshots, reconstruct from current
+                # stock so the invoice still has a self-consistent snapshot.
+                if sys_q is None or act_q is None:
+                    cur = conn.execute(
+                        "SELECT COALESCE(qty, 0) AS q FROM stock"
+                        "  WHERE warehouse_code = ? AND product_id = ?",
+                        (warehouse_code, pid),
+                    ).fetchone()
+                    cur_qty = float(cur["q"]) if cur else 0.0
+                    sys_q = cur_qty          # qty BEFORE applying delta
+                    act_q = cur_qty + delta  # qty AFTER applying delta
+
+                cost_row = conn.execute(
+                    "SELECT COALESCE(purchase_price, 0) AS pp"
+                    "  FROM products WHERE id = ?",
+                    (pid,),
+                ).fetchone()
+                cost_price = float(cost_row["pp"] or 0) if cost_row else 0.0
+
+                conn.execute(
+                    "INSERT INTO inventory_items"
+                    "  (invoice_id, product_id, system_qty, actual_qty,"
+                    "   delta, cost_price)"
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    (invoice_id, pid, sys_q, act_q, delta, cost_price),
+                )
+
                 # Update stock
                 conn.execute(
                     """
@@ -1843,20 +2092,88 @@ def apply_inventory_adjustments(
                     """,
                     (warehouse_code, pid, delta),
                 )
-                # Journal it
-                # Use localtime for created_at so the "today" filter in
-                # /reports/inventory picks it up regardless of server TZ.
+                # Journal it, linked to the invoice.
                 conn.execute(
                     "INSERT INTO stock_ops"
-                    " (created_at, op_type, source, warehouse_code, product_id, qty, note)"
-                    " VALUES (datetime('now','localtime'), 'ADJUST', 'INVENTORY', ?, ?, ?, ?)",
-                    (warehouse_code, pid, delta, note),
+                    " (created_at, op_type, source, warehouse_code,"
+                    "  product_id, qty, note, inventory_invoice_id)"
+                    " VALUES (datetime('now','localtime'), 'ADJUST',"
+                    "         'INVENTORY', ?, ?, ?, ?, ?)",
+                    (warehouse_code, pid, delta, note, invoice_id),
                 )
                 n += 1
+
             conn.commit()
         return True, "", n
     except Exception as exc:
         return False, str(exc), 0
+
+
+# ── Phase 8 — inventory invoice readers ────────────────────────────────────
+
+def list_inventory_invoices(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    warehouse_code: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Return invoices newest first, with headline totals pre-computed."""
+    sql = (
+        "SELECT inv.*,"
+        "       (SELECT COUNT(*) FROM inventory_items it"
+        "         WHERE it.invoice_id = inv.id) AS lines,"
+        "       (SELECT COALESCE(SUM(CASE WHEN delta > 0 THEN delta ELSE 0 END), 0)"
+        "          FROM inventory_items WHERE invoice_id = inv.id) AS surplus_qty,"
+        "       (SELECT COALESCE(SUM(CASE WHEN delta < 0 THEN -delta ELSE 0 END), 0)"
+        "          FROM inventory_items WHERE invoice_id = inv.id) AS shortage_qty,"
+        "       (SELECT COALESCE(SUM(delta * cost_price), 0)"
+        "          FROM inventory_items WHERE invoice_id = inv.id) AS net_cost_delta"
+        "  FROM inventory_invoices inv"
+        " WHERE 1=1"
+    )
+    params: list[Any] = []
+    if date_from:
+        sql += " AND inv.created_at >= ?"
+        params.append(date_from)
+    if date_to:
+        sql += " AND inv.created_at <= ? || ' 23:59:59'"
+        params.append(date_to)
+    if warehouse_code:
+        sql += " AND inv.warehouse_code = ?"
+        params.append(warehouse_code)
+    sql += " ORDER BY inv.created_at DESC, inv.id DESC"
+    with _connect() as conn:
+        rows = conn.execute(sql, params).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
+def get_inventory_invoice(invoice_id: int) -> Optional[dict[str, Any]]:
+    """Return the invoice header plus items (products joined for display)."""
+    with _connect() as conn:
+        header = conn.execute(
+            "SELECT inv.*, w.title AS warehouse_title"
+            "  FROM inventory_invoices inv"
+            "  LEFT JOIN warehouses w ON w.code = inv.warehouse_code"
+            " WHERE inv.id = ?",
+            (invoice_id,),
+        ).fetchone()
+        if not header:
+            return None
+        items = conn.execute(
+            "SELECT it.*, p.brand, p.model, p.name, p.barcode"
+            "  FROM inventory_items it"
+            "  JOIN products p ON p.id = it.product_id"
+            " WHERE it.invoice_id = ?"
+            " ORDER BY ABS(it.delta) DESC, p.brand, p.model, p.name",
+            (invoice_id,),
+        ).fetchall()
+        header_d = _row_to_dict(header)
+        header_d["items"] = [_row_to_dict(r) for r in items]
+        # Pre-compute summary numbers for the view.
+        header_d["surplus_qty"]    = round(sum(i["delta"] for i in header_d["items"] if i["delta"] > 0), 3)
+        header_d["shortage_qty"]   = round(-sum(i["delta"] for i in header_d["items"] if i["delta"] < 0), 3)
+        header_d["net_cost_delta"] = round(sum(i["delta"] * i["cost_price"] for i in header_d["items"]), 2)
+        header_d["lines"]          = len(header_d["items"])
+        return header_d
 
 
 def get_inventory_discrepancies(
@@ -5249,6 +5566,36 @@ def _build_history_event_return(d: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _build_history_event_inventory(d: dict[str, Any]) -> dict[str, Any]:
+    """Inventory ADJUST row rendered as a history event.
+
+    `d` must come from a stock_ops JOIN with inventory_invoices + products:
+    needs id, number, warehouse_code, created_at, qty (= delta), brand/model/
+    name, product_id, note.
+    """
+    invoice_id = d.get("invoice_id")
+    number     = d.get("number")
+    return {
+        "dt":            d.get("created_at", ""),
+        "type":          "INVENTORY",
+        "ref":           str(number) if number is not None else "",
+        # Inventory has no counterparty — show the operator's note instead
+        # (reason for the recount, e.g. «Июль 2026»). Falls back to empty.
+        "counterparty":  d.get("note") or "",
+        "warehouse":     d.get("warehouse_code") or "",
+        "brand":         d.get("brand", ""),
+        "model":         d.get("model", ""),
+        "name":          d.get("name", ""),
+        "product_id":    d.get("product_id"),
+        # qty here is the signed delta: positive = surplus, negative = shortage.
+        "qty":           float(d.get("qty") or 0),
+        "unit_price":    0.0,
+        "total":         0.0,
+        "view_url":      f"/documents/inventory/{invoice_id}" if invoice_id else "",
+        "download_url":  f"/documents/inventory/{invoice_id}/xlsx" if invoice_id else "",
+    }
+
+
 def list_history(q: str = "", limit: int = 500) -> list[dict[str, Any]]:
     like = f"%{q}%" if q else None
     with _connect() as conn:
@@ -5403,6 +5750,27 @@ def list_history_by_product(product_id: int) -> list[dict[str, Any]]:
             (product_id,),
         ).fetchall():
             events.append(_build_history_event_return(_row_to_dict(r)))
+
+        # INVENTORY (ADJUST ops joined to their invoice).
+        # LEFT JOIN keeps unlinked legacy rows out of the if branch below —
+        # after _backfill_legacy_inventory_invoices runs there should be
+        # none, but be defensive in case someone later imports raw rows.
+        for r in conn.execute(
+            """
+            SELECT op.id, op.created_at, op.warehouse_code, op.qty, op.note,
+                   op.inventory_invoice_id AS invoice_id,
+                   inv.number,
+                   p.brand, p.model, p.name, p.id AS product_id
+            FROM stock_ops op
+            JOIN products p ON p.id = op.product_id
+            LEFT JOIN inventory_invoices inv
+                ON inv.id = op.inventory_invoice_id
+            WHERE op.op_type = 'ADJUST' AND op.product_id = ?
+            ORDER BY op.created_at DESC
+            """,
+            (product_id,),
+        ).fetchall():
+            events.append(_build_history_event_inventory(_row_to_dict(r)))
 
     events.sort(key=lambda x: x.get("dt", ""), reverse=True)
     return events

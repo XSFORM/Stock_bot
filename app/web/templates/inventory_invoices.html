@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h4 class="mb-0">📏 {{ t.inventory_invoices_title | default('Инвентаризационные накладные') }}</h4>
+    <div>
+      <a href="/inventory" class="btn btn-sm btn-outline-primary">＋ {{ t.inventory_do | default('Провести инвентаризацию') }}</a>
+      <a href="/reports/inventory" class="btn btn-sm btn-outline-secondary">📊 {{ t.inventory_report_link | default('Отчёт расхождений') }}</a>
+    </div>
+  </div>
+  <p class="text-muted small mb-3">
+    {{ t.inventory_invoices_subtitle | default('Каждая проведённая инвентаризация становится отдельной накладной с номером, которую можно открыть, скачать и приложить к акту.') }}
+  </p>
+
+  {% set _msg = request.query_params.get('msg', '') %}
+  {% if _msg == 'not_found' %}<div class="alert alert-warning py-2 small">{{ t.inventory_invoice_not_found | default('Накладная не найдена.') }}</div>{% endif %}
+
+  <form method="get" action="/documents/inventory" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.reports_from | default('С') }}</label>
+      <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.reports_to | default('По') }}</label>
+      <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.reports_warehouse | default('Склад') }}</label>
+      <select name="warehouse" class="form-select form-select-sm">
+        <option value="">{{ t.reports_all_warehouses | default('Все склады') }}</option>
+        {% for w in warehouse_options %}
+          <option value="{{ w.code }}"{% if w.code == warehouse %} selected{% endif %}>{{ w.title }} ({{ w.code }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sm btn-primary">{{ t.btn_apply | default('Применить') }}</button>
+      <a href="/documents/inventory" class="btn btn-sm btn-outline-secondary">{{ t.btn_reset | default('Сброс') }}</a>
+    </div>
+  </form>
+
+  {% if not invoices %}
+    <div class="text-muted small">{{ t.inventory_invoices_empty | default('Нет инвентаризаций за выбранный период.') }}</div>
+  {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>{{ t.inventory_invoice_number | default('№') }}</th>
+            <th>{{ t.lbl_date | default('Дата') }}</th>
+            <th>{{ t.reports_warehouse | default('Склад') }}</th>
+            <th>{{ t.inventory_note | default('Комментарий') }}</th>
+            <th class="text-end">{{ t.inventory_lines | default('Строк') }}</th>
+            <th class="text-end">{{ t.inventory_surplus | default('Излишек') }}</th>
+            <th class="text-end">{{ t.inventory_shortage | default('Недостача') }}</th>
+            <th class="text-end">{{ t.inventory_net_cost | default('Нетто $') }}</th>
+            <th class="text-end">{{ t.lbl_actions | default('Действия') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in invoices %}
+            <tr>
+              <td class="fw-semibold">#{{ "%06d"|format(inv.number) }}</td>
+              <td>{{ inv.created_at[:16] if inv.created_at else '' }}</td>
+              <td>{{ inv.warehouse_code }}</td>
+              <td>{{ inv.note or '' }}</td>
+              <td class="text-end">{{ inv.lines }}</td>
+              <td class="text-end text-success">
+                {% if inv.surplus_qty > 0 %}+{{ "%.0f"|format(inv.surplus_qty) }}{% else %}—{% endif %}
+              </td>
+              <td class="text-end text-danger">
+                {% if inv.shortage_qty > 0 %}-{{ "%.0f"|format(inv.shortage_qty) }}{% else %}—{% endif %}
+              </td>
+              <td class="text-end {% if inv.net_cost_delta > 0 %}text-success{% elif inv.net_cost_delta < 0 %}text-danger{% else %}text-muted{% endif %}">
+                {{ "%+.2f"|format(inv.net_cost_delta) }}
+              </td>
+              <td class="text-end">
+                <a href="/documents/inventory/{{ inv.id }}" class="btn btn-sm btn-outline-primary">{{ t.btn_view | default('Открыть') }}</a>
+                <a href="/documents/inventory/{{ inv.id }}/xlsx" class="btn btn-sm btn-outline-success">{{ t.btn_download | default('XLSX') }}</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

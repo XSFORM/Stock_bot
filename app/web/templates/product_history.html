@@ -29,6 +29,8 @@
           <span class="badge bg-success">{{ t.badge_receive }}</span>
           {% elif ev.type == 'RETURN' %}
           <span class="badge bg-warning text-dark">{{ t.badge_return }}</span>
+          {% elif ev.type == 'INVENTORY' %}
+          <span class="badge bg-info text-dark">📏 {{ t.badge_inventory | default('Инвентаризация') }}</span>
           {% else %}
           <span class="badge bg-primary">{{ t.badge_sale }}</span>
           {% endif %}
@@ -41,15 +43,31 @@
           <span class="text-danger">-{{ "%.2f"|format(ev.qty) }}</span>
           {% elif ev.type == 'RETURN' %}
           <span class="text-warning">+{{ "%.2f"|format(ev.qty) }}</span>
+          {% elif ev.type == 'INVENTORY' %}
+          {% if ev.qty > 0 %}
+          <span class="text-success">+{{ "%.2f"|format(ev.qty) }}</span>
+          {% elif ev.qty < 0 %}
+          <span class="text-danger">{{ "%.2f"|format(ev.qty) }}</span>
+          {% else %}
+          <span class="text-muted">0.00</span>
+          {% endif %}
           {% else %}
           {{ "%.2f"|format(ev.qty) }}
           {% endif %}
         </td>
-        <td class="text-end">{{ "%.2f"|format(ev.unit_price) }}</td>
-        <td class="text-end">{{ "%.2f"|format(ev.total) }}</td>
+        <td class="text-end">
+          {% if ev.type == 'INVENTORY' %}—{% else %}{{ "%.2f"|format(ev.unit_price) }}{% endif %}
+        </td>
+        <td class="text-end">
+          {% if ev.type == 'INVENTORY' %}—{% else %}{{ "%.2f"|format(ev.total) }}{% endif %}
+        </td>
         <td>
+          {% if ev.view_url %}
           <a class="btn btn-sm btn-outline-primary" href="{{ ev.view_url }}" target="_blank" rel="noopener noreferrer">{{ t.btn_view }}</a>
+          {% endif %}
+          {% if ev.download_url %}
           <a class="btn btn-sm btn-outline-success" href="{{ ev.download_url }}">{{ t.btn_download }}</a>
+          {% endif %}
         </td>
       </tr>
       {% else %}

@@ -11,8 +11,13 @@
   {# ─── Alerts ─── #}
   {% set _msg = request.query_params.get('msg', '') %}
   {% if _msg.startswith('applied:') %}
+    {% set _inv_id = request.query_params.get('inv', '') %}
     <div class="alert alert-success py-2 small">
       ✅ {{ t.inventory_applied | default('Применено:') }} {{ _msg[8:] }} {{ t.inventory_ops_word | default('операций') }}.
+      {% if _inv_id %}
+        <a href="/documents/inventory/{{ _inv_id }}" class="btn btn-sm btn-outline-primary ms-2">📄 {{ t.inventory_open_invoice | default('Открыть накладную') }}</a>
+        <a href="/documents/inventory/{{ _inv_id }}/xlsx" class="btn btn-sm btn-outline-success">📥 XLSX</a>
+      {% endif %}
     </div>
   {% elif _msg == 'note_required' %}
     <div class="alert alert-danger py-2 small">
@@ -49,6 +54,7 @@
       <button type="submit" class="btn btn-sm btn-outline-primary">{{ t.btn_apply | default('Показать') }}</button>
     </div>
     <div class="col-auto">
+      <a href="/documents/inventory" class="btn btn-sm btn-outline-primary">📋 {{ t.inventory_all_invoices | default('Все накладные') }}</a>
       <a href="/reports/inventory" class="btn btn-sm btn-outline-secondary">📊 {{ t.inventory_report_link | default('Отчёт расхождений') }}</a>
     </div>
   </form>

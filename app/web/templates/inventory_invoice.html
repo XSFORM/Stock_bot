@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h4 class="mb-1">📏 {{ t.inventory_invoice_title | default('Инвентаризация') }} #{{ "%06d"|format(invoice.number) }}</h4>
+      <div class="text-muted small">
+        {{ invoice.created_at[:16] if invoice.created_at else '' }}
+        · {{ t.reports_warehouse | default('Склад') }}:
+        <b>{{ invoice.warehouse_code }}</b>{% if invoice.warehouse_title %} ({{ invoice.warehouse_title }}){% endif %}
+      </div>
+    </div>
+    <div>
+      <a href="/documents/inventory" class="btn btn-sm btn-outline-secondary">← {{ t.btn_back | default('Назад') }}</a>
+      <a href="/documents/inventory/{{ invoice.id }}/xlsx" class="btn btn-sm btn-success">📥 {{ t.btn_download_xlsx | default('Скачать XLSX') }}</a>
+    </div>
+  </div>
+
+  {% if invoice.note %}
+    <div class="alert alert-light border py-2 small mb-3">
+      <strong>{{ t.inventory_note | default('Комментарий') }}:</strong> {{ invoice.note }}
+    </div>
+  {% endif %}
+
+  <div class="row g-2 mb-3">
+    <div class="col-sm-3">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted small">📋 {{ t.inventory_lines | default('Строк') }}</div>
+        <div class="fs-5 fw-semibold">{{ invoice.lines }}</div>
+      </div>
+    </div>
+    <div class="col-sm-3">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted small">➕ {{ t.inventory_surplus | default('Излишек, шт') }}</div>
+        <div class="fs-5 fw-semibold text-success">+{{ "%.0f"|format(invoice.surplus_qty) }}</div>
+      </div>
+    </div>
+    <div class="col-sm-3">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted small">➖ {{ t.inventory_shortage | default('Недостача, шт') }}</div>
+        <div class="fs-5 fw-semibold text-danger">-{{ "%.0f"|format(invoice.shortage_qty) }}</div>
+      </div>
+    </div>
+    <div class="col-sm-3">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted small">💵 {{ t.inventory_net_cost | default('Нетто по себестоимости') }}</div>
+        <div class="fs-5 fw-bold {% if invoice.net_cost_delta > 0 %}text-success{% elif invoice.net_cost_delta < 0 %}text-danger{% else %}text-muted{% endif %}">
+          {{ "%+.2f"|format(invoice.net_cost_delta) }} $
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-striped align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th>#</th>
+          <th>{{ t.inventory_product | default('Товар') }}</th>
+          <th>{{ t.inventory_barcode | default('Штрих-код') }}</th>
+          <th class="text-end">{{ t.inventory_system_qty | default('В системе') }}</th>
+          <th class="text-end">{{ t.inventory_actual_qty | default('По факту') }}</th>
+          <th class="text-end">{{ t.inventory_delta | default('Δ') }}</th>
+          <th class="text-end">{{ t.inventory_cost_price | default('Себест. $') }}</th>
+          <th class="text-end">{{ t.inventory_cost_impact | default('Нетто $') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in invoice.items %}
+          <tr class="{% if it.delta > 0 %}table-success{% elif it.delta < 0 %}table-danger{% endif %}">
+            <td>{{ loop.index }}</td>
+            <td>
+              <div class="small text-muted">{{ it.brand }} {{ it.model }}</div>
+              <div><a href="/products/{{ it.product_id }}/history" target="_blank" rel="noopener">{{ it.name }}</a></div>
+            </td>
+            <td class="small">{{ it.barcode or '' }}</td>
+            <td class="text-end">{{ "%.2f"|format(it.system_qty) }}</td>
+            <td class="text-end">{{ "%.2f"|format(it.actual_qty) }}</td>
+            <td class="text-end fw-semibold {% if it.delta > 0 %}text-success{% elif it.delta < 0 %}text-danger{% endif %}">
+              {{ "%+.2f"|format(it.delta) }}
+            </td>
+            <td class="text-end">{{ "%.2f"|format(it.cost_price) }}</td>
+            <td class="text-end {% if it.delta > 0 %}text-success{% elif it.delta < 0 %}text-danger{% endif %}">
+              {{ "%+.2f"|format(it.delta * it.cost_price) }}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

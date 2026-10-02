@@ -54,6 +54,8 @@ from app.db.sqlite import (
     get_profit_report,
     list_stock_for_inventory,
     apply_inventory_adjustments,
+    list_inventory_invoices,
+    get_inventory_invoice,
     get_inventory_discrepancies,
     list_expense_categories,
     add_expense_category,
@@ -2492,6 +2494,9 @@ async def inventory_apply(request: Request):
         return RedirectResponse(url=f"/inventory?warehouse={warehouse}&msg=note_required", status_code=303)
 
     # Form contains actual[<product_id>] fields — one per product row.
+    # We pass BOTH system and actual qty to apply_inventory_adjustments so the
+    # resulting inventory_items row captures what the operator saw on screen,
+    # not just the delta — important for later audit.
     adjustments = []
     current_qty_by_pid = {
         it["product_id"]: float(it["qty"] or 0)
@@ -2508,16 +2513,27 @@ async def inventory_apply(request: Request):
             actual_qty = float(actual)
         except (ValueError, TypeError):
             continue
-        current = current_qty_by_pid.get(pid, 0.0)
-        delta = actual_qty - current
-        if delta != 0:
-            adjustments.append({"product_id": pid, "delta": delta})
+        system_qty = current_qty_by_pid.get(pid, 0.0)
+        if actual_qty != system_qty:
+            adjustments.append({
+                "product_id": pid,
+                "system_qty": system_qty,
+                "actual_qty": actual_qty,
+            })
 
     if not adjustments:
         return RedirectResponse(url=f"/inventory?warehouse={warehouse}&msg=no_changes", status_code=303)
 
     ok, err, n = apply_inventory_adjustments(warehouse, adjustments, note=note)
     if ok:
+        # Find the invoice we just created so the user can jump to it.
+        inv_list = list_inventory_invoices(warehouse_code=warehouse)
+        inv_id = inv_list[0]["id"] if inv_list else None
+        if inv_id:
+            return RedirectResponse(
+                url=f"/inventory?warehouse={warehouse}&msg=applied:{n}&inv={inv_id}",
+                status_code=303,
+            )
         return RedirectResponse(url=f"/inventory?warehouse={warehouse}&msg=applied:{n}", status_code=303)
     return RedirectResponse(url=f"/inventory?warehouse={warehouse}&msg=error:{quote(err, safe='')}", status_code=303)
 
@@ -2554,6 +2570,60 @@ def reports_inventory_page(
             "selected_warehouses": selected_wh,
             "all_warehouses_selected": not selected_wh,
         },
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Phase 8 — inventory invoices (list, view, XLSX export)
+# ══════════════════════════════════════════════════════════════════════════
+
+@app.get("/documents/inventory", response_class=HTMLResponse)
+def documents_inventory_list(
+    request: Request,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    warehouse: str = "",
+):
+    """List inventory invoices with per-period and per-warehouse filters."""
+    invoices = list_inventory_invoices(
+        date_from=(date_from or None),
+        date_to=(date_to or None),
+        warehouse_code=(warehouse or None),
+    )
+    warehouse_options = list_warehouses()
+    return _render(
+        request,
+        "inventory_invoices.html",
+        {
+            "invoices":          invoices,
+            "date_from":         date_from or "",
+            "date_to":           date_to or "",
+            "warehouse":         warehouse,
+            "warehouse_options": warehouse_options,
+        },
+    )
+
+
+@app.get("/documents/inventory/{invoice_id}", response_class=HTMLResponse)
+def documents_inventory_view(request: Request, invoice_id: int):
+    invoice = get_inventory_invoice(int(invoice_id))
+    if not invoice:
+        return RedirectResponse(url="/documents/inventory?msg=not_found", status_code=303)
+    return _render(request, "inventory_invoice.html", {"invoice": invoice})
+
+
+@app.get("/documents/inventory/{invoice_id}/xlsx")
+def documents_inventory_xlsx(invoice_id: int):
+    from app.services.inventory_xlsx import generate_inventory_xlsx_bytes
+    invoice = get_inventory_invoice(int(invoice_id))
+    if not invoice:
+        return RedirectResponse(url="/documents/inventory?msg=not_found", status_code=303)
+    data = generate_inventory_xlsx_bytes(invoice)
+    filename = f"inventory_{invoice['number']:06d}.xlsx"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
