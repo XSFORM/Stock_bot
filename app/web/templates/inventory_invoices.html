@@ -47,6 +47,7 @@
         <thead class="table-dark">
           <tr>
             <th>{{ t.inventory_invoice_number | default('№') }}</th>
+            <th>{{ t.inventory_invoice_status | default('Статус') }}</th>
             <th>{{ t.lbl_date | default('Дата') }}</th>
             <th>{{ t.reports_warehouse | default('Склад') }}</th>
             <th>{{ t.inventory_note | default('Комментарий') }}</th>
@@ -59,8 +60,17 @@
         </thead>
         <tbody>
           {% for inv in invoices %}
-            <tr>
+            <tr class="{% if inv.status == 'CANCELLED' %}table-secondary text-muted{% elif inv.cancels_invoice_id %}table-warning{% endif %}">
               <td class="fw-semibold">#{{ "%06d"|format(inv.number) }}</td>
+              <td>
+                {% if inv.status == 'CANCELLED' %}
+                  <span class="badge bg-secondary">{{ t.inventory_status_cancelled | default('Отменена') }}</span>
+                {% elif inv.cancels_invoice_id %}
+                  <span class="badge bg-warning text-dark" title="Отменяет #{{ '%06d'|format(inv.cancels_invoice_id) }}">↩ {{ t.inventory_status_reversal_short | default('Отмена') }}</span>
+                {% else %}
+                  <span class="badge bg-success">{{ t.inventory_status_done | default('Проведена') }}</span>
+                {% endif %}
+              </td>
               <td>{{ inv.created_at[:16] if inv.created_at else '' }}</td>
               <td>{{ inv.warehouse_code }}</td>
               <td>{{ inv.note or '' }}</td>

@@ -1,9 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="bg-white p-3 rounded shadow-sm">
+  {% set _is_cancelled = invoice.status == 'CANCELLED' %}
+  {% set _is_reversal  = invoice.cancels_invoice_id %}
+
   <div class="d-flex align-items-center justify-content-between mb-3">
     <div>
-      <h4 class="mb-1">📏 {{ t.inventory_invoice_title | default('Инвентаризация') }} #{{ "%06d"|format(invoice.number) }}</h4>
+      <h4 class="mb-1">
+        📏 {{ t.inventory_invoice_title | default('Инвентаризация') }} #{{ "%06d"|format(invoice.number) }}
+        {% if _is_cancelled %}
+          <span class="badge bg-secondary ms-2">{{ t.inventory_status_cancelled | default('Отменена') }}</span>
+        {% elif _is_reversal %}
+          <span class="badge bg-warning text-dark ms-2">↩ {{ t.inventory_status_reversal | default('Отмена другой инвентаризации') }}</span>
+        {% endif %}
+      </h4>
       <div class="text-muted small">
         {{ invoice.created_at[:16] if invoice.created_at else '' }}
         · {{ t.reports_warehouse | default('Склад') }}:
@@ -15,6 +25,33 @@
       <a href="/documents/inventory/{{ invoice.id }}/xlsx" class="btn btn-sm btn-success">📥 {{ t.btn_download_xlsx | default('Скачать XLSX') }}</a>
     </div>
   </div>
+
+  {% set _msg = request.query_params.get('msg', '') %}
+  {% if _msg == 'cancelled' %}
+    <div class="alert alert-success py-2 small">
+      ✅ {{ t.inventory_cancel_ok | default('Инвентаризация отменена. Остатки восстановлены.') }}
+    </div>
+  {% elif _msg.startswith('cancel_err:') %}
+    <div class="alert alert-danger py-2 small">
+      ❌ {{ t.inventory_cancel_err | default('Не удалось отменить:') }} <code>{{ _msg[11:] | e }}</code>
+    </div>
+  {% endif %}
+
+  {% if _is_cancelled and invoice.cancelled_by_invoice_id %}
+    <div class="alert alert-warning py-2 small">
+      ⚠️ {{ t.inventory_cancelled_by | default('Эта инвентаризация была отменена') }} —
+      <a href="/documents/inventory/{{ invoice.cancelled_by_invoice_id }}">
+        {{ t.inventory_see_reversal | default('посмотреть отменяющую накладную') }}
+      </a>.
+      {{ t.inventory_cancelled_hint | default('Остатки были восстановлены к состоянию до её применения.') }}
+    </div>
+  {% elif _is_reversal %}
+    <div class="alert alert-info py-2 small">
+      ↩ {{ t.inventory_this_cancels | default('Эта накладная отменяет') }}
+      <a href="/documents/inventory/{{ invoice.cancels_invoice_id }}">#{{ "%06d"|format(invoice.cancels_invoice_id) }}</a>.
+      {{ t.inventory_reversal_hint | default('Знаки изменений обратны оригиналу — остатки откатываются к состоянию до него.') }}
+    </div>
+  {% endif %}
 
   {% if invoice.note %}
     <div class="alert alert-light border py-2 small mb-3">
@@ -89,5 +126,40 @@
       </tbody>
     </table>
   </div>
+
+  {% if not _is_cancelled and not _is_reversal %}
+    <hr class="my-4">
+    <div class="border border-danger rounded p-3 bg-light-subtle">
+      <h6 class="text-danger mb-2">⚠️ {{ t.inventory_cancel_zone | default('Зона отмены') }}</h6>
+      <p class="small text-muted mb-2">
+        {{ t.inventory_cancel_desc | default('Если инвентаризация проведена с ошибкой (например, в поле «Факт» вписали разницу вместо реального количества), отмена вернёт остатки в состояние до её применения и создаст отдельную накладную-отмену для аудита. Исходная накладная не удаляется, только помечается как «Отменена».') }}
+      </p>
+      <form method="post" action="/documents/inventory/{{ invoice.id }}/cancel"
+            class="row g-2 align-items-end"
+            onsubmit="return confirmCancelInventory(this);">
+        <div class="col-auto flex-grow-1">
+          <label class="form-label form-label-sm mb-1">{{ t.inventory_cancel_reason | default('Причина отмены') }} <span class="text-muted">({{ t.opt | default('необязательно') }})</span></label>
+          <input type="text" name="reason" class="form-control form-control-sm" maxlength="200"
+                 placeholder="{{ t.inventory_cancel_reason_ph | default('например: в факт писали разницу вместо реального количества') }}">
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-sm btn-danger">
+            ❌ {{ t.inventory_cancel_btn | default('Отменить эту инвентаризацию') }}
+          </button>
+        </div>
+      </form>
+    </div>
+    <script>
+      function confirmCancelInventory(form) {
+        var msg = "Отменить инвентаризацию #{{ '%06d'|format(invoice.number) }}?\n\n" +
+                  "• Будет создана отдельная накладная-отмена.\n" +
+                  "• Остатки на складе {{ invoice.warehouse_code }} будут восстановлены " +
+                  "к состоянию до её применения ({{ invoice.lines }} строк).\n" +
+                  "• Эта накладная получит статус «Отменена», но не исчезнет из журнала.\n\n" +
+                  "Продолжить?";
+        return confirm(msg);
+      }
+    </script>
+  {% endif %}
 </div>
 {% endblock %}

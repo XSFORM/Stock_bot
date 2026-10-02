@@ -299,6 +299,25 @@ def _ensure_inventory_items_table(conn: sqlite3.Connection) -> None:
     )
 
 
+def _ensure_inventory_invoice_cancel_columns(conn: sqlite3.Connection) -> None:
+    """Phase 9 — reversal/cancellation of inventory invoices.
+
+    Two symmetric columns on inventory_invoices:
+      * cancels_invoice_id       set on the reverse invoice, points at the
+                                 original it undoes. NULL on normal invoices.
+      * cancelled_by_invoice_id  set on the original once undone, points at
+                                 the reverse that undid it. NULL otherwise.
+    Together with status (DONE/CANCELLED) they let the UI render «Отменена
+    #000003» on the original and «Отменяет #000001» on the reverse without
+    extra joins.
+    """
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(inventory_invoices)")}
+    if "cancels_invoice_id" not in cols:
+        conn.execute("ALTER TABLE inventory_invoices ADD COLUMN cancels_invoice_id INTEGER")
+    if "cancelled_by_invoice_id" not in cols:
+        conn.execute("ALTER TABLE inventory_invoices ADD COLUMN cancelled_by_invoice_id INTEGER")
+
+
 def _ensure_stock_ops_inventory_invoice_id_column(conn: sqlite3.Connection) -> None:
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(stock_ops)")}
     if "inventory_invoice_id" not in cols:
@@ -750,6 +769,7 @@ def init_db() -> None:
         _ensure_stock_ops_note_column(conn)
         _ensure_inventory_invoices_table(conn)
         _ensure_inventory_items_table(conn)
+        _ensure_inventory_invoice_cancel_columns(conn)
         _ensure_stock_ops_inventory_invoice_id_column(conn)
         _backfill_legacy_inventory_invoices(conn)
         _ensure_expense_categories_table(conn)
@@ -2174,6 +2194,128 @@ def get_inventory_invoice(invoice_id: int) -> Optional[dict[str, Any]]:
         header_d["net_cost_delta"] = round(sum(i["delta"] * i["cost_price"] for i in header_d["items"]), 2)
         header_d["lines"]          = len(header_d["items"])
         return header_d
+
+
+def cancel_inventory_invoice(
+    invoice_id: int,
+    reason: str = "",
+) -> tuple[bool, str, Optional[int]]:
+    """
+    Reverse a done inventory. Creates a new «reversal» invoice whose
+    items mirror the original with signs flipped, and marks the original
+    as CANCELLED. Stock levels are restored to what they were before the
+    original invoice was applied.
+
+    Idempotent: a second call on the same original fails with
+    'already_cancelled' — the UI should hide the button but we double-check
+    here to make raw API calls safe too. Reversal invoices themselves can't
+    be cancelled (they aren't a user operation to begin with).
+
+    Returns (ok, error, new_reverse_invoice_id).
+    """
+    try:
+        with _connect() as conn:
+            orig = conn.execute(
+                "SELECT * FROM inventory_invoices WHERE id = ?", (invoice_id,),
+            ).fetchone()
+            if not orig:
+                return False, "invoice_not_found", None
+            if orig["status"] != "DONE":
+                return False, "already_cancelled", None
+            if orig["cancels_invoice_id"] is not None:
+                # Trying to cancel a reversal is almost certainly a mistake.
+                return False, "cannot_cancel_reversal", None
+
+            orig_items = conn.execute(
+                "SELECT * FROM inventory_items WHERE invoice_id = ?",
+                (invoice_id,),
+            ).fetchall()
+            if not orig_items:
+                # Nothing to reverse — just flip the status so the UI reflects
+                # the operator's intent (and future idempotency works).
+                conn.execute(
+                    "UPDATE inventory_invoices SET status = 'CANCELLED' WHERE id = ?",
+                    (invoice_id,),
+                )
+                conn.commit()
+                return True, "", None
+
+            # ── Create the reversal invoice ────────────────────────────────
+            max_row = conn.execute(
+                "SELECT COALESCE(MAX(number), 0) AS m FROM inventory_invoices"
+            ).fetchone()
+            number = int(max_row["m"]) + 1
+
+            orig_num  = int(orig["number"])
+            orig_note = str(orig["note"] or "")
+            reason    = (reason or "").strip()
+            new_note  = f"Отмена инвентаризации #{orig_num:06d}"
+            if reason:
+                new_note += f" · {reason}"
+            if orig_note:
+                new_note += f"  (исходный комментарий: {orig_note})"
+
+            conn.execute(
+                "INSERT INTO inventory_invoices"
+                "  (number, warehouse_code, status, note, created_at,"
+                "   cancels_invoice_id)"
+                " VALUES (?, ?, 'DONE', ?, datetime('now','localtime'), ?)",
+                (number, orig["warehouse_code"], new_note, invoice_id),
+            )
+            new_id = int(conn.execute(
+                "SELECT last_insert_rowid() AS id"
+            ).fetchone()["id"])
+
+            # ── Reverse each item: swap system/actual, negate delta ────────
+            for it in orig_items:
+                pid        = int(it["product_id"])
+                old_delta  = float(it["delta"])
+                old_system = float(it["system_qty"])
+                old_actual = float(it["actual_qty"])
+                cost_price = float(it["cost_price"] or 0)
+                new_delta  = -old_delta
+                # The reversal "sees" the post-cancel world: current stock
+                # (actual on original) is the system state, pre-cancel is
+                # the target. Swap the two for a self-consistent snapshot.
+                conn.execute(
+                    "INSERT INTO inventory_items"
+                    "  (invoice_id, product_id, system_qty, actual_qty,"
+                    "   delta, cost_price)"
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    (new_id, pid, old_actual, old_system, new_delta, cost_price),
+                )
+                # Restore stock
+                conn.execute(
+                    """
+                    INSERT INTO stock (warehouse_code, product_id, qty)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(warehouse_code, product_id)
+                    DO UPDATE SET qty = qty + excluded.qty
+                    """,
+                    (orig["warehouse_code"], pid, new_delta),
+                )
+                # Journal the reversal — same auditable pattern.
+                conn.execute(
+                    "INSERT INTO stock_ops"
+                    " (created_at, op_type, source, warehouse_code,"
+                    "  product_id, qty, note, inventory_invoice_id)"
+                    " VALUES (datetime('now','localtime'), 'ADJUST',"
+                    "         'INVENTORY', ?, ?, ?, ?, ?)",
+                    (orig["warehouse_code"], pid, new_delta,
+                     f"Отмена #{orig_num:06d}", new_id),
+                )
+
+            # ── Mark original as CANCELLED and link both sides ─────────────
+            conn.execute(
+                "UPDATE inventory_invoices"
+                "   SET status = 'CANCELLED', cancelled_by_invoice_id = ?"
+                " WHERE id = ?",
+                (new_id, invoice_id),
+            )
+            conn.commit()
+        return True, "", new_id
+    except Exception as exc:
+        return False, str(exc), None
 
 
 def get_inventory_discrepancies(

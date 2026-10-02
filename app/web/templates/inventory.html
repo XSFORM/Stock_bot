@@ -65,6 +65,18 @@
     <form method="post" action="/inventory/apply" id="invForm">
       <input type="hidden" name="warehouse" value="{{ warehouse }}">
 
+      {# ─── Big "how to fill" explainer — the thing that would have saved
+            Berdi from entering deltas instead of counts. Keep this ABOVE
+            the table so no one can miss it. ─── #}
+      <div class="alert alert-primary py-2 small mb-3">
+        <strong>⚠️ {{ t.inventory_howto_title | default('Как заполнять колонку «Факт»') }}</strong><br>
+        {{ t.inventory_howto_body | default('В поле «Факт» вводите РЕАЛЬНОЕ количество товара, которое вы насчитали на складе — не разницу!') }}
+        <br>
+        <span class="text-muted">
+          {{ t.inventory_howto_example | default('Пример: в системе 50, по факту насчитали 49 → в «Факт» пишете 49. Разница (−1) посчитается справа сама.') }}
+        </span>
+      </div>
+
       {# ─── Spot mode: search input ─── #}
       {% if mode == 'spot' %}
         <div class="mb-2">
@@ -84,7 +96,13 @@
               <th class="inv-sort" data-sort="name"     style="cursor:pointer;user-select:none">{{ t.th_name | default('Название') }} <span class="inv-arrow"></span></th>
               <th class="inv-sort" data-sort="barcode"  style="cursor:pointer;user-select:none">{{ t.th_barcode | default('Штрихкод') }} <span class="inv-arrow"></span></th>
               <th class="inv-sort text-end" data-sort="current" style="cursor:pointer;user-select:none;min-width:80px">{{ t.inventory_system_qty | default('В системе') }} <span class="inv-arrow"></span></th>
-              <th class="text-end" style="min-width:110px">{{ t.inventory_actual_qty | default('Факт') }}</th>
+              <th class="text-end" style="min-width:110px"
+                  title="Введите РЕАЛЬНОЕ количество, которое насчитали на складе. Не разницу.">
+                {{ t.inventory_actual_qty | default('Факт') }}
+                <span class="text-muted small fw-normal d-block" style="font-size:0.7em;">
+                  {{ t.inventory_actual_qty_hint | default('реальное кол-во') }}
+                </span>
+              </th>
               <th class="inv-sort text-end" data-sort="delta" style="cursor:pointer;user-select:none;min-width:80px">{{ t.inventory_diff | default('Разница') }} <span class="inv-arrow"></span></th>
             </tr>
           </thead>
@@ -104,7 +122,8 @@
                          name="actual_{{ it.product_id }}"
                          class="form-control form-control-sm text-end inv-actual"
                          data-current="{{ it.qty }}"
-                         placeholder="—" style="min-width:100px">
+                         title="Введите РЕАЛЬНОЕ количество на складе (не разницу)"
+                         placeholder="= {{ '%.0f'|format(it.qty) }}?" style="min-width:100px">
                 </td>
                 <td class="text-end inv-delta small text-muted">—</td>
               </tr>
@@ -260,6 +279,10 @@
 
 function confirmInv() {
   var changed = 0, surplus = 0, shortage = 0;
+  // Suspicious: delta's magnitude is >=50% of system qty AND system qty >= 5
+  // AND the typed actual equals exactly the suspected delta (classic "typed
+  // the difference" mistake). Flag these for the operator before commit.
+  var suspicious = [];
   document.querySelectorAll('.inv-row').forEach(function(row) {
     var current = parseFloat(row.getAttribute('data-current')) || 0;
     var input = row.querySelector('.inv-actual');
@@ -271,6 +294,18 @@ function confirmInv() {
     if (d !== 0) {
       changed++;
       if (d > 0) surplus += d; else shortage += -d;
+      // Heuristic: operator wrote a small number (likely the delta) that
+      // happens to equal |system − typed|. Only warn when system >= 5 to
+      // avoid spam on tiny-stock products.
+      if (current >= 5 && Math.abs(d) >= current * 0.5) {
+        var name = (row.querySelector('td:nth-child(4)') || {}).textContent || '';
+        suspicious.push({
+          name: name.trim(),
+          sys: current,
+          typed: actual,
+          delta: d
+        });
+      }
     }
   });
   if (changed === 0) {
@@ -280,8 +315,18 @@ function confirmInv() {
   var msg = 'Применить корректировки?\n\n' +
             '• Строк с расхождением: ' + changed + '\n' +
             '• Оприходовано (+): ' + surplus.toFixed(2) + '\n' +
-            '• Списано (–): ' + shortage.toFixed(2) + '\n\n' +
-            'Эти изменения будут записаны как ADJUST-операции. История приходов и продаж не меняется.';
+            '• Списано (–): ' + shortage.toFixed(2) + '\n\n';
+  if (suspicious.length) {
+    msg += '⚠️ ВНИМАНИЕ: ' + suspicious.length + ' строк(и) с подозрительно крупным изменением (>50% от системного количества):\n';
+    suspicious.slice(0, 5).forEach(function(s) {
+      msg += '  • ' + s.name + ': в системе ' + s.sys + ', вы ввели ' + s.typed + ' → Δ=' + (s.delta > 0 ? '+' : '') + s.delta + '\n';
+    });
+    if (suspicious.length > 5) {
+      msg += '  …и ещё ' + (suspicious.length - 5) + ' строк(и)\n';
+    }
+    msg += '\nПроверьте: вы точно вводили РЕАЛЬНОЕ количество, а не разницу?\n\n';
+  }
+  msg += 'Эти изменения будут записаны как ADJUST-операции. Если ошиблись — накладную всегда можно отменить из раздела Документы → Инвентаризации.';
   return confirm(msg);
 }
 </script>

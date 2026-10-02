@@ -56,6 +56,7 @@ from app.db.sqlite import (
     apply_inventory_adjustments,
     list_inventory_invoices,
     get_inventory_invoice,
+    cancel_inventory_invoice,
     get_inventory_discrepancies,
     list_expense_categories,
     add_expense_category,
@@ -2625,6 +2626,24 @@ def documents_inventory_xlsx(invoice_id: int):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.post("/documents/inventory/{invoice_id}/cancel")
+async def documents_inventory_cancel(invoice_id: int, request: Request):
+    """Reverse a done inventory. Creates a counter-invoice and marks the
+    original as CANCELLED. Idempotent at the DB layer; the UI hides the
+    button on cancelled invoices anyway."""
+    form = await request.form()
+    reason = str(form.get("reason", "")).strip()
+    ok, err, new_id = cancel_inventory_invoice(int(invoice_id), reason=reason)
+    if not ok:
+        return RedirectResponse(
+            url=f"/documents/inventory/{invoice_id}?msg=cancel_err:{quote(err, safe='')}",
+            status_code=303,
+        )
+    # Land on the reverse invoice so the operator can see what happened.
+    target = f"/documents/inventory/{new_id}" if new_id else f"/documents/inventory/{invoice_id}"
+    return RedirectResponse(url=f"{target}?msg=cancelled", status_code=303)
 
 
 @app.get("/reports/profit", response_class=HTMLResponse)

@@ -280,3 +280,140 @@ class TestLegacyBackfill:
                 "  WHERE op_type = 'ADJUST' AND inventory_invoice_id IS NULL"
             ).fetchone()
             assert int(orphans["n"]) == 0
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Phase 9 — cancel_inventory_invoice
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+class TestCancelInventory:
+    def test_cancel_restores_stock_to_pre_inventory_state(self, db_path: Path) -> None:
+        """The whole point: an operator mistake can be undone without
+        touching sales/receive history."""
+        from app.db.sqlite import (
+            apply_inventory_adjustments, cancel_inventory_invoice,
+            list_inventory_invoices, get_stock_qty,
+        )
+        pid = _add_product("A", "B", "C", 10.0)
+        _seed_stock("WH1", pid, 100)
+        # Operator applies a wrong inventory (meant to subtract 1, wrote delta).
+        apply_inventory_adjustments(
+            "WH1",
+            [{"product_id": pid, "system_qty": 100, "actual_qty": 1}],
+            note="oops",
+        )
+        assert get_stock_qty("WH1", pid) == pytest.approx(1)  # wrong!
+
+        orig_id = list_inventory_invoices()[0]["id"]
+        ok, err, new_id = cancel_inventory_invoice(orig_id, reason="typed delta by mistake")
+        assert ok, err
+        assert new_id is not None
+        # Stock is back to what it was before the mistake.
+        assert get_stock_qty("WH1", pid) == pytest.approx(100)
+
+    def test_cancel_marks_original_and_links_both_sides(self, db_path: Path) -> None:
+        from app.db.sqlite import (
+            apply_inventory_adjustments, cancel_inventory_invoice,
+            get_inventory_invoice, list_inventory_invoices,
+        )
+        pid = _add_product("A", "B", "C", 1.0)
+        _seed_stock("WH1", pid, 10)
+        apply_inventory_adjustments(
+            "WH1",
+            [{"product_id": pid, "system_qty": 10, "actual_qty": 7}],
+            note="recount",
+        )
+        orig_id = list_inventory_invoices()[0]["id"]
+        ok, err, new_id = cancel_inventory_invoice(orig_id)
+        assert ok, err
+
+        orig = get_inventory_invoice(orig_id)
+        new  = get_inventory_invoice(new_id)
+        assert orig["status"] == "CANCELLED"
+        assert orig["cancelled_by_invoice_id"] == new_id
+        assert new["status"] == "DONE"
+        assert new["cancels_invoice_id"] == orig_id
+
+    def test_cancel_creates_reverse_items_with_negated_delta(self, db_path: Path) -> None:
+        """Reversal items mirror originals with system/actual swapped and
+        delta negated — a reader of the reversal invoice can read it on
+        its own without cross-referencing the original."""
+        from app.db.sqlite import (
+            apply_inventory_adjustments, cancel_inventory_invoice,
+            get_inventory_invoice, list_inventory_invoices,
+        )
+        pid = _add_product("A", "B", "C", 5.0)
+        _seed_stock("WH1", pid, 50)
+        apply_inventory_adjustments(
+            "WH1",
+            [{"product_id": pid, "system_qty": 50, "actual_qty": 48}],
+            note="x",
+        )
+        orig_id = list_inventory_invoices()[0]["id"]
+        ok, _err, new_id = cancel_inventory_invoice(orig_id)
+        assert ok
+
+        new = get_inventory_invoice(new_id)
+        assert len(new["items"]) == 1
+        row = new["items"][0]
+        assert row["system_qty"] == pytest.approx(48)  # was 'actual' on orig
+        assert row["actual_qty"] == pytest.approx(50)  # was 'system' on orig
+        assert row["delta"]      == pytest.approx(+2)  # negated
+
+    def test_cannot_cancel_twice(self, db_path: Path) -> None:
+        from app.db.sqlite import (
+            apply_inventory_adjustments, cancel_inventory_invoice,
+            list_inventory_invoices,
+        )
+        pid = _add_product("A", "B", "C", 1.0)
+        _seed_stock("WH1", pid, 10)
+        apply_inventory_adjustments(
+            "WH1",
+            [{"product_id": pid, "system_qty": 10, "actual_qty": 9}],
+            note="x",
+        )
+        orig_id = list_inventory_invoices()[0]["id"]
+        ok, _, _ = cancel_inventory_invoice(orig_id)
+        assert ok
+        ok2, err2, _ = cancel_inventory_invoice(orig_id)
+        assert not ok2
+        assert err2 == "already_cancelled"
+
+    def test_cannot_cancel_a_reversal(self, db_path: Path) -> None:
+        """Reversal invoices aren't user operations — don't let the UI undo them."""
+        from app.db.sqlite import (
+            apply_inventory_adjustments, cancel_inventory_invoice,
+            list_inventory_invoices,
+        )
+        pid = _add_product("A", "B", "C", 1.0)
+        _seed_stock("WH1", pid, 10)
+        apply_inventory_adjustments(
+            "WH1",
+            [{"product_id": pid, "system_qty": 10, "actual_qty": 9}],
+            note="x",
+        )
+        orig_id = list_inventory_invoices()[0]["id"]
+        _, _, reverse_id = cancel_inventory_invoice(orig_id)
+        ok, err, _ = cancel_inventory_invoice(reverse_id)
+        assert not ok
+        assert err == "cannot_cancel_reversal"
+
+    def test_product_history_sees_both_original_and_reversal(self, db_path: Path) -> None:
+        from app.db.sqlite import (
+            apply_inventory_adjustments, cancel_inventory_invoice,
+            list_history_by_product, list_inventory_invoices,
+        )
+        pid = _add_product("A", "B", "C", 2.0)
+        _seed_stock("WH1", pid, 20)
+        apply_inventory_adjustments(
+            "WH1",
+            [{"product_id": pid, "system_qty": 20, "actual_qty": 5}],
+            note="oops",
+        )
+        orig_id = list_inventory_invoices()[0]["id"]
+        cancel_inventory_invoice(orig_id, reason="revert")
+        events = [e for e in list_history_by_product(pid) if e["type"] == "INVENTORY"]
+        # Two inventory events: original (-15) and reversal (+15).
+        qtys = sorted(e["qty"] for e in events)
+        assert qtys == pytest.approx([-15, +15])
