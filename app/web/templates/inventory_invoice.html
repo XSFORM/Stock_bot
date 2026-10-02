@@ -68,13 +68,25 @@
     </div>
     <div class="col-sm-3">
       <div class="border rounded p-2 h-100">
-        <div class="text-muted small">➕ {{ t.inventory_surplus | default('Излишек, шт') }}</div>
+        <div class="text-muted small">
+          {% if _is_reversal %}
+            ↩ {{ t.inventory_returned_to_stock | default('Возвращено на склад, шт') }}
+          {% else %}
+            ➕ {{ t.inventory_surplus | default('Излишек, шт') }}
+          {% endif %}
+        </div>
         <div class="fs-5 fw-semibold text-success">+{{ "%.0f"|format(invoice.surplus_qty) }}</div>
       </div>
     </div>
     <div class="col-sm-3">
       <div class="border rounded p-2 h-100">
-        <div class="text-muted small">➖ {{ t.inventory_shortage | default('Недостача, шт') }}</div>
+        <div class="text-muted small">
+          {% if _is_reversal %}
+            ↩ {{ t.inventory_removed_from_stock | default('Снято со склада, шт') }}
+          {% else %}
+            ➖ {{ t.inventory_shortage | default('Недостача, шт') }}
+          {% endif %}
+        </div>
         <div class="fs-5 fw-semibold text-danger">-{{ "%.0f"|format(invoice.shortage_qty) }}</div>
       </div>
     </div>
@@ -95,8 +107,12 @@
           <th>#</th>
           <th>{{ t.inventory_product | default('Товар') }}</th>
           <th>{{ t.inventory_barcode | default('Штрих-код') }}</th>
-          <th class="text-end">{{ t.inventory_system_qty | default('В системе') }}</th>
-          <th class="text-end">{{ t.inventory_actual_qty | default('По факту') }}</th>
+          <th class="text-end">
+            {% if _is_reversal %}{{ t.inventory_before_cancel | default('До отмены') }}{% else %}{{ t.inventory_system_qty | default('В системе') }}{% endif %}
+          </th>
+          <th class="text-end">
+            {% if _is_reversal %}{{ t.inventory_after_cancel | default('После отмены') }}{% else %}{{ t.inventory_actual_qty | default('По факту') }}{% endif %}
+          </th>
           <th class="text-end">{{ t.inventory_delta | default('Δ') }}</th>
           <th class="text-end">{{ t.inventory_cost_price | default('Себест. $') }}</th>
           <th class="text-end">{{ t.inventory_cost_impact | default('Нетто $') }}</th>
