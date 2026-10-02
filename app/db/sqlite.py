@@ -390,7 +390,7 @@ def _backfill_legacy_inventory_invoices(conn: sqlite3.Connection) -> None:
             # we don't know what it was at inventory time, so we use today's;
             # auditors should treat the «восстановлено» note as the signal.
             cp_row = conn.execute(
-                "SELECT COALESCE(purchase_price, 0) AS pp FROM products WHERE id = ?", (pid,),
+                "SELECT COALESCE(wh_price, 0) AS pp FROM products WHERE id = ?", (pid,),
             ).fetchone()
             cost_price = float(cp_row["pp"] or 0) if cp_row else 0.0
             conn.execute(
@@ -2068,7 +2068,7 @@ def apply_inventory_adjustments(
                     act_q = cur_qty + delta  # qty AFTER applying delta
 
                 cost_row = conn.execute(
-                    "SELECT COALESCE(purchase_price, 0) AS pp"
+                    "SELECT COALESCE(wh_price, 0) AS pp"
                     "  FROM products WHERE id = ?",
                     (pid,),
                 ).fetchone()

@@ -201,7 +201,7 @@ class TestLegacyBackfill:
         with _sql._connect() as con:
             con.execute("INSERT OR IGNORE INTO warehouses (code, title) VALUES ('WH1', 'W')")
             # Add a product so FK succeeds.
-            con.execute("INSERT INTO products (brand, model, name, purchase_price)"
+            con.execute("INSERT INTO products (brand, model, name, wh_price)"
                         " VALUES ('L', 'eg', 'acy', 3)")
             pid = int(con.execute("SELECT id FROM products").fetchone()["id"])
 
@@ -258,7 +258,7 @@ class TestLegacyBackfill:
 
         with _sql._connect() as con:
             con.execute("INSERT OR IGNORE INTO warehouses (code, title) VALUES ('WH1', 'W')")
-            con.execute("INSERT INTO products (brand, model, name, purchase_price)"
+            con.execute("INSERT INTO products (brand, model, name, wh_price)"
                         " VALUES ('A','B','C',1)")
             pid = int(con.execute("SELECT id FROM products").fetchone()["id"])
             con.execute(
