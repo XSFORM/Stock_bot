@@ -57,12 +57,22 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     # --- Data rows ---
     for row_num, item in enumerate(items, start=1):
         row_idx = header_row + row_num
+        if item.get('free_line'):
+            # Phase 10: separate brand/model/name/barcode columns.
+            brand_part = (item.get('free_brand') or '').strip()
+            model_part = (item.get('free_model') or '').strip()
+            model_val   = (brand_part + ' ' + model_part).strip()
+            name_val    = item.get('free_name')    or ''
+            barcode_val = item.get('free_barcode') or ''
+        else:
+            model_val   = f"{item.get('brand','')} {item.get('model','')}".strip()
+            name_val    = item.get('name') or ''
+            barcode_val = item.get('barcode') or ''
         values = [
             row_num,
-            (str(item.get('free_name') or item.get('name') or '') if item.get('free_line')
-             else f"{item.get('brand','')} {item.get('model','')}".strip()),
-            ("" if item.get('free_line') else (item.get('name') or '')),
-            item.get("barcode") or "",
+            model_val,
+            name_val,
+            barcode_val,
             float(item["qty"]),
             round_money(item["unit_price"]),
             calc_line_total(item["unit_price"], item["qty"]),

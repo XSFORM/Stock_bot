@@ -155,22 +155,43 @@
             </td>
           </tr>
           {# ── Add off-stock item row ── #}
+          {# Phase 10: four separate inputs for brand / model / name / barcode
+             so each piece lands in the matching column of the printed invoice. #}
           <tr class="table-warning">
             <td colspan="7">
               <form method="post" action="/sale/add-free" id="add-free-form" class="d-flex flex-wrap gap-2 align-items-end p-1">
                 <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
-                <div style="flex:1;min-width:220px">
-                  <label class="form-label form-label-sm mb-1">{{ t.sale_free_item_label }} <span class="badge bg-warning text-dark ms-1">{{ t.sale_free_item_badge }}</span></label>
+                <div class="w-100 small text-muted mb-1">
+                  <span class="badge bg-warning text-dark me-1">{{ t.sale_free_item_badge }}</span>
+                  {{ t.sale_free_item_hint | default('Товар вне склада — заполните нужные поля (минимум одно). Если на инвойсе должна быть пустая колонка, оставьте её пустой.') }}
+                </div>
+                <div style="width:140px">
+                  <label class="form-label form-label-sm mb-1">{{ t.th_brand | default('Бренд') }}</label>
+                  <input type="text" class="form-control form-control-sm" name="free_brand" id="free-brand-input"
+                         placeholder="SONIFER" autocomplete="off">
+                </div>
+                <div style="width:140px">
+                  <label class="form-label form-label-sm mb-1">{{ t.th_model | default('Модель') }}</label>
+                  <input type="text" class="form-control form-control-sm" name="free_model" id="free-model-input"
+                         placeholder="sf-9999" autocomplete="off">
+                </div>
+                <div style="flex:1;min-width:160px">
+                  <label class="form-label form-label-sm mb-1">{{ t.th_name | default('Название') }}</label>
                   <input type="text" class="form-control form-control-sm" name="free_name" id="free-name-input"
-                    placeholder="{{ t.sale_free_item_placeholder }}" autocomplete="off">
+                         placeholder="Steam Iron" autocomplete="off">
+                </div>
+                <div style="width:170px">
+                  <label class="form-label form-label-sm mb-1">{{ t.th_barcode | default('Штрих-код') }}</label>
+                  <input type="text" class="form-control form-control-sm" name="free_barcode" id="free-barcode-input"
+                         placeholder="6971184589999" autocomplete="off">
                 </div>
                 <div>
                   <label class="form-label form-label-sm mb-1">{{ t.lbl_qty }}</label>
-                  <input class="form-control form-control-sm" name="qty" id="free-qty" type="number" step="1" min="1" style="width:80px">
+                  <input class="form-control form-control-sm" name="qty" id="free-qty" type="number" step="1" min="1" style="width:70px">
                 </div>
                 <div>
                   <label class="form-label form-label-sm mb-1">{{ t.sale_lbl_unit_price }}</label>
-                  <input class="form-control form-control-sm" name="unit_price" id="free-unit-price" type="number" step="0.01" min="0" style="width:100px" placeholder="0.00">
+                  <input class="form-control form-control-sm" name="unit_price" id="free-unit-price" type="number" step="0.01" min="0" style="width:90px" placeholder="0.00">
                 </div>
                 <div class="d-flex align-items-end">
                   <button class="btn btn-warning btn-sm" id="free-add-btn">{{ t.sale_free_item_btn }}</button>
@@ -186,14 +207,18 @@
               <td class="text-center align-middle">{{ loop.index }}</td>
               <td class="align-middle">
                 {% if item.free_line %}
-                  {{ item.free_name }}
+                  {{ (item.free_brand ~ ' ' ~ item.free_model)|trim or '' }}
                   <span class="badge bg-warning text-dark ms-1" style="font-size:0.7em">{{ t.sale_free_item_badge }}</span>
                 {% else %}
                   {{ item.brand }} {{ item.model }}
                 {% endif %}
               </td>
               <td class="align-middle">
-                {% if not item.free_line %}{{ item.name }}{% endif %}
+                {% if item.free_line %}
+                  {{ item.free_name or '' }}
+                {% else %}
+                  {{ item.name }}
+                {% endif %}
               </td>
               <td class="edit-inline">
                 <form method="post" action="/sale/item/update" class="d-flex gap-1 align-items-center">

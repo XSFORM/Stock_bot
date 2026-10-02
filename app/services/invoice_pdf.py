@@ -154,11 +154,16 @@ def generate_invoice_pdf(invoice: dict[str, Any],
     items_qty = 0
     for idx, item in enumerate(items, start=1):
         if item.get("free_line"):
-            model_val = str(item.get("free_name") or item.get("name") or "")
-            name_val = ""
+            # Phase 10: free line has its own brand/model/name/barcode columns.
+            brand_part = (item.get("free_brand") or "").strip()
+            model_part = (item.get("free_model") or "").strip()
+            model_val   = (brand_part + " " + model_part).strip()
+            name_val    = str(item.get("free_name")    or "")
+            barcode_val = str(item.get("free_barcode") or "")
         else:
-            model_val = f"{item.get('brand','')} {item.get('model','')}".strip()
-            name_val = str(item.get("name", "") or "")
+            model_val   = f"{item.get('brand','')} {item.get('model','')}".strip()
+            name_val    = str(item.get("name", "") or "")
+            barcode_val = str(item.get("barcode") or "")
         qty = float(item.get("qty", 0) or 0)
         unit_price = float(item.get("unit_price", 0) or 0)
         line_total = calc_line_total(unit_price, qty)
@@ -167,7 +172,7 @@ def generate_invoice_pdf(invoice: dict[str, Any],
             str(idx),
             model_val,
             name_val,
-            str(item.get("barcode") or ""),
+            barcode_val,
             _fmt_qty(qty),
             f"{round_money(unit_price):.2f}",
             f"{line_total:.2f}",

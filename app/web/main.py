@@ -1453,11 +1453,22 @@ def sale_add(
 @app.post("/sale/add-free")
 def sale_add_free(
     cart_id: int = Form(...),
-    free_name: str = Form(...),
+    free_brand:   str = Form(""),
+    free_model:   str = Form(""),
+    free_name:    str = Form(""),
+    free_barcode: str = Form(""),
     qty: float = Form(...),
     unit_price: float = Form(...),
 ):
-    ok, err = cart_add_free_item(int(cart_id), free_name.strip(), float(qty), float(unit_price))
+    ok, err = cart_add_free_item(
+        int(cart_id),
+        free_name=free_name.strip(),
+        qty=float(qty),
+        unit_price=float(unit_price),
+        free_brand=free_brand.strip(),
+        free_model=free_model.strip(),
+        free_barcode=free_barcode.strip(),
+    )
     msg = "OK" if ok else err
     return RedirectResponse(url=f"/sale?msg=add:{msg}", status_code=303)
 
@@ -1695,13 +1706,20 @@ def invoice_sale_edit_post(
     product_id: List[str] = Form(...),
     qty: List[float] = Form(...),
     unit_price: List[float] = Form(...),
-    free_name: List[str] = Form(default=[]),
+    free_name:    List[str] = Form(default=[]),
+    free_brand:   List[str] = Form(default=[]),
+    free_model:   List[str] = Form(default=[]),
+    free_barcode: List[str] = Form(default=[]),
 ):
     new_items = []
     for i, (pid_raw, q, up) in enumerate(zip(product_id, qty, unit_price)):
-        fname = (free_name[i] if i < len(free_name) else "").strip()
+        fname    = (free_name[i]    if i < len(free_name)    else "").strip()
+        fbrand   = (free_brand[i]   if i < len(free_brand)   else "").strip()
+        fmodel   = (free_model[i]   if i < len(free_model)   else "").strip()
+        fbarcode = (free_barcode[i] if i < len(free_barcode) else "").strip()
+        has_free = any([fname, fbrand, fmodel, fbarcode])
         pid_text = (pid_raw or "").strip()
-        if fname:
+        if has_free:
             if pid_text:
                 try:
                     pid: Optional[int] = int(pid_text)
@@ -1726,8 +1744,11 @@ def invoice_sale_edit_post(
                     status_code=303,
                 )
         new_items.append({
-            "product_id": pid,
-            "free_name": fname,
+            "product_id":    pid,
+            "free_brand":    fbrand,
+            "free_model":    fmodel,
+            "free_name":     fname,
+            "free_barcode":  fbarcode,
             "qty": q,
             "unit_price": up,
         })
@@ -1844,14 +1865,34 @@ def invoice_return_edit_post(
     invoice_id: int,
     client_id: int = Form(...),
     warehouse_code: str = Form(...),
-    product_id: List[int] = Form(...),
+    product_id: List[str] = Form(...),
     qty: List[float] = Form(...),
     unit_price: List[float] = Form(...),
+    free_brand:   List[str] = Form(default=[]),
+    free_model:   List[str] = Form(default=[]),
+    free_name:    List[str] = Form(default=[]),
+    free_barcode: List[str] = Form(default=[]),
 ):
-    new_items = [
-        {"product_id": pid, "qty": q, "unit_price": up}
-        for pid, q, up in zip(product_id, qty, unit_price)
-    ]
+    new_items = []
+    for i, (pid_raw, q, up) in enumerate(zip(product_id, qty, unit_price)):
+        fbrand   = (free_brand[i]   if i < len(free_brand)   else "").strip()
+        fmodel   = (free_model[i]   if i < len(free_model)   else "").strip()
+        fname    = (free_name[i]    if i < len(free_name)    else "").strip()
+        fbarcode = (free_barcode[i] if i < len(free_barcode) else "").strip()
+        pid_text = str(pid_raw or "").strip()
+        try:
+            pid: Optional[int] = int(pid_text) if pid_text else None
+        except ValueError:
+            pid = None
+        new_items.append({
+            "product_id":   pid,
+            "free_brand":   fbrand,
+            "free_model":   fmodel,
+            "free_name":    fname,
+            "free_barcode": fbarcode,
+            "qty": q,
+            "unit_price": up,
+        })
     ok, err = update_return_invoice(int(invoice_id), int(client_id), warehouse_code, new_items)
     if not ok:
         return RedirectResponse(
@@ -1929,13 +1970,22 @@ def return_item_add_post(
 @app.post("/return/add-free")
 def return_add_free(
     invoice_id: int = Form(...),
-    free_name: str = Form(...),
+    free_brand:   str = Form(""),
+    free_model:   str = Form(""),
+    free_name:    str = Form(""),
+    free_barcode: str = Form(""),
     qty: float = Form(...),
     unit_price: float = Form(...),
 ):
     """Add a free-line (off-stock) item to an open return invoice."""
     ok, err = return_invoice_add_free_item(
-        int(invoice_id), free_name.strip(), float(qty), float(unit_price)
+        int(invoice_id),
+        free_name=free_name.strip(),
+        qty=float(qty),
+        unit_price=float(unit_price),
+        free_brand=free_brand.strip(),
+        free_model=free_model.strip(),
+        free_barcode=free_barcode.strip(),
     )
     msg = "OK" if ok else err
     return RedirectResponse(url=f"/return?msg=add:{msg}", status_code=303)

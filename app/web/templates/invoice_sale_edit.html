@@ -54,12 +54,14 @@
             <tr class="item-row{% if item.free_line %} table-warning{% endif %}">
               <td style="position:relative">
                 {% if item.free_line %}
-                  <div class="d-flex align-items-center gap-1">
-                    <input type="text" class="form-control form-control-sm free-name-field" name="free_name"
-                           value="{{ item.free_name }}">
-                    <input type="hidden" class="product-id-field" name="product_id" value="">
-                    <span class="badge bg-warning text-dark text-nowrap">{{ t.invoice_edit_free_item_badge }}</span>
+                  <div class="row g-1 align-items-end">
+                    <div class="col-6"><input type="text" class="form-control form-control-sm" name="free_brand"   value="{{ item.free_brand   or '' }}" placeholder="Бренд"></div>
+                    <div class="col-6"><input type="text" class="form-control form-control-sm" name="free_model"   value="{{ item.free_model   or '' }}" placeholder="Модель"></div>
+                    <div class="col-7"><input type="text" class="form-control form-control-sm" name="free_name"    value="{{ item.free_name    or '' }}" placeholder="Название"></div>
+                    <div class="col-5"><input type="text" class="form-control form-control-sm" name="free_barcode" value="{{ item.free_barcode or '' }}" placeholder="Штрих-код"></div>
                   </div>
+                  <input type="hidden" class="product-id-field" name="product_id" value="">
+                  <span class="badge bg-warning text-dark text-nowrap mt-1">{{ t.invoice_edit_free_item_badge }}</span>
                 {% else %}
                   <div class="input-group input-group-sm">
                     <input type="text" class="form-control product-search" placeholder="{{ t.lbl_product }}"
@@ -67,7 +69,10 @@
                            data-product-id="{{ item.product_id }}">
                     <input type="hidden" class="product-id-field" name="product_id" value="{{ item.product_id }}">
                   </div>
-                  <input type="hidden" name="free_name" value="">
+                  <input type="hidden" name="free_brand"   value="">
+                  <input type="hidden" name="free_model"   value="">
+                  <input type="hidden" name="free_name"    value="">
+                  <input type="hidden" name="free_barcode" value="">
                   <div class="search-results list-group mt-1" style="display:none;position:absolute;z-index:100;min-width:300px"></div>
                 {% endif %}
               </td>
@@ -114,7 +119,10 @@ function addRow() {
         <input type="text" class="form-control product-search" placeholder="{{ t.lbl_product }}">
         <input type="hidden" class="product-id-field" name="product_id" value="">
       </div>
-      <input type="hidden" name="free_name" value="">
+      <input type="hidden" name="free_brand"   value="">
+      <input type="hidden" name="free_model"   value="">
+      <input type="hidden" name="free_name"    value="">
+      <input type="hidden" name="free_barcode" value="">
       <div class="search-results list-group mt-1" style="display:none;position:absolute;z-index:100;min-width:300px"></div>
     </td>
     <td><input type="number" class="form-control form-control-sm qty-field" name="qty" value="1" min="0.001" step="any" required></td>
@@ -134,11 +142,14 @@ function addFreeRow() {
   tr.className = 'item-row table-warning';
   tr.innerHTML = `
     <td style="position:relative">
-      <div class="d-flex align-items-center gap-1">
-        <input type="text" class="form-control form-control-sm free-name-field" name="free_name" placeholder="{{ t.sale_free_item_placeholder | e }}">
-        <input type="hidden" class="product-id-field" name="product_id" value="">
-        <span class="badge bg-warning text-dark text-nowrap">{{ t.invoice_edit_free_item_badge }}</span>
+      <div class="row g-1 align-items-end">
+        <div class="col-6"><input type="text" class="form-control form-control-sm" name="free_brand"   placeholder="Бренд"></div>
+        <div class="col-6"><input type="text" class="form-control form-control-sm" name="free_model"   placeholder="Модель"></div>
+        <div class="col-7"><input type="text" class="form-control form-control-sm" name="free_name"    placeholder="Название"></div>
+        <div class="col-5"><input type="text" class="form-control form-control-sm" name="free_barcode" placeholder="Штрих-код"></div>
       </div>
+      <input type="hidden" class="product-id-field" name="product_id" value="">
+      <span class="badge bg-warning text-dark text-nowrap mt-1">{{ t.invoice_edit_free_item_badge }}</span>
     </td>
     <td><input type="number" class="form-control form-control-sm qty-field" name="qty" value="1" min="0.001" step="any" required></td>
     <td><input type="number" class="form-control form-control-sm price-field" name="unit_price" value="0.00" min="0" step="0.01" required></td>

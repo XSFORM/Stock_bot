@@ -715,6 +715,61 @@ def _ensure_cart_items_free_columns(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE cart_items_new RENAME TO cart_items")
 
 
+def _ensure_cart_items_free_split_columns(conn: sqlite3.Connection) -> None:
+    """Phase 10 — split «free line» into brand/model/name/barcode.
+
+    The initial Phase 1 migration gave free lines a single `free_name` column
+    that most operators used as «model» (because that's where it visually
+    landed in the invoice preview). This phase gives free lines proper
+    columns so each piece ends up in its own column on the printed invoice.
+
+    Legacy data: rows with `free_line = 1` and `free_name != ''` have their
+    `free_name` content copied into `free_model` and `free_name` is cleared.
+    That preserves the current display: those lines keep showing in the
+    «Модель» column of the invoice preview, now by data rather than by
+    accident.
+    """
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(cart_items)")}
+    added_any = False
+    if "free_brand" not in cols:
+        conn.execute("ALTER TABLE cart_items ADD COLUMN free_brand TEXT NOT NULL DEFAULT ''")
+        added_any = True
+    if "free_model" not in cols:
+        conn.execute("ALTER TABLE cart_items ADD COLUMN free_model TEXT NOT NULL DEFAULT ''")
+        added_any = True
+    if "free_barcode" not in cols:
+        conn.execute("ALTER TABLE cart_items ADD COLUMN free_barcode TEXT NOT NULL DEFAULT ''")
+        added_any = True
+    if added_any:
+        # Backfill: move legacy free_name into free_model to preserve display.
+        conn.execute(
+            "UPDATE cart_items"
+            "   SET free_model = free_name, free_name = ''"
+            " WHERE free_line = 1 AND free_name != '' AND free_model = ''"
+        )
+
+
+def _ensure_return_items_free_split_columns(conn: sqlite3.Connection) -> None:
+    """Same split for return_items (free-line returns). See cart_items version."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(return_items)")}
+    added_any = False
+    if "free_brand" not in cols:
+        conn.execute("ALTER TABLE return_items ADD COLUMN free_brand TEXT NOT NULL DEFAULT ''")
+        added_any = True
+    if "free_model" not in cols:
+        conn.execute("ALTER TABLE return_items ADD COLUMN free_model TEXT NOT NULL DEFAULT ''")
+        added_any = True
+    if "free_barcode" not in cols:
+        conn.execute("ALTER TABLE return_items ADD COLUMN free_barcode TEXT NOT NULL DEFAULT ''")
+        added_any = True
+    if added_any:
+        conn.execute(
+            "UPDATE return_items"
+            "   SET free_model = free_name, free_name = ''"
+            " WHERE free_line = 1 AND free_name != '' AND free_model = ''"
+        )
+
+
 def _backfill_suppliers_from_receive_invoices(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -765,6 +820,8 @@ def init_db() -> None:
         _backfill_suppliers_from_receive_invoices(conn)
         _ensure_cart_items_free_columns(conn)
         _ensure_return_items_free_columns(conn)
+        _ensure_cart_items_free_split_columns(conn)
+        _ensure_return_items_free_split_columns(conn)
         _ensure_items_cost_price_column(conn)
         _ensure_stock_ops_note_column(conn)
         _ensure_inventory_invoices_table(conn)
@@ -4369,15 +4426,28 @@ def cart_add_by_cart_id(
 
 def cart_add_free_item(
     cart_id: int,
-    free_name: str,
-    qty: float,
-    unit_price: float,
+    free_name: str = "",
+    qty: float = 0.0,
+    unit_price: float = 0.0,
+    *,
+    free_brand:   str = "",
+    free_model:   str = "",
+    free_barcode: str = "",
 ) -> tuple[bool, str]:
-    """Add a free/manual line item (not linked to any stock product)."""
+    """Add a free/manual line item (not linked to any stock product).
+
+    Phase 10: brand/model/name/barcode are stored in separate columns so
+    they land in the matching columns of the printed invoice. At least
+    one of the four text fields must be filled — otherwise there's no
+    way for the invoice to describe the line.
+    """
     try:
-        free_name = free_name.strip()
-        if not free_name:
-            return False, "free_name_required"
+        free_brand   = (free_brand or "").strip()
+        free_model   = (free_model or "").strip()
+        free_name    = (free_name or "").strip()
+        free_barcode = (free_barcode or "").strip()
+        if not any([free_brand, free_model, free_name, free_barcode]):
+            return False, "free_description_required"
         if qty <= 0:
             return False, "qty_must_be_positive"
         if unit_price < 0:
@@ -4385,12 +4455,15 @@ def cart_add_free_item(
         unit_price = _normalize_unit_price(unit_price)
         total = calc_line_total(unit_price, qty)
         with _connect() as conn:
-            # Phase 1: free line has no product → cost_price = 0 (excluded from profit reports).
+            # Free line has no product → cost_price = 0 (excluded from profit reports).
             conn.execute(
                 "INSERT INTO cart_items"
-                " (cart_id, product_id, free_line, free_name, qty, price_mode, unit_price, total, cost_price)"
-                " VALUES (?, NULL, 1, ?, ?, 'custom', ?, ?, 0)",
-                (cart_id, free_name, qty, unit_price, total),
+                " (cart_id, product_id, free_line,"
+                "  free_brand, free_model, free_name, free_barcode,"
+                "  qty, price_mode, unit_price, total, cost_price)"
+                " VALUES (?, NULL, 1, ?, ?, ?, ?, ?, 'custom', ?, ?, 0)",
+                (cart_id, free_brand, free_model, free_name, free_barcode,
+                 qty, unit_price, total),
             )
             conn.commit()
         return True, ""
@@ -4451,6 +4524,9 @@ def _cart_show_text(conn: sqlite3.Connection, cart_id: int) -> tuple[bool, str]:
     items = conn.execute(
         """
         SELECT ci.free_line, ci.free_name,
+               COALESCE(ci.free_brand, '') AS free_brand,
+               COALESCE(ci.free_model, '') AS free_model,
+               COALESCE(ci.free_barcode, '') AS free_barcode,
                COALESCE(p.brand, '') AS brand, COALESCE(p.model, '') AS model,
                ci.qty, ci.unit_price, ci.total
         FROM cart_items ci
@@ -4465,7 +4541,8 @@ def _cart_show_text(conn: sqlite3.Connection, cart_id: int) -> tuple[bool, str]:
     total = 0.0
     for i in items:
         if i["free_line"]:
-            label = i["free_name"]
+            parts = [i["free_brand"], i["free_model"], i["free_name"]]
+            label = " ".join(p for p in parts if p) or "—"
         else:
             label = f"{i['brand']} {i['model']}"
         lines.append(
@@ -4507,11 +4584,14 @@ def _finish_cart(
         items = conn.execute(
             """
             SELECT ci.id, ci.product_id, ci.free_line, ci.free_name,
+                   COALESCE(ci.free_brand, '')   AS free_brand,
+                   COALESCE(ci.free_model, '')   AS free_model,
+                   COALESCE(ci.free_barcode, '') AS free_barcode,
                    ci.qty, ci.price_mode, ci.unit_price, ci.total,
-                   COALESCE(p.brand, '') AS brand,
-                   COALESCE(p.model, '') AS model,
-                   COALESCE(p.name, ci.free_name) AS name,
-                   COALESCE(p.barcode, '') AS barcode
+                   COALESCE(p.brand,   ci.free_brand,   '') AS brand,
+                   COALESCE(p.model,   ci.free_model,   '') AS model,
+                   COALESCE(p.name,    ci.free_name,    '') AS name,
+                   COALESCE(p.barcode, ci.free_barcode, '') AS barcode
             FROM cart_items ci
             LEFT JOIN products p ON p.id = ci.product_id
             WHERE ci.cart_id = ?
@@ -4597,10 +4677,14 @@ def get_cart_items_list(cart_id: int) -> tuple[Optional[dict], list[dict]]:
         items = conn.execute(
             """
             SELECT ci.id, ci.product_id, ci.free_line, ci.free_name,
+                   COALESCE(ci.free_brand, '')   AS free_brand,
+                   COALESCE(ci.free_model, '')   AS free_model,
+                   COALESCE(ci.free_barcode, '') AS free_barcode,
                    ci.qty, ci.price_mode, ci.unit_price, ci.total,
-                   COALESCE(p.brand, '') AS brand,
-                   COALESCE(p.model, '') AS model,
-                   COALESCE(p.name, ci.free_name) AS name,
+                   COALESCE(p.brand,   ci.free_brand,   '') AS brand,
+                   COALESCE(p.model,   ci.free_model,   '') AS model,
+                   COALESCE(p.name,    ci.free_name,    '') AS name,
+                   COALESCE(p.barcode, ci.free_barcode, '') AS barcode,
                    COALESCE(p.wh_price, 0) AS wh_price
             FROM cart_items ci
             LEFT JOIN products p ON p.id = ci.product_id
@@ -4695,10 +4779,13 @@ def get_invoice_items_by_number(number: int) -> list[dict[str, Any]]:
             """
             SELECT ci.id, ci.qty, ci.price_mode, ci.unit_price, ci.total,
                    ci.free_line, ci.free_name,
-                   COALESCE(p.brand, '') AS brand,
-                   COALESCE(p.model, '') AS model,
-                   COALESCE(p.name, ci.free_name) AS name,
-                   COALESCE(p.barcode, '') AS barcode,
+                   COALESCE(ci.free_brand, '')   AS free_brand,
+                   COALESCE(ci.free_model, '')   AS free_model,
+                   COALESCE(ci.free_barcode, '') AS free_barcode,
+                   COALESCE(p.brand,   ci.free_brand,   '') AS brand,
+                   COALESCE(p.model,   ci.free_model,   '') AS model,
+                   COALESCE(p.name,    ci.free_name,    '') AS name,
+                   COALESCE(p.barcode, ci.free_barcode, '') AS barcode,
                    p.id AS product_id
             FROM invoices i
             JOIN carts c ON c.id = i.cart_id
@@ -4838,7 +4925,10 @@ def update_sale_invoice(
             for item in new_items:
                 pid = item.get("product_id") or None
                 free_line = 1 if not pid else 0
-                free_name = item.get("free_name", "") if free_line else ""
+                free_brand   = item.get("free_brand",   "") if free_line else ""
+                free_model   = item.get("free_model",   "") if free_line else ""
+                free_name    = item.get("free_name",    "") if free_line else ""
+                free_barcode = item.get("free_barcode", "") if free_line else ""
                 qty = float(item["qty"])
                 unit_price = _normalize_unit_price(float(item["unit_price"]))
                 item_total = calc_line_total(unit_price, qty)
@@ -4857,9 +4947,13 @@ def update_sale_invoice(
                     cost_price = float(row["wh_price"]) if row else 0.0
                 conn.execute(
                     "INSERT INTO cart_items"
-                    " (cart_id, product_id, free_line, free_name, qty, price_mode, unit_price, total, cost_price)"
-                    " VALUES (?, ?, ?, ?, ?, 'custom', ?, ?, ?)",
-                    (cart_id, pid, free_line, free_name, qty, unit_price, item_total, cost_price),
+                    " (cart_id, product_id, free_line,"
+                    "  free_brand, free_model, free_name, free_barcode,"
+                    "  qty, price_mode, unit_price, total, cost_price)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'custom', ?, ?, ?)",
+                    (cart_id, pid, free_line,
+                     free_brand, free_model, free_name, free_barcode,
+                     qty, unit_price, item_total, cost_price),
                 )
                 if pid and not free_line:
                     conn.execute(
@@ -5473,7 +5567,14 @@ def return_invoice_get_items(invoice_id: int) -> list[dict[str, Any]]:
             """
             SELECT ri.id, ri.qty, ri.unit_price, ri.total,
                    ri.free_line, ri.free_name,
-                   p.brand, p.model, p.name, p.barcode, p.id AS product_id
+                   COALESCE(ri.free_brand, '')   AS free_brand,
+                   COALESCE(ri.free_model, '')   AS free_model,
+                   COALESCE(ri.free_barcode, '') AS free_barcode,
+                   COALESCE(p.brand,   ri.free_brand,   '') AS brand,
+                   COALESCE(p.model,   ri.free_model,   '') AS model,
+                   COALESCE(p.name,    ri.free_name,    '') AS name,
+                   COALESCE(p.barcode, ri.free_barcode, '') AS barcode,
+                   p.id AS product_id
             FROM return_items ri
             LEFT JOIN products p ON p.id = ri.product_id
             WHERE ri.invoice_id = ?
@@ -5493,15 +5594,22 @@ def return_invoice_get_items(invoice_id: int) -> list[dict[str, Any]]:
 
 def return_invoice_add_free_item(
     invoice_id: int,
-    free_name: str,
-    qty: float,
-    unit_price: float,
+    free_name: str = "",
+    qty: float = 0.0,
+    unit_price: float = 0.0,
+    *,
+    free_brand:   str = "",
+    free_model:   str = "",
+    free_barcode: str = "",
 ) -> tuple[bool, str]:
-    """Add a free/manual line item to a return invoice (no stock product)."""
+    """Phase 10: brand/model/name/barcode in their own columns."""
     try:
-        free_name = free_name.strip()
-        if not free_name:
-            return False, "free_name_required"
+        free_brand   = (free_brand or "").strip()
+        free_model   = (free_model or "").strip()
+        free_name    = (free_name or "").strip()
+        free_barcode = (free_barcode or "").strip()
+        if not any([free_brand, free_model, free_name, free_barcode]):
+            return False, "free_description_required"
         if qty <= 0:
             return False, "qty_must_be_positive"
         if unit_price < 0:
@@ -5515,14 +5623,15 @@ def return_invoice_add_free_item(
             ).fetchone()
             if not inv:
                 return False, "invoice_not_open"
-            # Phase 1: free-line return item has no product → cost_price = 0.
             conn.execute(
                 "INSERT INTO return_items"
-                " (invoice_id, product_id, free_line, free_name, qty, unit_price, total, cost_price)"
-                " VALUES (?, NULL, 1, ?, ?, ?, ?, 0)",
-                (invoice_id, free_name, qty, unit_price, total),
+                " (invoice_id, product_id, free_line,"
+                "  free_brand, free_model, free_name, free_barcode,"
+                "  qty, unit_price, total, cost_price)"
+                " VALUES (?, NULL, 1, ?, ?, ?, ?, ?, ?, ?, 0)",
+                (invoice_id, free_brand, free_model, free_name, free_barcode,
+                 qty, unit_price, total),
             )
-            # Keep invoice total in sync
             conn.execute(
                 "UPDATE return_invoices SET total = COALESCE((SELECT SUM(total) FROM return_items WHERE invoice_id = ?), 0) WHERE id = ?",
                 (invoice_id, invoice_id),
@@ -5617,6 +5726,11 @@ def update_return_invoice(
                 up = _normalize_unit_price(float(item["unit_price"]))
                 item_total = calc_line_total(up, qty)
                 pid = item.get("product_id")
+                free_line = 1 if not pid else 0
+                free_brand   = item.get("free_brand",   "") if free_line else ""
+                free_model   = item.get("free_model",   "") if free_line else ""
+                free_name    = item.get("free_name",    "") if free_line else ""
+                free_barcode = item.get("free_barcode", "") if free_line else ""
                 # Phase 1 cost_price for return: keep old snapshot if this
                 # product was already in the return, else use current wh_price.
                 if not pid:
@@ -5630,9 +5744,13 @@ def update_return_invoice(
                     cost_price = float(wh_row["wh_price"]) if wh_row else 0.0
                 conn.execute(
                     "INSERT INTO return_items"
-                    " (invoice_id, product_id, qty, unit_price, total, cost_price)"
-                    " VALUES (?, ?, ?, ?, ?, ?)",
-                    (invoice_id, pid, qty, up, item_total, cost_price),
+                    " (invoice_id, product_id, free_line,"
+                    "  free_brand, free_model, free_name, free_barcode,"
+                    "  qty, unit_price, total, cost_price)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (invoice_id, pid, free_line,
+                     free_brand, free_model, free_name, free_barcode,
+                     qty, up, item_total, cost_price),
                 )
                 if inv["status"] == "DONE":
                     conn.execute(

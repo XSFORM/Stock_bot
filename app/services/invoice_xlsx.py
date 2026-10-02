@@ -70,16 +70,24 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     for row_num, item in enumerate(items, start=1):
         row_idx = header_row + row_num
         if item.get("free_line"):
-            model_val = item.get("free_name") or item.get("name") or ""
-            name_val = ""
+            # Phase 10: free line now has brand/model/name/barcode in their
+            # own fields → map each one to its matching invoice column.
+            brand_part = (item.get("free_brand") or "").strip()
+            model_part = (item.get("free_model") or "").strip()
+            # Compose "Brand Model" for the Model column, consistent with
+            # how stock items are shown.
+            model_val = (brand_part + " " + model_part).strip()
+            name_val    = (item.get("free_name")    or "").strip()
+            barcode_val = (item.get("free_barcode") or "").strip()
         else:
-            model_val = f"{item['brand']} {item['model']}"
-            name_val = item["name"]
+            model_val   = f"{item['brand']} {item['model']}"
+            name_val    = item["name"]
+            barcode_val = item.get("barcode") or ""
         values = [
             row_num,
             model_val,
             name_val,
-            item.get("barcode") or "",
+            barcode_val,
             float(item["qty"]),
             round_money(item["unit_price"]),
             calc_line_total(item["unit_price"], item["qty"]),
