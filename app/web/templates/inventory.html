@@ -91,11 +91,11 @@
           <thead class="table-light">
             <tr>
               <th>#</th>
-              <th class="inv-sort" data-sort="brand"    style="cursor:pointer;user-select:none">{{ t.th_brand | default('Бренд') }} <span class="inv-arrow"></span></th>
-              <th class="inv-sort" data-sort="model"    style="cursor:pointer;user-select:none">{{ t.th_model | default('Модель') }} <span class="inv-arrow"></span></th>
-              <th class="inv-sort" data-sort="name"     style="cursor:pointer;user-select:none">{{ t.th_name | default('Название') }} <span class="inv-arrow"></span></th>
-              <th class="inv-sort" data-sort="barcode"  style="cursor:pointer;user-select:none">{{ t.th_barcode | default('Штрихкод') }} <span class="inv-arrow"></span></th>
-              <th class="inv-sort text-end" data-sort="current" style="cursor:pointer;user-select:none;min-width:80px">{{ t.inventory_system_qty | default('В системе') }} <span class="inv-arrow"></span></th>
+              <th class="inv-sort" data-sort="brand"    style="cursor:pointer;user-select:none">{{ t.th_brand | default('Бренд') }} <span class="inv-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+              <th class="inv-sort" data-sort="model"    style="cursor:pointer;user-select:none">{{ t.th_model | default('Модель') }} <span class="inv-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+              <th class="inv-sort" data-sort="name"     style="cursor:pointer;user-select:none">{{ t.th_name | default('Название') }} <span class="inv-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+              <th class="inv-sort" data-sort="barcode"  style="cursor:pointer;user-select:none">{{ t.th_barcode | default('Штрихкод') }} <span class="inv-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+              <th class="inv-sort text-end" data-sort="current" style="cursor:pointer;user-select:none;min-width:80px">{{ t.inventory_system_qty | default('В системе') }} <span class="inv-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
               <th class="text-end" style="min-width:110px"
                   title="Введите РЕАЛЬНОЕ количество, которое насчитали на складе. Не разницу.">
                 {{ t.inventory_actual_qty | default('Факт') }}
@@ -103,7 +103,7 @@
                   {{ t.inventory_actual_qty_hint | default('реальное кол-во') }}
                 </span>
               </th>
-              <th class="inv-sort text-end" data-sort="delta" style="cursor:pointer;user-select:none;min-width:80px">{{ t.inventory_diff | default('Разница') }} <span class="inv-arrow"></span></th>
+              <th class="inv-sort text-end" data-sort="delta" style="cursor:pointer;user-select:none;min-width:80px">{{ t.inventory_diff | default('Разница') }} <span class="inv-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
             </tr>
           </thead>
           <tbody id="invBody">
@@ -243,10 +243,20 @@
     });
     rows.forEach(function(row) { body.appendChild(row); });
 
-    // Update header arrows
-    document.querySelectorAll('.inv-arrow').forEach(function(a) { a.textContent = ''; });
+    // Update header arrows. Non-active columns show a faded "↕" so the
+    // operator can tell at a glance which columns are sortable; active
+    // column shows a bold ▲ / ▼ in the current direction.
+    document.querySelectorAll('.inv-arrow').forEach(function(a) {
+      a.textContent = '↕';
+      a.style.opacity = '0.5';
+      a.style.fontWeight = '';
+    });
     var th = document.querySelector('.inv-sort[data-sort="' + key + '"] .inv-arrow');
-    if (th) th.textContent = sortState.dir > 0 ? ' ▲' : ' ▼';
+    if (th) {
+      th.textContent = sortState.dir > 0 ? ' ▲' : ' ▼';
+      th.style.opacity = '1';
+      th.style.fontWeight = 'bold';
+    }
 
     renumber();
   }
