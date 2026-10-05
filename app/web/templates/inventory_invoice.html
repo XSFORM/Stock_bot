@@ -1,5 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
+{# Quantities are counted in whole units — a bottle, a kettle, a blender.
+   Rendering them as "11.00" makes them look like prices, so we strip
+   trailing .00 but keep decimals if someone actually enters a fractional
+   count (unlikely for this shop, but harmless). Money columns stay %.2f. #}
+{% macro qty(v) -%}
+  {%- if v is none -%}0
+  {%- elif v == v|int -%}{{ v|int }}
+  {%- else -%}{{ "%.2f"|format(v) }}
+  {%- endif -%}
+{%- endmacro %}
+{% macro qty_signed(v) -%}
+  {%- if v is none -%}0
+  {%- elif v == v|int -%}{{ "%+d"|format(v|int) }}
+  {%- else -%}{{ "%+.2f"|format(v) }}
+  {%- endif -%}
+{%- endmacro %}
 <div class="bg-white p-3 rounded shadow-sm">
   {% set _is_cancelled = invoice.status == 'CANCELLED' %}
   {% set _is_reversal  = invoice.cancels_invoice_id %}
@@ -128,10 +144,10 @@
               <div><a href="/products/{{ it.product_id }}/history" target="_blank" rel="noopener">{{ it.name }}</a></div>
             </td>
             <td class="small">{{ it.barcode or '' }}</td>
-            <td class="text-end">{{ "%.2f"|format(it.system_qty) }}</td>
-            <td class="text-end">{{ "%.2f"|format(it.actual_qty) }}</td>
+            <td class="text-end">{{ qty(it.system_qty) }}</td>
+            <td class="text-end">{{ qty(it.actual_qty) }}</td>
             <td class="text-end fw-semibold {% if it.delta > 0 %}text-success{% elif it.delta < 0 %}text-danger{% endif %}">
-              {{ "%+.2f"|format(it.delta) }}
+              {{ qty_signed(it.delta) }}
             </td>
             <td class="text-end">{{ "%.2f"|format(it.cost_price) }}</td>
             <td class="text-end {% if it.delta > 0 %}text-success{% elif it.delta < 0 %}text-danger{% endif %}">
