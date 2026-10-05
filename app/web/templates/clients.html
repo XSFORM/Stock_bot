@@ -94,20 +94,27 @@
         </form>
       </div>
 
-      <table class="table table-sm align-middle">
+      <table class="table table-sm align-middle" id="clientsTable">
         <thead>
           <tr>
-            <th>{{ t.lbl_name }}</th>
-            <th>{{ t.lbl_phone }}</th>
-            <th>{{ t.lbl_note }}</th>
-            <th class="text-end">{{ t.clients_col_balance }}</th>
-            <th class="text-end small">{{ t.clients_col_last_payment | default('Последняя оплата') }}</th>
+            <th class="col-sort" data-sort="name"    data-type="str" style="cursor:pointer;user-select:none">{{ t.lbl_name }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+            <th class="col-sort" data-sort="phone"   data-type="str" style="cursor:pointer;user-select:none">{{ t.lbl_phone }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+            <th class="col-sort" data-sort="note"    data-type="str" style="cursor:pointer;user-select:none">{{ t.lbl_note }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+            <th class="col-sort text-end" data-sort="balance" data-type="num" style="cursor:pointer;user-select:none">{{ t.clients_col_balance }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+            <th class="col-sort text-end small" data-sort="silent" data-type="num" style="cursor:pointer;user-select:none">{{ t.clients_col_last_payment | default('Последняя оплата') }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
             <th></th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="clientsBody">
           {% for c in clients %}
-          <tr{% if c.archived %} class="text-muted"{% endif %}>
+          {% set _ps = c.payment_stats or {} %}
+          {% set _dl = _ps.get('days_since_last') %}
+          <tr{% if c.archived %} class="text-muted"{% endif %}
+              data-name="{{ (c.name or '')|lower }}"
+              data-phone="{{ c.phone or '' }}"
+              data-note="{{ (c.note or '')|lower }}"
+              data-balance="{{ c.balance }}"
+              data-silent="{{ _dl if _dl is not none else 99999 }}">
             <td>
               {{ c.name }}
               {% if c.archived %}<span class="badge bg-secondary ms-1">{{ t.badge_archived }}</span>{% endif %}
@@ -340,6 +347,47 @@ function confirmLedgerSubmit(form, prefix, sign) {
     });
   }
 });
+
+// ── Clickable column sort (same UX as /inventory, /stock) ──────────────
+(function () {
+  var body = document.getElementById('clientsBody');
+  if (!body) return;
+  var state = { key: null, dir: 1 };
+
+  function sortBy(key, type) {
+    if (state.key === key) state.dir = -state.dir;
+    else { state.key = key; state.dir = 1; }
+
+    var rows = Array.prototype.slice.call(body.querySelectorAll('tr'));
+    rows.sort(function (a, b) {
+      var va = a.getAttribute('data-' + key) || '';
+      var vb = b.getAttribute('data-' + key) || '';
+      if (type === 'num') {
+        var na = parseFloat(va); var nb = parseFloat(vb);
+        if (isNaN(na)) na = 0; if (isNaN(nb)) nb = 0;
+        return state.dir * (na - nb);
+      }
+      return state.dir * va.localeCompare(vb, undefined, { numeric: true });
+    });
+    rows.forEach(function (r) { body.appendChild(r); });
+
+    document.querySelectorAll('.col-arrow').forEach(function (a) {
+      a.textContent = '↕'; a.style.opacity = '0.5'; a.style.fontWeight = '';
+    });
+    var th = document.querySelector('.col-sort[data-sort="' + key + '"] .col-arrow');
+    if (th) {
+      th.textContent = state.dir > 0 ? ' ▲' : ' ▼';
+      th.style.opacity = '1';
+      th.style.fontWeight = 'bold';
+    }
+  }
+
+  document.querySelectorAll('.col-sort').forEach(function (th) {
+    th.addEventListener('click', function () {
+      sortBy(th.getAttribute('data-sort'), th.getAttribute('data-type') || 'str');
+    });
+  });
+})();
 
 </script>
 {% endblock %}

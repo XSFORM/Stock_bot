@@ -58,24 +58,30 @@
     </form>
   </div>
 
-  <table class="table table-sm align-middle">
+  <table class="table table-sm align-middle" id="stockTable">
     <thead>
       <tr>
-        <th>{{ t.lbl_warehouse }}</th>
-        <th>{{ t.lbl_brand }}</th>
-        <th>{{ t.lbl_model }}</th>
-        <th>{{ t.lbl_name }}</th>
-        <th class="text-end">{{ t.stock_col_income }}</th>
+        <th class="col-sort" data-sort="wh"       data-type="str" style="cursor:pointer;user-select:none">{{ t.lbl_warehouse }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+        <th class="col-sort" data-sort="brand"    data-type="str" style="cursor:pointer;user-select:none">{{ t.lbl_brand }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+        <th class="col-sort" data-sort="model"    data-type="str" style="cursor:pointer;user-select:none">{{ t.lbl_model }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+        <th class="col-sort" data-sort="name"     data-type="str" style="cursor:pointer;user-select:none">{{ t.lbl_name }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+        <th class="col-sort text-end" data-sort="price" data-type="num" style="cursor:pointer;user-select:none">{{ t.stock_col_income }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
         {% for pct in markup_presets %}
         <th class="text-end">+{{ pct }}%</th>
         {% endfor %}
-        <th class="text-end">{{ t.lbl_qty }}</th>
+        <th class="col-sort text-end" data-sort="qty" data-type="num" style="cursor:pointer;user-select:none">{{ t.lbl_qty }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
         <th></th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="stockBody">
       {% for r in rows %}
-      <tr{% if r.archived %} class="text-muted"{% endif %}>
+      <tr{% if r.archived %} class="text-muted"{% endif %}
+          data-wh="{{ (warehouse_labels.get(r.warehouse, r.warehouse))|lower }}"
+          data-brand="{{ (r.brand or '')|lower }}"
+          data-model="{{ (r.model or '')|lower }}"
+          data-name="{{ (r.name or '')|lower }}"
+          data-price="{{ r.wh_price }}"
+          data-qty="{{ r.qty|int }}">
         <td>{{ warehouse_labels.get(r.warehouse, r.warehouse) }}</td>
         <td>{{ r.brand }}</td>
         <td>{{ r.model }}{% if r.archived %}<span class="badge bg-secondary ms-1">{{ t.badge_archived }}</span>{% endif %}</td>
@@ -214,5 +220,48 @@ function openEditForm(productId, currentPrice, barcode, model, name) {
   var modal = new bootstrap.Modal(document.getElementById('editProductModal'));
   modal.show();
 }
+
+// ── Clickable column sort (same UX as /inventory) ──────────────────────
+(function () {
+  var body = document.getElementById('stockBody');
+  if (!body) return;
+  var state = { key: null, dir: 1 };
+
+  function sortBy(key, type) {
+    if (state.key === key) state.dir = -state.dir;
+    else { state.key = key; state.dir = 1; }
+
+    var rows = Array.prototype.slice.call(body.querySelectorAll('tr'));
+    rows.sort(function (a, b) {
+      var va = a.getAttribute('data-' + key) || '';
+      var vb = b.getAttribute('data-' + key) || '';
+      if (type === 'num') {
+        var na = parseFloat(va) || 0;
+        var nb = parseFloat(vb) || 0;
+        return state.dir * (na - nb);
+      }
+      return state.dir * va.localeCompare(vb, undefined, { numeric: true });
+    });
+    rows.forEach(function (r) { body.appendChild(r); });
+
+    document.querySelectorAll('.col-arrow').forEach(function (a) {
+      a.textContent = '↕';
+      a.style.opacity = '0.5';
+      a.style.fontWeight = '';
+    });
+    var th = document.querySelector('.col-sort[data-sort="' + key + '"] .col-arrow');
+    if (th) {
+      th.textContent = state.dir > 0 ? ' ▲' : ' ▼';
+      th.style.opacity = '1';
+      th.style.fontWeight = 'bold';
+    }
+  }
+
+  document.querySelectorAll('.col-sort').forEach(function (th) {
+    th.addEventListener('click', function () {
+      sortBy(th.getAttribute('data-sort'), th.getAttribute('data-type') || 'str');
+    });
+  });
+})();
 </script>
 {% endblock %}
