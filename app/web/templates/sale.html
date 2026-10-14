@@ -118,8 +118,9 @@
           {# ── Add item row (from stock) ── #}
           <tr class="table-primary">
             <td colspan="7">
-              <form method="post" action="/sale/add" id="add-item-form" class="d-flex flex-wrap gap-2 align-items-end p-1">
+              <form method="post" action="/sale/add" id="add-item-form" class="d-flex flex-wrap gap-2 align-items-end p-1" data-idempotent="1">
                 <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
+                <input type="hidden" name="nonce" value="{{ nonce() }}">
                 <input type="hidden" name="brand" id="add-brand">
                 <input type="hidden" name="model" id="add-model">
                 <input type="hidden" name="price_mode" id="add-price-mode" value="wh{{ default_markup }}">
@@ -159,8 +160,9 @@
              so each piece lands in the matching column of the printed invoice. #}
           <tr class="table-warning">
             <td colspan="7">
-              <form method="post" action="/sale/add-free" id="add-free-form" class="d-flex flex-wrap gap-2 align-items-end p-1">
+              <form method="post" action="/sale/add-free" id="add-free-form" class="d-flex flex-wrap gap-2 align-items-end p-1" data-idempotent="1">
                 <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
+                <input type="hidden" name="nonce" value="{{ nonce() }}">
                 <div class="w-100 small text-muted mb-1">
                   <span class="badge bg-warning text-dark me-1">{{ t.sale_free_item_badge }}</span>
                   {{ t.sale_free_item_hint | default('Товар вне склада — заполните нужные поля (минимум одно). Если на инвойсе должна быть пустая колонка, оставьте её пустой.') }}
@@ -275,8 +277,9 @@
       <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
       <button class="btn btn-outline-secondary btn-sm">&#8635; {{ t.btn_refresh }}</button>
     </form>
-    <form method="post" action="/sale/finish">
+    <form method="post" action="/sale/finish" data-idempotent="1">
       <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
+      <input type="hidden" name="nonce" value="{{ nonce() }}">
       <button class="btn btn-success btn-sm" {% if not cart_items %}disabled title="Add items first"{% endif %}>
         {{ t.sale_finish }}
       </button>

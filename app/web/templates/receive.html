@@ -116,8 +116,9 @@
           {# ── Add existing product row ── #}
           <tr class="table-primary">
             <td colspan="7">
-              <form method="post" action="/receive/item/add" id="add-item-form" class="d-flex flex-wrap gap-2 align-items-end p-1">
+              <form method="post" action="/receive/item/add" id="add-item-form" class="d-flex flex-wrap gap-2 align-items-end p-1" data-idempotent="1">
                 <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
+                <input type="hidden" name="nonce" value="{{ nonce() }}">
                 <input type="hidden" name="product_id" id="add-product-id">
                 <div class="search-wrap" style="flex:1;min-width:220px">
                   <label class="form-label form-label-sm mb-1">{{ t.receive_search_placeholder }}</label>
@@ -146,8 +147,9 @@
             <td colspan="7">
               <div id="new-product-panel">
                 <div class="fw-semibold mb-2">{{ t.receive_new_product_title }}</div>
-                <form method="post" action="/receive/item/new" class="d-flex flex-wrap gap-2 align-items-end">
+                <form method="post" action="/receive/item/new" class="d-flex flex-wrap gap-2 align-items-end" data-idempotent="1">
                   <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
+                  <input type="hidden" name="nonce" value="{{ nonce() }}">
                   <div>
                     <label class="form-label form-label-sm mb-1">{{ t.lbl_brand }} <span class="text-danger">*</span></label>
                     <input class="form-control form-control-sm" name="brand" required style="width:110px" placeholder="e.g. Samsung">
@@ -255,8 +257,9 @@
       <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
       <button class="btn btn-outline-danger btn-sm">{{ t.btn_cancel_invoice }}</button>
     </form>
-    <form method="post" action="/receive/finish">
+    <form method="post" action="/receive/finish" data-idempotent="1">
       <input type="hidden" name="invoice_id" value="{{ open_inv.id }}">
+      <input type="hidden" name="nonce" value="{{ nonce() }}">
       <button class="btn btn-success btn-sm" {% if not inv_items %}disabled title="Add items first"{% endif %}>
         {{ t.btn_finish }}
       </button>

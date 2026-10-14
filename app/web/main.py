@@ -246,6 +246,12 @@ templates = Jinja2Templates(
     )
 )
 
+# Expose `nonce()` to all templates — each call returns a fresh token,
+# so any form that writes `<input type="hidden" name="nonce" value="{{ nonce() }}">`
+# gets a per-render idempotency key. See app/utils/idempotency.py.
+from app.utils.idempotency import make_nonce as _make_nonce, check_and_consume as _idemp_check
+templates.env.globals["nonce"] = _make_nonce
+
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -912,7 +918,10 @@ def receive_item_add_post(
     product_id: int = Form(...),
     qty: float = Form(...),
     purchase_price: float = Form(...),
+    nonce: str = Form(""),
 ):
+    if not _idemp_check(nonce):
+        return RedirectResponse(url="/receive?msg=item_added", status_code=303)
     ok, err = receive_item_add(int(invoice_id), int(product_id), float(qty), float(purchase_price))
     msg = "item_added" if ok else f"add_error:{err}"
     return RedirectResponse(url=f"/receive?msg={msg}", status_code=303)
@@ -930,7 +939,10 @@ def receive_item_new_post(
     qty: float = Form(...),
     purchase_price: float = Form(...),
     update_wh_from_purchase: int = Form(0),
+    nonce: str = Form(""),
 ):
+    if not _idemp_check(nonce):
+        return RedirectResponse(url="/receive?msg=new_product_added", status_code=303)
     if wh_price <= 0:
         return RedirectResponse(url="/receive?msg=new_product_error:wh_price_required", status_code=303)
     ok, err, product_id = add_product_simple(brand, model, name, barcode, product_note, wh_price)
@@ -964,7 +976,9 @@ def receive_item_delete_post(item_id: int = Form(...)):
 
 
 @app.post("/receive/finish")
-def receive_finish(invoice_id: int = Form(...)):
+def receive_finish(invoice_id: int = Form(...), nonce: str = Form("")):
+    if not _idemp_check(nonce):
+        return RedirectResponse(url=f"/receive/done?n={invoice_id}", status_code=303)
     ok, err = receive_invoice_finish(int(invoice_id))
     if not ok:
         return RedirectResponse(url=f"/receive?msg=finish_error:{err}", status_code=303)
@@ -1444,7 +1458,11 @@ def sale_add(
     qty: float = Form(...),
     price_mode: str = Form("wh10"),
     custom_price: Optional[float] = Form(None),
+    nonce: str = Form(""),
 ):
+    if not _idemp_check(nonce):
+        # Second submission with the same nonce — silently swallow.
+        return RedirectResponse(url="/sale?msg=add:OK", status_code=303)
     ok, err = cart_add_by_cart_id(int(cart_id), brand, model, float(qty), price_mode, custom_price)
     msg = "OK" if ok else err
     return RedirectResponse(url=f"/sale?msg=add:{msg}", status_code=303)
@@ -1459,7 +1477,10 @@ def sale_add_free(
     free_barcode: str = Form(""),
     qty: float = Form(...),
     unit_price: float = Form(...),
+    nonce: str = Form(""),
 ):
+    if not _idemp_check(nonce):
+        return RedirectResponse(url="/sale?msg=add:OK", status_code=303)
     ok, err = cart_add_free_item(
         int(cart_id),
         free_name=free_name.strip(),
@@ -1482,7 +1503,10 @@ def sale_show(cart_id: int = Form(...)):
 
 
 @app.post("/sale/finish")
-def sale_finish(cart_id: int = Form(...)):
+def sale_finish(cart_id: int = Form(...), nonce: str = Form("")):
+    # Finish is the one that creates the invoice — most expensive to double.
+    if not _idemp_check(nonce):
+        return RedirectResponse(url="/sale?msg=finish:ok_dup", status_code=303)
     ok, err, invoice, items = cart_finish_by_cart_id_shop1416(int(cart_id))
     if not ok:
         return RedirectResponse(url=f"/sale?msg=finish:{err}", status_code=303)
