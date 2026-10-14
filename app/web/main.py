@@ -1506,7 +1506,7 @@ def sale_show(cart_id: int = Form(...)):
 
 
 @app.post("/sale/finish")
-def sale_finish(cart_id: int = Form(...), nonce: str = Form("")):
+def sale_finish(request: Request, cart_id: int = Form(...), nonce: str = Form("")):
     # Finish is the one that creates the invoice — most expensive to double.
     if not _idemp_check(nonce):
         return RedirectResponse(url="/sale?msg=finish:ok_dup", status_code=303)
@@ -1515,7 +1515,7 @@ def sale_finish(cart_id: int = Form(...), nonce: str = Form("")):
         return RedirectResponse(url=f"/sale?msg=finish:{err}", status_code=303)
 
     try:
-        pdf_path = generate_invoice_pdf(invoice, items)
+        pdf_path = generate_invoice_pdf(invoice, items, lang=_get_ui_lang(request))
     except Exception:
         logger.exception("Failed to generate invoice PDF for invoice #%s", invoice.get("number"))
         pdf_path = ""
@@ -1595,14 +1595,14 @@ def sale_xlsx(n: int):
 
 
 @app.get("/sale/pdf")
-def sale_pdf(n: int):
+def sale_pdf(request: Request, n: int):
     """Download styled PDF for an existing sale invoice (generated on the fly)."""
     invoice = get_invoice_by_number(int(n))
     if not invoice:
         return RedirectResponse(url="/sale?msg=invoice_not_found", status_code=303)
     items = get_invoice_items_by_number(int(n))
     try:
-        pdf_path = generate_invoice_pdf(invoice, items)
+        pdf_path = generate_invoice_pdf(invoice, items, lang=_get_ui_lang(request))
     except Exception:
         logger.exception("Failed to generate PDF for invoice #%s", n)
         return RedirectResponse(
@@ -1736,6 +1736,7 @@ def invoice_sale_edit_get(request: Request, number: int, msg: str = ""):
 
 @app.post("/invoices/sale/{number}/edit")
 def invoice_sale_edit_post(
+    request: Request,
     number: int,
     client_id: int = Form(...),
     warehouse_code: str = Form(...),
@@ -1806,7 +1807,7 @@ def invoice_sale_edit_post(
             "currency": invoice["currency"],
         }
         try:
-            generate_invoice_pdf(pdf_invoice, items)
+            generate_invoice_pdf(pdf_invoice, items, lang=_get_ui_lang(request))
         except Exception:
             pass
     return RedirectResponse(url="/invoices?tab=sale&msg=invoice_updated", status_code=303)

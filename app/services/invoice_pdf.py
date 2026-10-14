@@ -36,6 +36,69 @@ STAMP_W_MM = 55  # mm
 STAMP_H_MM = 22  # mm
 
 
+# ── Localised labels (en / ru / tm) ──────────────────────────────────────────
+# Minimal: just the strings used by the printable sale invoice. Pass `lang`
+# into generate_invoice_pdf() to pick the set; unknown codes fall back to en.
+_PDF_STRINGS = {
+    "en": {
+        "invoice":    "INVOICE",
+        "client":     "Client",
+        "date":       "Date",
+        "col_num":    "#",
+        "col_model":  "Model",
+        "col_name":   "Name",
+        "col_barcode":"Barcode",
+        "col_qty":    "Qty",
+        "col_price":  "Unit Price",
+        "col_total":  "Total",
+        "subtotal":   "Subtotal",
+        "discount":   "Discount",
+        "total":      "TOTAL",
+        "seller":     "Seller",
+        "buyer":      "Buyer",
+    },
+    "ru": {
+        "invoice":    "НАКЛАДНАЯ",
+        "client":     "Клиент",
+        "date":       "Дата",
+        "col_num":    "№",
+        "col_model":  "Модель",
+        "col_name":   "Название",
+        "col_barcode":"Штрих-код",
+        "col_qty":    "Кол-во",
+        "col_price":  "Цена",
+        "col_total":  "Сумма",
+        "subtotal":   "Подытог",
+        "discount":   "Скидка",
+        "total":      "ИТОГО",
+        "seller":     "Продавец",
+        "buyer":      "Покупатель",
+    },
+    "tm": {
+        "invoice":    "HASAP-FAKTURA",
+        "client":     "Müşderi",
+        "date":       "Sene",
+        "col_num":    "№",
+        "col_model":  "Model",
+        "col_name":   "Ady",
+        "col_barcode":"Ştrih-kod",
+        "col_qty":    "Sany",
+        "col_price":  "Baha",
+        "col_total":  "Jemi",
+        "subtotal":   "Aralyk jem",
+        "discount":   "Arzanladyş",
+        "total":      "JEMI",
+        "seller":     "Satyjy",
+        "buyer":      "Alyjy",
+    },
+}
+
+
+def _strings(lang: str) -> dict[str, str]:
+    """Return the label set for the given UI language, falling back to en."""
+    return _PDF_STRINGS.get((lang or "").lower(), _PDF_STRINGS["en"])
+
+
 # ── Font registration (Cyrillic / Turkmen support) ───────────────────────────
 
 _DEJAVU_CANDIDATES = [
@@ -111,8 +174,15 @@ def _draw_stamp(canvas, doc):
 # ── Main entry point ─────────────────────────────────────────────────────────
 
 def generate_invoice_pdf(invoice: dict[str, Any],
-                         items: list[dict[str, Any]]) -> str:
-    """Render a sale invoice to PDF and return the absolute path."""
+                         items: list[dict[str, Any]],
+                         lang: str = "en") -> str:
+    """Render a sale invoice to PDF and return the absolute path.
+
+    `lang` localises the labels (header, table columns, total block,
+    signature lines) — pass "en" / "ru" / "tm". Numbers and names
+    (client, products, barcodes) stay as-is. Unknown lang → en.
+    """
+    t = _strings(lang)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     number = int(invoice["number"])
     filename = OUT_DIR / f"invoice_{number:06d}.pdf"
@@ -140,17 +210,18 @@ def generate_invoice_pdf(invoice: dict[str, Any],
     story = []
 
     # 1. Title (centered)
-    story.append(Paragraph(f"INVOICE #{number:06d}", title_style))
+    story.append(Paragraph(f"{t['invoice']} #{number:06d}", title_style))
 
     # 2. Client + Date (left-aligned, single column - stamp sits on top-right via canvas)
     client = str(invoice.get("client") or "")
     dt = str(invoice.get("created_at", invoice.get("date", "")))[:16].replace("T", " ")
-    story.append(Paragraph(f"<b>Client:</b> {_esc(client)}", info_style))
-    story.append(Paragraph(f"<b>Date:</b> {_esc(dt)}", info_style))
+    story.append(Paragraph(f"<b>{t['client']}:</b> {_esc(client)}", info_style))
+    story.append(Paragraph(f"<b>{t['date']}:</b> {_esc(dt)}", info_style))
     story.append(Spacer(1, 4 * mm))
 
     # 3. Items table
-    data = [["#", "Model", "Name", "Barcode", "Qty", "Unit Price", "Total"]]
+    data = [[t["col_num"], t["col_model"], t["col_name"], t["col_barcode"],
+             t["col_qty"], t["col_price"], t["col_total"]]]
     items_qty = 0
     for idx, item in enumerate(items, start=1):
         if item.get("free_line"):
@@ -187,14 +258,14 @@ def generate_invoice_pdf(invoice: dict[str, Any],
     grand_total = round(subtotal_val - discount_amount, 2)
 
     if discount_pct > 0:
-        data.append(["", "Subtotal",                      "", "", str(items_qty),
+        data.append(["", t["subtotal"],                        "", "", str(items_qty),
                      "", f"{subtotal_val:.2f}"])
-        data.append(["", f"Discount {discount_pct:g}%",   "", "", "",
+        data.append(["", f"{t['discount']} {discount_pct:g}%", "", "", "",
                      "", f"-{discount_amount:.2f}"])
-        data.append(["", "TOTAL",                         "", "", "",
+        data.append(["", t["total"],                           "", "", "",
                      "", f"{grand_total:.2f}"])
     else:
-        data.append(["", "TOTAL", "", "", str(items_qty), "", f"{grand_total:.2f}"])
+        data.append(["", t["total"], "", "", str(items_qty), "", f"{grand_total:.2f}"])
 
     col_widths = [
         10 * mm,   # #
@@ -257,8 +328,8 @@ def generate_invoice_pdf(invoice: dict[str, Any],
     sig_style = ParagraphStyle(
         "sig", fontName=FONT, fontSize=10, leading=14,
     )
-    sig_cell_seller = Paragraph("Seller: ______________________________", sig_style)
-    sig_cell_buyer  = Paragraph("Buyer: ______________________________",  sig_style)
+    sig_cell_seller = Paragraph(f"{t['seller']}: ______________________________", sig_style)
+    sig_cell_buyer  = Paragraph(f"{t['buyer']}: ______________________________",  sig_style)
 
     sig_table = Table(
         [[sig_cell_seller, sig_cell_buyer]],
