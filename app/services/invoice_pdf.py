@@ -101,17 +101,29 @@ def _strings(lang: str) -> dict[str, str]:
 
 # ── Font registration (Cyrillic / Turkmen support) ───────────────────────────
 
+# Font lookup paths. The bundled copy under app/services/fonts/ is tried
+# FIRST so a fresh deploy on any OS works out of the box — Linux boxes
+# without `fonts-dejavu`, Windows boxes without DejaVu installed system-
+# wide. System paths are only a fallback.
+_FONTS_DIR = str(Path(__file__).parent / "fonts")
+
 _DEJAVU_CANDIDATES = [
+    f"{_FONTS_DIR}/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    r"C:\Windows\Fonts\DejaVuSans.ttf",
 ]
 _DEJAVU_BOLD = [
+    f"{_FONTS_DIR}/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+    r"C:\Windows\Fonts\DejaVuSans-Bold.ttf",
 ]
 _DEJAVU_BOLDIT = [
+    f"{_FONTS_DIR}/DejaVuSans-BoldOblique.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
     "/usr/share/fonts/dejavu/DejaVuSans-BoldOblique.ttf",
+    r"C:\Windows\Fonts\DejaVuSans-BoldOblique.ttf",
 ]
 
 
