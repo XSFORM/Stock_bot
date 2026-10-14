@@ -24,13 +24,19 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-4">
           <label class="form-label">{{ t.lbl_warehouse }}</label>
           <select class="form-select" name="warehouse_code" required>
             {% for wh in warehouses %}
             <option value="{{ wh }}" {% if wh == invoice.warehouse_code %}selected{% endif %}>{{ warehouse_labels.get(wh, wh) }}</option>
             {% endfor %}
           </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">{{ t.sale_discount_label | default('Скидка %') }}</label>
+          <input type="number" class="form-control" name="discount_pct"
+                 step="0.1" min="0" max="100"
+                 value="{{ '%g'|format(invoice.discount_pct | default(0) | float) }}">
         </div>
       </div>
     </div>

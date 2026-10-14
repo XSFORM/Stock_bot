@@ -250,12 +250,29 @@
               </td>
             </tr>
             {% endfor %}
+            {% set _disc_pct = cart_discount_pct | default(0) | float %}
+            {% set _disc_amt = (cart_total * _disc_pct / 100.0) if _disc_pct > 0 else 0 %}
+            {% set _grand = cart_total - _disc_amt %}
             <tr class="total-row">
               <td colspan="3" class="text-end">{{ t.sale_items_qty }} {{ cart_qty | int }}</td>
-              <td colspan="2" class="text-end">{{ t.lbl_total }}:</td>
+              <td colspan="2" class="text-end">
+                {% if _disc_pct > 0 %}{{ t.sale_subtotal | default('Подытог') }}:{% else %}{{ t.lbl_total }}:{% endif %}
+              </td>
               <td class="text-end">{{ "%.2f"|format(cart_total) }}</td>
               <td></td>
             </tr>
+            {% if _disc_pct > 0 %}
+              <tr class="text-warning">
+                <td colspan="5" class="text-end">{{ t.sale_discount | default('Скидка') }} {{ "%g"|format(_disc_pct) }}%:</td>
+                <td class="text-end">-{{ "%.2f"|format(_disc_amt) }}</td>
+                <td></td>
+              </tr>
+              <tr class="total-row fw-bold">
+                <td colspan="5" class="text-end">{{ t.sale_grand_total | default('Итого со скидкой') }}:</td>
+                <td class="text-end text-success">{{ "%.2f"|format(_grand) }}</td>
+                <td></td>
+              </tr>
+            {% endif %}
           {% else %}
             <tr>
               <td colspan="7" class="text-center text-muted py-3">{{ t.sale_no_items }}</td>
@@ -267,7 +284,7 @@
   </div>
 
   {# ── Actions ── #}
-  <div class="d-flex gap-2">
+  <div class="d-flex gap-2 align-items-end flex-wrap">
     <form method="post" action="/sale/cancel"
       onsubmit="return confirm('{{ t.confirm_cancel_invoice }}')">
       <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
@@ -277,6 +294,24 @@
       <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
       <button class="btn btn-outline-secondary btn-sm">&#8635; {{ t.btn_refresh }}</button>
     </form>
+
+    {# Phase 11 — invoice-level discount for the open cart. Visible,
+       editable before finishing. On submit, backend applies it and the
+       page reloads with the new subtotal/discount/total line in the
+       table above. Finishing freezes it onto the invoice. #}
+    <form method="post" action="/sale/discount" class="d-flex align-items-end gap-1 ms-auto">
+      <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
+      <label class="form-label form-label-sm mb-0 me-1 small">
+        {{ t.sale_discount_label | default('Скидка %') }}
+      </label>
+      <input type="number" name="discount_pct" step="0.1" min="0" max="100"
+             value="{{ '%g'|format(cart_discount_pct | default(0) | float) }}"
+             class="form-control form-control-sm text-end" style="width:70px">
+      <button class="btn btn-outline-warning btn-sm" title="Применить скидку">
+        {{ t.btn_apply | default('Применить') }}
+      </button>
+    </form>
+
     <form method="post" action="/sale/finish" data-idempotent="1">
       <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
       <input type="hidden" name="nonce" value="{{ nonce() }}">

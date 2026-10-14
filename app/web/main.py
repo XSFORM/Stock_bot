@@ -1416,10 +1416,12 @@ def sale_get(request: Request, msg: str = ""):
     cart_items: list = []
     cart_total: float = 0.0
     cart_qty: float = 0.0
+    cart_discount_pct: float = 0.0
     if open_cart:
-        _, cart_items = get_cart_items_list(open_cart["cart_id"])
+        cart_full, cart_items = get_cart_items_list(open_cart["cart_id"])
         cart_total = calc_document_total(cart_items, "unit_price")
         cart_qty = sum(float(i["qty"]) for i in cart_items)
+        cart_discount_pct = float((cart_full or {}).get("discount_pct") or 0)
     return _render(
         request,
         "sale.html",
@@ -1430,6 +1432,7 @@ def sale_get(request: Request, msg: str = ""):
             "cart_items": cart_items,
             "cart_total": cart_total,
             "cart_qty": cart_qty,
+            "cart_discount_pct": cart_discount_pct,
             "markup_presets": get_sale_markup_presets(),
             "default_markup": get_sale_default_markup(),
             "last_sale_warehouse": get_setting("last_sale_warehouse", ""),
@@ -1530,6 +1533,15 @@ def sale_finish(cart_id: int = Form(...), nonce: str = Form("")):
         url=f"/sale/done?pdf={quote(pdf_ref, safe='')}&backup={quote(backup_ref, safe='')}&n={invoice['number']}",
         status_code=303,
     )
+
+
+@app.post("/sale/discount")
+def sale_discount(cart_id: int = Form(...), discount_pct: float = Form(0)):
+    """Phase 11 — set invoice-level discount on the open cart."""
+    from app.db.sqlite import set_cart_discount
+    ok, err = set_cart_discount(int(cart_id), float(discount_pct))
+    msg = f"disc:{discount_pct:g}%" if ok else f"disc_err:{err}"
+    return RedirectResponse(url=f"/sale?msg={msg}", status_code=303)
 
 
 @app.post("/sale/cancel")
@@ -1734,6 +1746,7 @@ def invoice_sale_edit_post(
     free_brand:   List[str] = Form(default=[]),
     free_model:   List[str] = Form(default=[]),
     free_barcode: List[str] = Form(default=[]),
+    discount_pct: float = Form(0),
 ):
     new_items = []
     for i, (pid_raw, q, up) in enumerate(zip(product_id, qty, unit_price)):
@@ -1776,7 +1789,7 @@ def invoice_sale_edit_post(
             "qty": q,
             "unit_price": up,
         })
-    ok, err = update_sale_invoice(int(number), int(client_id), warehouse_code, new_items)
+    ok, err = update_sale_invoice(int(number), int(client_id), warehouse_code, new_items, discount_pct=float(discount_pct))
     if not ok:
         return RedirectResponse(
             url=f"/invoices/sale/{number}/edit?msg={err}", status_code=303

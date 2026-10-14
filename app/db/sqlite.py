@@ -770,6 +770,31 @@ def _ensure_return_items_free_split_columns(conn: sqlite3.Connection) -> None:
         )
 
 
+def _ensure_cart_discount_column(conn: sqlite3.Connection) -> None:
+    """Phase 11 — invoice-level percentage discount set on the open cart.
+    Stored on carts.discount_pct and copied to the invoice at finish-time.
+    Default 0 keeps legacy carts behaving exactly as before.
+    """
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(carts)")}
+    if "discount_pct" not in cols:
+        conn.execute("ALTER TABLE carts ADD COLUMN discount_pct REAL NOT NULL DEFAULT 0")
+
+
+def _ensure_invoice_discount_column(conn: sqlite3.Connection) -> None:
+    """Phase 11 — percentage discount frozen onto the sale invoice.
+
+    Why mirror the pct on the invoice (not just the amount): a reader
+    looking at a printed invoice should be able to see the % that was
+    offered, not just the resulting amount. The amount itself is derivable
+    from (subtotal × pct / 100), but subtotal is also just sum(items.total)
+    so we don't store it — we recompute both at render time, taking the
+    frozen pct from invoices.discount_pct.
+    """
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(invoices)")}
+    if "discount_pct" not in cols:
+        conn.execute("ALTER TABLE invoices ADD COLUMN discount_pct REAL NOT NULL DEFAULT 0")
+
+
 def _backfill_suppliers_from_receive_invoices(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -822,6 +847,8 @@ def init_db() -> None:
         _ensure_return_items_free_columns(conn)
         _ensure_cart_items_free_split_columns(conn)
         _ensure_return_items_free_split_columns(conn)
+        _ensure_cart_discount_column(conn)
+        _ensure_invoice_discount_column(conn)
         _ensure_items_cost_price_column(conn)
         _ensure_stock_ops_note_column(conn)
         _ensure_inventory_invoices_table(conn)
@@ -4319,7 +4346,14 @@ def cart_finish_from_shop(
                     (shop_warehouse, item["product_id"], item["qty"]),
                 )
 
-            total = calc_document_total(list(items), "unit_price")
+            # Phase 11 — apply invoice-level discount from the cart.
+            subtotal = calc_document_total(list(items), "unit_price")
+            disc_row = conn.execute(
+                "SELECT COALESCE(discount_pct, 0) AS p FROM carts WHERE id = ?",
+                (cart_id,),
+            ).fetchone()
+            discount_pct = max(0.0, min(100.0, float(disc_row["p"] or 0)))
+            total = round(subtotal * (1 - discount_pct / 100.0), 2)
             conn.execute(
                 "UPDATE carts SET status = 'CLOSED' WHERE id = ?", (cart_id,)
             )
@@ -4327,8 +4361,9 @@ def cart_finish_from_shop(
                 "SELECT COALESCE(MAX(number), 0) + 1 AS n FROM invoices"
             ).fetchone()["n"]
             conn.execute(
-                "INSERT INTO invoices (cart_id, number, total) VALUES (?, ?, ?)",
-                (cart_id, next_num, total),
+                "INSERT INTO invoices (cart_id, number, total, discount_pct)"
+                " VALUES (?, ?, ?, ?)",
+                (cart_id, next_num, total, discount_pct),
             )
             conn.commit()
 
@@ -4343,6 +4378,9 @@ def cart_finish_from_shop(
             ).fetchone()
             invoice = _row_to_dict(invoice_row)
             invoice["client"] = client_name
+            invoice["subtotal"] = subtotal
+            invoice["discount_pct"] = discount_pct
+            invoice["discount_amount"] = round(subtotal - total, 2)
             items_list = [_row_to_dict(i) for i in items]
             return True, "", invoice, items_list
     except Exception as exc:
@@ -4632,14 +4670,22 @@ def _finish_cart(
                 (warehouse_code, item["product_id"], item["qty"]),
             )
 
-        total = calc_document_total(list(items), "unit_price")
+        # Phase 11: apply invoice-level discount from the open cart.
+        subtotal = calc_document_total(list(items), "unit_price")
+        disc_row = conn.execute(
+            "SELECT COALESCE(discount_pct, 0) AS p FROM carts WHERE id = ?",
+            (cart_id,),
+        ).fetchone()
+        discount_pct = max(0.0, min(100.0, float(disc_row["p"] or 0)))
+        total = round(subtotal * (1 - discount_pct / 100.0), 2)
         conn.execute("UPDATE carts SET status = 'CLOSED' WHERE id = ?", (cart_id,))
         next_num = conn.execute(
             "SELECT COALESCE(MAX(number), 0) + 1 AS n FROM invoices"
         ).fetchone()["n"]
         conn.execute(
-            "INSERT INTO invoices (cart_id, number, total) VALUES (?, ?, ?)",
-            (cart_id, next_num, total),
+            "INSERT INTO invoices (cart_id, number, total, discount_pct)"
+            " VALUES (?, ?, ?, ?)",
+            (cart_id, next_num, total, discount_pct),
         )
         conn.commit()
 
@@ -4654,6 +4700,9 @@ def _finish_cart(
             (cart_id,),
         ).fetchone()
         invoice = _row_to_dict(inv_row)
+        invoice["subtotal"] = subtotal
+        invoice["discount_pct"] = discount_pct
+        invoice["discount_amount"] = round(subtotal - total, 2)
         items_list = [_row_to_dict(i) for i in items]
         return True, "", invoice, items_list
     except Exception as exc:
@@ -4665,6 +4714,7 @@ def get_cart_items_list(cart_id: int) -> tuple[Optional[dict], list[dict]]:
         cart_row = conn.execute(
             """
             SELECT c.id AS cart_id, c.client_id, c.warehouse_code, c.status,
+                   COALESCE(c.discount_pct, 0) AS discount_pct,
                    cl.name AS client_name
             FROM carts c
             JOIN clients cl ON cl.id = c.client_id
@@ -4710,6 +4760,30 @@ def cancel_cart(cart_id: int) -> tuple[bool, str]:
                 (cart_id,),
             )
             conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def set_cart_discount(cart_id: int, pct: float) -> tuple[bool, str]:
+    """Phase 11 — set the invoice-level percentage discount on an open cart.
+    Clamped to [0, 100]. Applies only to carts in status OPEN — once closed
+    the discount is frozen on the invoice and cannot be changed via this
+    function (use update_sale_invoice for that)."""
+    try:
+        pct = max(0.0, min(100.0, float(pct or 0)))
+    except (TypeError, ValueError):
+        return False, "bad_pct"
+    try:
+        with _connect() as conn:
+            r = conn.execute(
+                "UPDATE carts SET discount_pct = ?"
+                " WHERE id = ? AND status = 'OPEN'",
+                (pct, cart_id),
+            )
+            conn.commit()
+            if r.rowcount == 0:
+                return False, "cart_not_open"
         return True, ""
     except Exception as exc:
         return False, str(exc)
@@ -4879,6 +4953,7 @@ def update_sale_invoice(
     client_id: int,
     warehouse_code: str,
     new_items: list[dict[str, Any]],
+    discount_pct: Optional[float] = None,
 ) -> tuple[bool, str]:
     try:
         with _connect() as conn:
@@ -4962,9 +5037,23 @@ def update_sale_invoice(
                         (qty, warehouse_code, pid),
                     )
 
-            total = calc_document_total(new_items, "unit_price")
+            subtotal = calc_document_total(new_items, "unit_price")
+            # Phase 11 — honour an updated discount, else keep the existing one.
+            if discount_pct is None:
+                old_pct = conn.execute(
+                    "SELECT COALESCE(discount_pct, 0) AS p FROM invoices WHERE cart_id = ?",
+                    (cart_id,),
+                ).fetchone()
+                new_pct = float(old_pct["p"] or 0) if old_pct else 0.0
+            else:
+                try:
+                    new_pct = max(0.0, min(100.0, float(discount_pct or 0)))
+                except (TypeError, ValueError):
+                    new_pct = 0.0
+            total = round(subtotal * (1 - new_pct / 100.0), 2)
             conn.execute(
-                "UPDATE invoices SET total = ? WHERE cart_id = ?", (total, cart_id)
+                "UPDATE invoices SET total = ?, discount_pct = ? WHERE cart_id = ?",
+                (total, new_pct, cart_id),
             )
             conn.commit()
         return True, ""

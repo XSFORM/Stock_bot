@@ -50,10 +50,28 @@
         <td class="text-end">{{ "%.2f"|format(item.total) }}</td>
       </tr>
       {% endfor %}
-      <tr class="total-row">
-        <td colspan="6" class="text-end">{{ t.lbl_total }}</td>
-        <td class="text-end">{{ "%.2f"|format(cart_total) }}</td>
-      </tr>
+      {% set _pct = invoice.discount_pct | default(0) | float %}
+      {% set _disc = (cart_total * _pct / 100.0) if _pct > 0 else 0 %}
+      {% set _grand = cart_total - _disc %}
+      {% if _pct > 0 %}
+        <tr class="total-row">
+          <td colspan="6" class="text-end">{{ t.sale_subtotal | default('Подытог') }}</td>
+          <td class="text-end">{{ "%.2f"|format(cart_total) }}</td>
+        </tr>
+        <tr class="total-row" style="color:#b36b00">
+          <td colspan="6" class="text-end">{{ t.sale_discount | default('Скидка') }} {{ "%g"|format(_pct) }}%</td>
+          <td class="text-end">-{{ "%.2f"|format(_disc) }}</td>
+        </tr>
+        <tr class="total-row">
+          <td colspan="6" class="text-end">{{ t.sale_grand_total | default('Итого со скидкой') }}</td>
+          <td class="text-end">{{ "%.2f"|format(_grand) }}</td>
+        </tr>
+      {% else %}
+        <tr class="total-row">
+          <td colspan="6" class="text-end">{{ t.lbl_total }}</td>
+          <td class="text-end">{{ "%.2f"|format(cart_total) }}</td>
+        </tr>
+      {% endif %}
     </tbody>
   </table>
 </div>

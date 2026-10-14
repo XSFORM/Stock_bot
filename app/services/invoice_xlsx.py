@@ -100,47 +100,54 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
             elif col_idx in (6, 7):
                 cell.alignment = _RIGHT
 
-    # --- Total row (styled like your 2nd screenshot) ---
-    total_row_idx = header_row + len(items) + 1
+    # --- Total block ---
+    # Phase 11: when invoice has a discount_pct, show three rows:
+    #   Subtotal / Discount X% / Grand Total.
+    # Otherwise keep the single TOTAL row to match legacy invoices.
     items_qty = int(sum(float(item["qty"]) for item in items))
-    invoice_total = calc_document_total(items, "unit_price")
+    subtotal_val = calc_document_total(items, "unit_price")
+    discount_pct = float(invoice.get("discount_pct") or 0)
+    discount_amount = round(subtotal_val * discount_pct / 100.0, 2) if discount_pct > 0 else 0.0
+    grand_total = round(subtotal_val - discount_amount, 2)
 
-    # Put TOTAL label into Model column (B), bold+italic
-    total_lbl = ws.cell(row=total_row_idx, column=2, value="TOTAL")
-    total_lbl.font = _TOTAL_FONT_ITALIC
-    total_lbl.alignment = Alignment(horizontal="left")
-    total_lbl.border = _BORDER
+    def _total_row(row_idx: int, label: str, amount: float,
+                   put_qty: bool = False, bold: bool = True,
+                   italic: bool = False) -> None:
+        """Render one of the Subtotal/Discount/Total rows across cols A..G."""
+        font = _TOTAL_FONT_ITALIC if italic else _TOTAL_FONT if bold else None
+        lbl = ws.cell(row=row_idx, column=2, value=label)
+        if font: lbl.font = font
+        lbl.alignment = Alignment(horizontal="left")
+        if put_qty:
+            qty_cell = ws.cell(row=row_idx, column=5, value=items_qty)
+            if font: qty_cell.font = font
+            qty_cell.alignment = _CENTER
+        amt_cell = ws.cell(row=row_idx, column=7, value=amount)
+        if font: amt_cell.font = font
+        amt_cell.alignment = _RIGHT
+        for col_idx in range(1, 8):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.border = _BORDER
+            cell.fill = _TOTAL_FILL
+            if col_idx in (1, 5):
+                cell.alignment = _CENTER
+            elif col_idx in (6, 7):
+                cell.alignment = _RIGHT
+            else:
+                cell.alignment = Alignment(horizontal="left")
+        ws.cell(row=row_idx, column=6, value="").fill = _TOTAL_FILL
+        ws.cell(row=row_idx, column=6).border = _BORDER
 
-    # Qty sum into Qty column (E)
-    qty_cell = ws.cell(row=total_row_idx, column=5, value=items_qty)
-    qty_cell.font = _TOTAL_FONT
-    qty_cell.alignment = _CENTER
-    qty_cell.border = _BORDER
-
-    # Total amount into Total column (G)
-    total_cell = ws.cell(row=total_row_idx, column=7, value=invoice_total)
-    total_cell.font = _TOTAL_FONT
-    total_cell.alignment = _RIGHT
-    total_cell.border = _BORDER
-
-    # Keep borders (and light-blue fill) across the whole row A..G
-    for col_idx in range(1, 8):
-        cell = ws.cell(row=total_row_idx, column=col_idx)
-        cell.border = _BORDER
-        cell.fill = _TOTAL_FILL
-
-        if col_idx in (1, 5):
-            cell.alignment = _CENTER
-        elif col_idx in (6, 7):
-            cell.alignment = _RIGHT
-        else:
-    # для текста/пустых ячеек можно left или оставить как есть
-    # но лучше задать явно чтобы не было сюрпризов
-            cell.alignment = Alignment(horizontal="left")
-
-    # Make sure Unit Price column (F) is empty but styled
-    ws.cell(row=total_row_idx, column=6, value="").fill = _TOTAL_FILL
-    ws.cell(row=total_row_idx, column=6).border = _BORDER
+    base_row = header_row + len(items) + 1
+    if discount_pct > 0:
+        _total_row(base_row,     f"Subtotal",                     subtotal_val,
+                   put_qty=True, italic=True)
+        _total_row(base_row + 1, f"Discount {discount_pct:g}%",   -discount_amount)
+        _total_row(base_row + 2, f"TOTAL",                        grand_total)
+        total_row_idx = base_row + 2
+    else:
+        _total_row(base_row, "TOTAL", grand_total, put_qty=True, italic=True)
+        total_row_idx = base_row
 
     # --- Signature block (two side-by-side signatures) ---
     # Leave 2 blank rows, then put Seller on the left half (cols A–C)

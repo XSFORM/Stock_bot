@@ -178,10 +178,23 @@ def generate_invoice_pdf(invoice: dict[str, Any],
             f"{line_total:.2f}",
         ])
 
-    invoice_total = calc_document_total(items, "unit_price")
-    # Total row: TOTAL label in column 1 (Model), qty in column 4 (Qty),
-    # amount in column 6 (Total). Other cells empty but still styled.
-    data.append(["", "TOTAL", "", "", str(items_qty), "", f"{invoice_total:.2f}"])
+    # Phase 11: discount support. Up to three total rows now:
+    #   Subtotal / Discount X% / TOTAL. Legacy invoices (pct == 0) still
+    #   render as the single-row TOTAL from before.
+    subtotal_val = calc_document_total(items, "unit_price")
+    discount_pct = float(invoice.get("discount_pct") or 0)
+    discount_amount = round(subtotal_val * discount_pct / 100.0, 2) if discount_pct > 0 else 0.0
+    grand_total = round(subtotal_val - discount_amount, 2)
+
+    if discount_pct > 0:
+        data.append(["", "Subtotal",                      "", "", str(items_qty),
+                     "", f"{subtotal_val:.2f}"])
+        data.append(["", f"Discount {discount_pct:g}%",   "", "", "",
+                     "", f"-{discount_amount:.2f}"])
+        data.append(["", "TOTAL",                         "", "", "",
+                     "", f"{grand_total:.2f}"])
+    else:
+        data.append(["", "TOTAL", "", "", str(items_qty), "", f"{grand_total:.2f}"])
 
     col_widths = [
         10 * mm,   # #
@@ -195,6 +208,10 @@ def generate_invoice_pdf(invoice: dict[str, Any],
 
     n_rows = len(data)
     last = n_rows - 1
+    # Phase 11: when discount is present we have THREE total rows at the
+    # bottom (Subtotal/Discount/TOTAL) instead of one — style them all.
+    n_total_rows = 3 if discount_pct > 0 else 1
+    first_total = last - (n_total_rows - 1)
 
     style = TableStyle([
         # All cells: grid + base font + padding
@@ -212,19 +229,19 @@ def generate_invoice_pdf(invoice: dict[str, Any],
         ("FONTNAME",    (0, 0), (-1, 0), FONT_BOLD),
         ("FONTSIZE",    (0, 0), (-1, 0), 10),
         ("ALIGN",       (0, 0), (-1, 0), "CENTER"),
-        # Data row alignment (exclude header [row 0] and total [row last])
-        ("ALIGN",       (0, 1), (0, last - 1), "CENTER"),   # #
-        ("ALIGN",       (4, 1), (4, last - 1), "CENTER"),   # Qty
-        ("ALIGN",       (5, 1), (6, last - 1), "RIGHT"),    # Unit Price + Total
-        # TOTAL row
-        ("BACKGROUND",  (0, last), (-1, last), TOTAL_FILL),
-        ("FONTNAME",    (1, last), (1, last), FONT_BOLDIT),
-        ("FONTNAME",    (4, last), (4, last), FONT_BOLD),
-        ("FONTNAME",    (6, last), (6, last), FONT_BOLD),
-        ("FONTSIZE",    (0, last), (-1, last), 10),
-        ("ALIGN",       (1, last), (1, last), "LEFT"),
-        ("ALIGN",       (4, last), (4, last), "CENTER"),
-        ("ALIGN",       (6, last), (6, last), "RIGHT"),
+        # Data row alignment (exclude header [row 0] and all total rows)
+        ("ALIGN",       (0, 1), (0, first_total - 1), "CENTER"),   # #
+        ("ALIGN",       (4, 1), (4, first_total - 1), "CENTER"),   # Qty
+        ("ALIGN",       (5, 1), (6, first_total - 1), "RIGHT"),    # Unit Price + Total
+        # All total rows (Subtotal / Discount / TOTAL) — same background & alignment.
+        ("BACKGROUND",  (0, first_total), (-1, last), TOTAL_FILL),
+        ("FONTNAME",    (1, first_total), (1, last), FONT_BOLDIT),
+        ("FONTNAME",    (4, first_total), (4, last), FONT_BOLD),
+        ("FONTNAME",    (6, first_total), (6, last), FONT_BOLD),
+        ("FONTSIZE",    (0, first_total), (-1, last), 10),
+        ("ALIGN",       (1, first_total), (1, last), "LEFT"),
+        ("ALIGN",       (4, first_total), (4, last), "CENTER"),
+        ("ALIGN",       (6, first_total), (6, last), "RIGHT"),
     ])
 
     table = Table(data, colWidths=col_widths, repeatRows=1)
