@@ -753,9 +753,64 @@ async def api_products_upsert_by_barcode(request: Request):
 # ---------------- stock ----------------
 
 @app.get("/stock", response_class=HTMLResponse)
-def stock_get(request: Request, warehouse: str = "", q: str = "", msg: str = "", show_archived: int = 0, sort_by: str = "qty_asc"):
-    rows = get_stock(warehouse if warehouse else None, q if q else None, include_archived=bool(show_archived), sort_by=sort_by)
-    return _render(
+def stock_get(request: Request, warehouse: str = "", q: str = "", msg: str = "",
+              show_archived: int = 0, sort_by: str = "qty_asc",
+              cols: Optional[str] = None, hide_zero: Optional[str] = None):
+    """
+    Phase 13 — per-user view preferences for /stock.
+
+    Query params `cols` and `hide_zero` override everything. If omitted,
+    we read the saved cookie `stock_view_prefs`. If no cookie either,
+    the default view shows ALL columns and does NOT hide zero-qty rows
+    (i.e. legacy behaviour for a first-time visitor).
+
+    `cols` is a comma list of keys among:  income, m<pct> (e.g. m15, m25)
+    `hide_zero` is "1" or "0".
+
+    On every page render we re-save the cookie, so navigating away and
+    back preserves the operator's last choice without extra UI.
+    """
+    presets = get_sale_markup_presets()  # e.g. [15, 25]
+    all_optional_cols = {"income"} | {f"m{p}" for p in presets}
+
+    # Defaults — show everything, show zeros.
+    def _default_prefs():
+        return {"cols": set(all_optional_cols), "hide_zero": False}
+
+    prefs = _default_prefs()
+    # 1) Fallback to cookie if the request didn't carry explicit params.
+    cookie_raw = request.cookies.get("stock_view_prefs", "")
+    if cookie_raw and cols is None and hide_zero is None:
+        try:
+            parts = cookie_raw.split("|")
+            if len(parts) == 2:
+                cookie_cols = parts[0].strip()
+                cookie_hide = parts[1].strip()
+                prefs["cols"] = (
+                    set() if cookie_cols == "none"
+                    else set(c for c in cookie_cols.split(",") if c)
+                )
+                prefs["hide_zero"] = (cookie_hide == "1")
+        except Exception:
+            pass  # bad cookie — fall through to explicit defaults
+
+    # 2) Explicit query params win over the cookie.
+    if cols is not None:
+        prefs["cols"] = set(c for c in cols.split(",") if c)
+    if hide_zero is not None:
+        prefs["hide_zero"] = (str(hide_zero) == "1")
+
+    # Keep only valid optional column keys (strip typos / stale presets).
+    prefs["cols"] = prefs["cols"] & all_optional_cols
+
+    rows = get_stock(warehouse if warehouse else None, q if q else None,
+                     include_archived=bool(show_archived), sort_by=sort_by)
+    # Phase 13 — optionally drop zero-qty rows from the on-screen table
+    # and from any downstream (XLSX/PDF) that consumes `rows` later.
+    if prefs["hide_zero"]:
+        rows = [r for r in rows if float(r.get("qty") or 0) != 0]
+
+    resp = _render(
         request,
         "stock.html",
         {
@@ -765,9 +820,21 @@ def stock_get(request: Request, warehouse: str = "", q: str = "", msg: str = "",
             "msg": msg,
             "show_archived": show_archived,
             "sort_by": sort_by,
-            "markup_presets": get_sale_markup_presets(),
+            "markup_presets": presets,
+            "view_show_income": "income" in prefs["cols"],
+            "view_show_markups": {p: (f"m{p}" in prefs["cols"]) for p in presets},
+            "view_hide_zero":   prefs["hide_zero"],
+            # Cols/hide_zero re-serialised so templates can rebuild XLSX/PDF URLs.
+            "view_cols_param": ",".join(sorted(prefs["cols"])) or "none",
+            "view_hide_zero_param": "1" if prefs["hide_zero"] else "0",
         },
     )
+    # Persist current prefs so the next visit (without explicit params)
+    # picks them up. Cookie lives one year, scoped site-wide.
+    cookie_val = (",".join(sorted(prefs["cols"])) or "none") + "|" + ("1" if prefs["hide_zero"] else "0")
+    resp.set_cookie("stock_view_prefs", cookie_val,
+                    max_age=365 * 86400, samesite="lax")
+    return resp
 
 
 @app.post("/stock/product/wh_price")
@@ -828,9 +895,30 @@ def product_history_get(request: Request, product_id: int, return_to: str = ""):
     return _render(request, "product_history.html", {"product": prod, "events": events, "return_to": safe_return_to})
 
 
+def _stock_view_prefs_from_query(
+    cols: Optional[str], hide_zero: Optional[str],
+) -> tuple[bool, list[int], bool]:
+    """Shared helper for /stock/xlsx and /stock/pdf — parse the same
+    `cols`/`hide_zero` params as /stock uses, and return (show_income,
+    markup_pcts_to_show, hide_zero_bool). Defaults = all shown."""
+    presets = get_sale_markup_presets()
+    all_optional = {"income"} | {f"m{p}" for p in presets}
+    if cols is None:
+        chosen = all_optional
+    else:
+        chosen = set(c for c in cols.split(",") if c) & all_optional
+    show_income = "income" in chosen
+    pcts = [p for p in presets if f"m{p}" in chosen]
+    hide_z = (str(hide_zero) == "1") if hide_zero is not None else False
+    return show_income, pcts, hide_z
+
+
 @app.get("/stock/xlsx")
-def stock_xlsx(warehouse: str = "", q: str = "", show_archived: int = 0, sort_by: str = "qty_asc"):
-    rows = get_stock(warehouse if warehouse else None, q if q else None, include_archived=bool(show_archived), sort_by=sort_by)
+def stock_xlsx(request: Request, warehouse: str = "", q: str = "",
+               show_archived: int = 0, sort_by: str = "qty_asc",
+               cols: Optional[str] = None, hide_zero: Optional[str] = None):
+    rows = get_stock(warehouse if warehouse else None, q if q else None,
+                     include_archived=bool(show_archived), sort_by=sort_by)
     wh_key = (warehouse or "").strip().upper()
     today = date.today().isoformat()
     if wh_key == "TM_DEPO":
@@ -842,11 +930,49 @@ def stock_xlsx(warehouse: str = "", q: str = "", show_archived: int = 0, sort_by
     else:
         label = "All Warehouses"
         suffix = "all"
-    data = generate_stock_xlsx_bytes(rows, label)
+    show_income, pcts, hide_z = _stock_view_prefs_from_query(cols, hide_zero)
+    data = generate_stock_xlsx_bytes(
+        rows, label,
+        show_income=show_income, markup_pcts=pcts,
+        hide_zero=hide_z, lang=_get_ui_lang(request),
+    )
     filename = f"stock_{suffix}_{today}.xlsx"
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/stock/pdf")
+def stock_pdf(request: Request, warehouse: str = "", q: str = "",
+              show_archived: int = 0, sort_by: str = "qty_asc",
+              cols: Optional[str] = None, hide_zero: Optional[str] = None):
+    """A4 portrait stock inventory PDF, respects the same column toggles."""
+    from app.services.stock_pdf import generate_stock_pdf_bytes
+    rows = get_stock(warehouse if warehouse else None, q if q else None,
+                     include_archived=bool(show_archived), sort_by=sort_by)
+    wh_key = (warehouse or "").strip().upper()
+    today = date.today().isoformat()
+    if wh_key == "TM_DEPO":
+        label = WAREHOUSES["TM_DEPO"]
+        suffix = "depo"
+    elif wh_key == "1416_SHOP":
+        label = WAREHOUSES["1416_SHOP"]
+        suffix = "shop"
+    else:
+        label = "All Warehouses"
+        suffix = "all"
+    show_income, pcts, hide_z = _stock_view_prefs_from_query(cols, hide_zero)
+    data = generate_stock_pdf_bytes(
+        rows, label,
+        show_income=show_income, markup_pcts=pcts,
+        hide_zero=hide_z, lang=_get_ui_lang(request),
+    )
+    filename = f"stock_{suffix}_{today}.pdf"
+    return Response(
+        content=data,
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

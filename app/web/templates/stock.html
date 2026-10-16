@@ -32,6 +32,26 @@
       </select>
     </div>
 
+    {# Phase 13 — view preference checkboxes. Submit together with
+       warehouse/search/sort so the whole state round-trips in one form.
+       Cookie `stock_view_prefs` keeps the last-chosen set between visits. #}
+    <div class="col-auto">
+      <label class="form-label mb-1 small text-muted">{{ t.stock_view_cols_label | default('Колонки') }}</label>
+      <div class="d-flex gap-2 flex-wrap">
+        <label class="form-check-label small"><input type="checkbox" name="cols" value="income"
+               class="form-check-input me-1"{% if view_show_income %} checked{% endif %}>
+          {{ t.stock_col_income | default('Приход') }}</label>
+        {% for pct in markup_presets %}
+          <label class="form-check-label small"><input type="checkbox" name="cols" value="m{{ pct }}"
+                 class="form-check-input me-1"{% if view_show_markups.get(pct) %} checked{% endif %}>
+            +{{ pct }}%</label>
+        {% endfor %}
+        <label class="form-check-label small"><input type="checkbox" name="hide_zero" value="1"
+               class="form-check-input me-1"{% if view_hide_zero %} checked{% endif %}>
+          {{ t.stock_hide_zero | default('Прятать нули') }}</label>
+      </div>
+    </div>
+
     <div class="col-auto">
       <button class="btn btn-secondary">{{ t.btn_filter }}</button>
     </div>
@@ -39,7 +59,9 @@
     <input type="hidden" name="show_archived" value="{{ show_archived }}">
 
     <div class="col-auto">
-      <a class="btn btn-success" href="/stock/xlsx?warehouse={{ selected_warehouse }}&q={{ search_q }}&show_archived={{ show_archived }}&sort_by={{ sort_by }}">{{ t.btn_download_xlsx }}</a>
+      {% set _dl_qs = 'warehouse=' ~ selected_warehouse ~ '&q=' ~ search_q ~ '&show_archived=' ~ show_archived ~ '&sort_by=' ~ sort_by ~ '&cols=' ~ view_cols_param ~ '&hide_zero=' ~ view_hide_zero_param %}
+      <a class="btn btn-success" href="/stock/xlsx?{{ _dl_qs }}">📥 {{ t.btn_download_xlsx | default('XLSX') }}</a>
+      <a class="btn btn-danger"  href="/stock/pdf?{{ _dl_qs }}">📄 {{ t.btn_download_pdf | default('PDF') }}</a>
     </div>
   </form>
 
@@ -65,9 +87,13 @@
         <th class="col-sort" data-sort="brand"    data-type="str" style="cursor:pointer;user-select:none">{{ t.lbl_brand }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
         <th class="col-sort" data-sort="model"    data-type="str" style="cursor:pointer;user-select:none">{{ t.lbl_model }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
         <th class="col-sort" data-sort="name"     data-type="str" style="cursor:pointer;user-select:none">{{ t.lbl_name }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+        {% if view_show_income %}
         <th class="col-sort text-end" data-sort="price" data-type="num" style="cursor:pointer;user-select:none">{{ t.stock_col_income }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
+        {% endif %}
         {% for pct in markup_presets %}
-        <th class="text-end">+{{ pct }}%</th>
+          {% if view_show_markups.get(pct) %}
+          <th class="text-end">+{{ pct }}%</th>
+          {% endif %}
         {% endfor %}
         <th class="col-sort text-end" data-sort="qty" data-type="num" style="cursor:pointer;user-select:none">{{ t.lbl_qty }} <span class="col-arrow text-muted" style="opacity:0.5;font-size:0.85em">↕</span></th>
         <th></th>
@@ -86,9 +112,13 @@
         <td>{{ r.brand }}</td>
         <td>{{ r.model }}{% if r.archived %}<span class="badge bg-secondary ms-1">{{ t.badge_archived }}</span>{% endif %}</td>
         <td>{{ r.name }}</td>
+        {% if view_show_income %}
         <td class="text-end">{{ "%.2f"|format(r.wh_price) }}</td>
+        {% endif %}
         {% for pct in markup_presets %}
-        <td class="text-end">{{ "%.2f"|format(r.wh_price * (1 + pct / 100)) }}</td>
+          {% if view_show_markups.get(pct) %}
+          <td class="text-end">{{ "%.2f"|format(r.wh_price * (1 + pct / 100)) }}</td>
+          {% endif %}
         {% endfor %}
         <td class="text-end">{{ r.qty|int }}</td>
         <td class="text-end">
