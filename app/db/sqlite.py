@@ -4765,6 +4765,65 @@ def cancel_cart(cart_id: int) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def cart_sort_items_by_model(cart_id: int) -> tuple[bool, str]:
+    """Phase 12 — reorder cart_items by (brand, model) alphabetically.
+
+    Helps the operator spot accidental duplicate rows BEFORE they finish
+    the sale: two of the same model stack right next to each other, and
+    the typo (e.g. sf-9768 typed twice when the second should've been
+    sf-9868) jumps out visually. Also makes the printed invoice tidier
+    for the client — all variants of the same model grouped together.
+
+    How: fetch all rows ordered by brand+model, DELETE the whole set,
+    then INSERT in the new order so the new auto-generated id's reflect
+    the sort. Done in a single transaction — if anything fails the cart
+    stays unchanged. All stored fields (prices, discounts, cost_price
+    snapshots, free-line brand/model/name/barcode) are preserved.
+    """
+    try:
+        with _connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT ci.*,
+                       COALESCE(p.brand, ci.free_brand, '') AS _sort_brand,
+                       COALESCE(p.model, ci.free_model, '') AS _sort_model
+                  FROM cart_items ci
+                  LEFT JOIN products p ON p.id = ci.product_id
+                 WHERE ci.cart_id = ?
+                 ORDER BY LOWER(_sort_brand), LOWER(_sort_model), ci.id
+                """,
+                (cart_id,),
+            ).fetchall()
+            if not rows:
+                return True, ""
+            # Preserve a snapshot of every field we need to re-insert.
+            kept = [dict(r) for r in rows]
+            conn.execute("DELETE FROM cart_items WHERE cart_id = ?", (cart_id,))
+            for r in kept:
+                conn.execute(
+                    """
+                    INSERT INTO cart_items
+                      (cart_id, product_id, free_line,
+                       free_brand, free_model, free_name, free_barcode,
+                       qty, price_mode, unit_price, total, cost_price)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        r["cart_id"], r["product_id"], r["free_line"],
+                        r.get("free_brand")   or "",
+                        r.get("free_model")   or "",
+                        r.get("free_name")    or "",
+                        r.get("free_barcode") or "",
+                        r["qty"], r["price_mode"], r["unit_price"],
+                        r["total"], r["cost_price"],
+                    ),
+                )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
 def set_cart_discount(cart_id: int, pct: float) -> tuple[bool, str]:
     """Phase 11 — set the invoice-level percentage discount on an open cart.
     Clamped to [0, 100]. Applies only to carts in status OPEN — once closed

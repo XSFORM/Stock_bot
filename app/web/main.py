@@ -1535,6 +1535,15 @@ def sale_finish(request: Request, cart_id: int = Form(...), nonce: str = Form(""
     )
 
 
+@app.post("/sale/sort")
+def sale_sort(cart_id: int = Form(...)):
+    """Phase 12 — group cart lines by brand+model so duplicates jump out."""
+    from app.db.sqlite import cart_sort_items_by_model
+    ok, err = cart_sort_items_by_model(int(cart_id))
+    msg = "sorted" if ok else f"sort_err:{err}"
+    return RedirectResponse(url=f"/sale?msg={msg}", status_code=303)
+
+
 @app.post("/sale/discount")
 def sale_discount(cart_id: int = Form(...), discount_pct: float = Form(0)):
     """Phase 11 — set invoice-level discount on the open cart."""

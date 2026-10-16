@@ -294,6 +294,13 @@
       <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
       <button class="btn btn-outline-secondary btn-sm">&#8635; {{ t.btn_refresh }}</button>
     </form>
+    <form method="post" action="/sale/sort"
+          title="{{ t.sale_sort_hint | default('Пересортировать строки по бренду и модели — удобно, чтобы заметить дубль одной модели перед сохранением.') }}">
+      <input type="hidden" name="cart_id" value="{{ open_cart.cart_id }}">
+      <button class="btn btn-outline-primary btn-sm" {% if not cart_items %}disabled{% endif %}>
+        📑 {{ t.sale_sort_btn | default('Сгруппировать по моделям') }}
+      </button>
+    </form>
 
     {# Phase 11 — invoice-level discount for the open cart. Visible,
        editable before finishing. On submit, backend applies it and the
