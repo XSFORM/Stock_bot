@@ -68,15 +68,18 @@ BORDER      = colors.HexColor("#000000")
 
 
 _STRINGS = {
+    # Export labels for clients. Markup columns print as the neutral
+    # word "Price" — clients don't need to know whether a given price
+    # was computed from +15 % or +25 % off the operator's purchase price.
     "en": {"title":"Stock Inventory", "num":"#", "brand":"Brand",
-           "model":"Model", "name":"Name", "income":"Income", "qty":"Qty",
-           "total":"TOTAL", "generated":"Generated"},
+           "model":"Model", "name":"Name", "income":"Income", "price":"Price",
+           "qty":"Qty", "total":"TOTAL", "generated":"Generated"},
     "ru": {"title":"Остатки склада", "num":"№", "brand":"Бренд",
-           "model":"Модель", "name":"Название", "income":"Приход", "qty":"Кол-во",
-           "total":"ИТОГО", "generated":"Сформировано"},
+           "model":"Модель", "name":"Название", "income":"Приход", "price":"Цена",
+           "qty":"Кол-во", "total":"ИТОГО", "generated":"Сформировано"},
     "tm": {"title":"Ammar galyndylary", "num":"№", "brand":"Brend",
-           "model":"Model", "name":"Ady", "income":"Girdeji", "qty":"Sany",
-           "total":"JEMI", "generated":"Döredildi"},
+           "model":"Model", "name":"Ady", "income":"Girdeji", "price":"Baha",
+           "qty":"Sany", "total":"JEMI", "generated":"Döredildi"},
 }
 
 
@@ -103,8 +106,9 @@ def generate_stock_pdf_bytes(
     headers = [t["num"], t["brand"], t["model"], t["name"]]
     if show_income:
         headers.append(t["income"])
+    # Clients see "Цена" / "Price" / "Baha", not the markup percentage.
     for pct in markup_pcts:
-        headers.append(f"+{pct}%")
+        headers.append(t["price"])
     headers.append(t["qty"])
     n_cols = len(headers)
 

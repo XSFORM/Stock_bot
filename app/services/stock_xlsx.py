@@ -35,16 +35,24 @@ def generate_stock_xlsx_bytes(
 ) -> bytes:
     """Return a stock inventory XLSX. Caller controls which columns appear."""
     # Strings per language. Only the labels — product names stay as-is.
+    # Note: for export we intentionally do NOT reveal the markup percent
+    # on the price-column header (operator asked: clients don't need to
+    # know it was +15% vs +25% off the purchase price). We print the
+    # neutral word "Price" instead; on-screen /stock still shows the
+    # exact percent so the operator can tell which column is which.
     labels = {
         "en": {"title": "Stock Inventory",
                "num": "#", "brand": "Brand", "model": "Model", "name": "Name",
-               "income": "Income", "qty": "Qty", "total": "TOTAL"},
+               "income": "Income", "price": "Price",
+               "qty": "Qty", "total": "TOTAL"},
         "ru": {"title": "Остатки склада",
                "num": "№", "brand": "Бренд", "model": "Модель", "name": "Название",
-               "income": "Приход", "qty": "Кол-во", "total": "ИТОГО"},
+               "income": "Приход", "price": "Цена",
+               "qty": "Кол-во", "total": "ИТОГО"},
         "tm": {"title": "Ammar galyndylary",
                "num": "№", "brand": "Brend", "model": "Model", "name": "Ady",
-               "income": "Girdeji", "qty": "Sany", "total": "JEMI"},
+               "income": "Girdeji", "price": "Baha",
+               "qty": "Sany", "total": "JEMI"},
     }
     L = labels.get((lang or "en").lower(), labels["en"])
 
@@ -57,8 +65,10 @@ def generate_stock_xlsx_bytes(
     widths:  list[int] = [5, 14, 14, 28]
     if show_income:
         headers.append(L["income"]); widths.append(10)
+    # Phase 13 patch — clients shouldn't see which markup produced the
+    # price. Multiple markup columns all print as the plain word "Price".
     for pct in markup_pcts:
-        headers.append(f"+{pct}%");   widths.append(10)
+        headers.append(L["price"]); widths.append(12)
     headers.append(L["qty"]); widths.append(8)
     n_cols = len(headers)
 
