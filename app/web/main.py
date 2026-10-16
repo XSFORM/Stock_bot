@@ -1422,6 +1422,19 @@ def sale_get(request: Request, msg: str = ""):
         cart_total = calc_document_total(cart_items, "unit_price")
         cart_qty = sum(float(i["qty"]) for i in cart_items)
         cart_discount_pct = float((cart_full or {}).get("discount_pct") or 0)
+        # Phase 12 — mark duplicate brand+model rows so the operator can
+        # spot an accidental twice-typed row BEFORE finishing the sale.
+        from collections import Counter
+        _key_counts = Counter(
+            (str(i.get("brand") or "").strip().lower(),
+             str(i.get("model") or "").strip().lower())
+            for i in cart_items
+        )
+        for i in cart_items:
+            k = (str(i.get("brand") or "").strip().lower(),
+                 str(i.get("model") or "").strip().lower())
+            # Blank key (free line with no brand+model yet) → never flag.
+            i["is_duplicate"] = _key_counts[k] > 1 and any(k)
     return _render(
         request,
         "sale.html",

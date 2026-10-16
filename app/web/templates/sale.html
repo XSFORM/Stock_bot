@@ -205,7 +205,10 @@
           {# ── Existing items ── #}
           {% if cart_items %}
             {% for item in cart_items %}
-            <tr>
+            {# Phase 12 — soft-highlight rows whose brand+model matches
+               another row in the cart. Catches the «typed the same
+               model twice by mistake» case before the user hits Finish. #}
+            <tr class="{% if item.is_duplicate %}table-warning{% endif %}">
               <td class="text-center align-middle">{{ loop.index }}</td>
               <td class="align-middle">
                 {% if item.free_line %}
@@ -213,6 +216,12 @@
                   <span class="badge bg-warning text-dark ms-1" style="font-size:0.7em">{{ t.sale_free_item_badge }}</span>
                 {% else %}
                   {{ item.brand }} {{ item.model }}
+                {% endif %}
+                {% if item.is_duplicate %}
+                  <span class="badge bg-danger ms-1" style="font-size:0.7em"
+                        title="{{ t.sale_dup_hint | default('В корзине есть ещё одна строка с таким же брендом и моделью — проверьте, не задвоилось ли случайно.') }}">
+                    ⚠ {{ t.sale_dup_badge | default('дубль модели') }}
+                  </span>
                 {% endif %}
               </td>
               <td class="align-middle">
