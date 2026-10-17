@@ -3830,7 +3830,20 @@ def price_sw():
     #     against the snapshot" so this almost never fires.
     #   • /api/price/token-info → network-first with cache fallback.
     sw_code = r"""
-const CACHE = 'pocket-price-v3';
+// Pocket Price service worker — v4 (full offline).
+//
+// What gets cached and when:
+//   - `/price` shell: network-first (fresh HTML when connected,
+//     cached HTML when not).
+//   - CDN scripts/styles (cdn.jsdelivr.net): cache-first, long-lived.
+//     Without this, Bootstrap CSS/JS fail offline and the page looks
+//     broken even though we have the HTML.
+//   - /static/* assets (icons, background image): cache-first.
+//   - /api/price/snapshot and /api/price/token-info: network-first with
+//     cache fallback — fresh when connected, stale when not.
+//   - /api/price/search and /barcode: network-only (client falls back
+//     to local-snapshot search when these fail, so caching is pointless).
+const CACHE = 'pocket-price-v4';
 const SHELL = ['/price'];
 
 self.addEventListener('install', e => {
@@ -3854,7 +3867,6 @@ self.addEventListener('activate', e => {
 function networkFirstWithCache(request) {
   return fetch(request)
     .then(r => {
-      // Only cache 2xx so we don't persist 401/404/5xx responses.
       if (r && r.ok) {
         const copy = r.clone();
         caches.open(CACHE).then(c => c.put(request, copy));
@@ -3868,20 +3880,52 @@ function networkFirstWithCache(request) {
     ));
 }
 
+// Cache-first with background update: returns cached copy instantly,
+// quietly fetches a fresh one for next time. Great for immutable CDN
+// assets and the /static/* bundle.
+function cacheFirst(request) {
+  return caches.match(request).then(hit => {
+    const net = fetch(request).then(r => {
+      if (r && (r.ok || r.type === 'opaque')) {
+        const copy = r.clone();
+        caches.open(CACHE).then(c => c.put(request, copy));
+      }
+      return r;
+    }).catch(() => hit);
+    return hit || net;
+  });
+}
+
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+
+  // Snapshot and token-info — network-first, cache fallback.
   if (url.pathname === '/api/price/snapshot' ||
       url.pathname === '/api/price/token-info') {
     e.respondWith(networkFirstWithCache(e.request));
-  } else if (url.pathname.startsWith('/api/price')) {
-    // /search and /barcode — client falls back to local snapshot when
-    // these fail, so we don't bother keeping them in cache.
+    return;
+  }
+  // Other /api/price/* — network-only; client has local fallback.
+  if (url.pathname.startsWith('/api/price')) {
     e.respondWith(
       fetch(e.request).catch(() => new Response('{"error":"offline"}', {
         status: 503, headers: {'Content-Type': 'application/json'},
       }))
     );
-  } else if (SHELL.includes(url.pathname)) {
+    return;
+  }
+  // CDN assets (Bootstrap, etc.) — cache-first, long-lived.
+  if (url.hostname === 'cdn.jsdelivr.net') {
+    e.respondWith(cacheFirst(e.request));
+    return;
+  }
+  // Our own /static/* (icons, background image) — cache-first.
+  if (url.pathname.startsWith('/static/')) {
+    e.respondWith(cacheFirst(e.request));
+    return;
+  }
+  // Shell — network-first with cache fallback.
+  if (SHELL.includes(url.pathname) || url.pathname === '/price') {
     e.respondWith(
       fetch(e.request)
         .then(r => {
@@ -3891,7 +3935,9 @@ self.addEventListener('fetch', e => {
         })
         .catch(() => caches.match(e.request).then(r => r || caches.match('/price')))
     );
+    return;
   }
+  // Everything else — pass through.
 });
 """
     return Response(content=sw_code, media_type="application/javascript")
