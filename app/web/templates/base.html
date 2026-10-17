@@ -34,6 +34,15 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark app-top-nav">
       <div class="container-fluid">
         <a class="navbar-brand" href="/">Hasapcy</a>
+        {# Hamburger — appears below lg (992px) and toggles the collapsed menu.
+           Without this (and the .collapse wrapper below) the nav just stacks
+           into an unreachable column on phones. #}
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#topNav" aria-controls="topNav"
+                aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="topNav">
         <div class="navbar-nav me-auto">
           <a class="nav-link" href="/products">{{ t.nav_products if t is defined else 'Products' }}</a>
           <a class="nav-link" href="/stock">{{ t.nav_stock if t is defined else 'Stock' }}</a>
@@ -110,6 +119,7 @@
         {% if site_lock_enabled %}
         <a class="btn btn-sm btn-outline-light" href="/logout">{{ t.logout_label if t is defined else 'Logout' }}</a>
         {% endif %}
+        </div>{# /#topNav .collapse #}
       </div>
     </nav>
 
