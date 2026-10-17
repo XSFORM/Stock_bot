@@ -6577,6 +6577,49 @@ def search_products_for_price(
         return result
 
 
+def list_all_products_for_price(
+    mode: str = "SIMPLE",
+    show_qty: bool = False,
+    show_buy_price: bool = False,
+) -> list[dict[str, Any]]:
+    """Phase 14 — full non-archived catalog in one call, for offline-first
+    Pocket Price.
+
+    Same output shape as `search_products_for_price` so the client can
+    treat snapshot items identically to the previous search-API items.
+    One SQL hit for products + one for qty aggregation if show_qty is on.
+
+    ~1500 products × ~150 bytes = ~250 KB uncompressed; nginx gzip makes
+    it 60-80 KB on the wire — downloads in a couple of seconds even on a
+    very slow 2G connection.
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, brand, model, name, wh_price, barcode, note"
+            "  FROM products WHERE archived = 0"
+            " ORDER BY LOWER(brand), LOWER(model), LOWER(name)"
+        ).fetchall()
+        qty_map: dict[int, float] = {}
+        if show_qty and rows:
+            qty_rows = conn.execute(
+                "SELECT product_id, COALESCE(SUM(qty), 0) AS total"
+                "  FROM stock GROUP BY product_id"
+            ).fetchall()
+            qty_map = {int(r["product_id"]): float(r["total"]) for r in qty_rows}
+
+        is_full = (mode or "SIMPLE").upper() == "FULL"
+        result: list[dict[str, Any]] = []
+        for r in rows:
+            wh = float(r["wh_price"] or 0) if (show_buy_price and is_full) else None
+            product = _apply_price_mode(dict(r), mode)
+            if show_qty:
+                product["qty_total"] = qty_map.get(int(product["id"]), 0.0)
+            if show_buy_price and is_full:
+                product["buy_price"] = wh
+            result.append(product)
+        return result
+
+
 # ── Catalog tokens ──────────────────────────────────────────────────────────
 
 

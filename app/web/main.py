@@ -3444,6 +3444,36 @@ def api_price_barcode(request: Request, code: str = ""):
     return JSONResponse({"product": results[0], "mode": mode})
 
 
+@app.get("/api/price/snapshot")
+def api_price_snapshot(request: Request):
+    """Phase 14 — return the FULL non-archived catalog in one payload for
+    offline-first Pocket Price. Honours the token's mode / show_qty /
+    show_buy_price just like /api/price/search does. Adds a
+    `generated_at` timestamp so the client can display how old the
+    snapshot is in its local UI."""
+    row = _require_price_token(request)
+    if row is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if row == "not_paired":
+        return JSONResponse({"error": "not_paired"}, status_code=401)
+    from app.db.sqlite import list_all_products_for_price
+    mode = (row.get("mode") or "SIMPLE").upper()
+    show_qty = bool(row.get("show_qty", 0))
+    show_buy_price = bool(row.get("show_buy_price", 0))
+    products = list_all_products_for_price(
+        mode=mode, show_qty=show_qty, show_buy_price=show_buy_price,
+    )
+    from datetime import datetime
+    return JSONResponse({
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "mode": mode,
+        "show_qty": show_qty,
+        "show_buy_price": show_buy_price,
+        "count": len(products),
+        "products": products,
+    })
+
+
 @app.get("/api/price/token-info")
 def api_price_token_info(request: Request):
     row = _require_price_token(request)
@@ -3786,13 +3816,30 @@ def price_manifest():
 
 @app.get("/price/sw.js")
 def price_sw():
+    # Phase 14 — offline-first service worker.
+    #
+    # Strategy per request type:
+    #   • /price shell  → network-first, fallback to cache. User always
+    #     gets the latest HTML when connected but offline still boots.
+    #   • /api/price/snapshot → network-first, fallback to cache. Fresh
+    #     catalog when connection allows; stale copy when it doesn't.
+    #     Note: client ALSO stores snapshot in IndexedDB independently,
+    #     so even if the SW cache is evicted the snapshot stays.
+    #   • /api/price/search, /api/price/barcode → network-first with a
+    #     JSON error on failure. Client treats failure as "search locally
+    #     against the snapshot" so this almost never fires.
+    #   • /api/price/token-info → network-first with cache fallback.
     sw_code = r"""
-const CACHE = 'pocket-price-v2';
+const CACHE = 'pocket-price-v3';
 const SHELL = ['/price'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => Promise.all(SHELL.map(url => fetch(url).then(r => c.put(url, r.clone())).catch(() => null)))).then(() => self.skipWaiting())
+    caches.open(CACHE)
+      .then(c => Promise.all(SHELL.map(url =>
+        fetch(url).then(r => c.put(url, r.clone())).catch(() => null)
+      )))
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -3804,11 +3851,36 @@ self.addEventListener('activate', e => {
   );
 });
 
+function networkFirstWithCache(request) {
+  return fetch(request)
+    .then(r => {
+      // Only cache 2xx so we don't persist 401/404/5xx responses.
+      if (r && r.ok) {
+        const copy = r.clone();
+        caches.open(CACHE).then(c => c.put(request, copy));
+      }
+      return r;
+    })
+    .catch(() => caches.match(request).then(hit =>
+      hit || new Response('{"error":"offline"}', {
+        status: 503, headers: {'Content-Type': 'application/json'},
+      })
+    ));
+}
+
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // Network-first for API calls and shell
-  if (url.pathname.startsWith('/api/price')) {
-    e.respondWith(fetch(e.request).catch(() => new Response('{"error":"offline"}', {headers:{'Content-Type':'application/json'}})));
+  if (url.pathname === '/api/price/snapshot' ||
+      url.pathname === '/api/price/token-info') {
+    e.respondWith(networkFirstWithCache(e.request));
+  } else if (url.pathname.startsWith('/api/price')) {
+    // /search and /barcode — client falls back to local snapshot when
+    // these fail, so we don't bother keeping them in cache.
+    e.respondWith(
+      fetch(e.request).catch(() => new Response('{"error":"offline"}', {
+        status: 503, headers: {'Content-Type': 'application/json'},
+      }))
+    );
   } else if (SHELL.includes(url.pathname)) {
     e.respondWith(
       fetch(e.request)

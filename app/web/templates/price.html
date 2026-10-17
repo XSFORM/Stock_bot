@@ -70,6 +70,12 @@
 
   <!-- App shell (hidden by default; JS shows when token is present) -->
   <div id="app-shell" style="display:none">
+    <!-- Catalog freshness bar + refresh button (Phase 14 offline-first) -->
+    <div class="d-flex align-items-center justify-content-between mb-2 small">
+      <span id="catalog-status" class="text-muted">⌛ Loading catalog…</span>
+      <button id="refresh-btn" type="button" class="btn btn-sm btn-outline-info py-0 px-2"
+              onclick="refreshSnapshot(true)" title="Refresh catalog">🔄</button>
+    </div>
     <!-- Search row -->
     <div class="input-group mb-2">
       <input id="search-input" type="search" class="form-control" placeholder="Search by model / brand / name…" autocomplete="off">
@@ -193,6 +199,117 @@ async function fetchTokenInfo() {
   try { localStorage.setItem('pocket_price_show_buy_price', _showBuyPrice ? '1' : '0'); } catch(e) {}
   document.getElementById('not-paired').style.display = 'none';
   document.getElementById('app-shell').style.display = '';
+  // Phase 14 — load local snapshot first (instant, works offline),
+  // then kick off a background refresh. Search is served from the
+  // snapshot after this, so even on 0.1 Mb/s results are instant.
+  await loadSnapshotLocal();
+  refreshSnapshot(false);  // fire-and-forget — don't block the UI
+}
+
+// ── Phase 14 — offline-first catalog snapshot ────────────────────────────────
+// Full non-archived catalog is downloaded once (~60-80 KB gzipped on
+// 1500 products), kept in IndexedDB, and used for all search / barcode
+// lookups. The bazaar's TMCell 4G falls to 0.1 Mb/s by midday — this
+// pattern makes the client never notice.
+var _snapshot = null;  // {generated_at, mode, show_qty, show_buy_price, count, products: [...]}
+
+function _openDb() {
+  return new Promise(function(resolve, reject) {
+    try {
+      var req = indexedDB.open('pocket_price_db', 1);
+      req.onupgradeneeded = function(e) {
+        var db = e.target.result;
+        if (!db.objectStoreNames.contains('snapshot')) {
+          db.createObjectStore('snapshot');
+        }
+      };
+      req.onsuccess = function(e) { resolve(e.target.result); };
+      req.onerror = function(e) { reject(e.target.error); };
+    } catch(err) { reject(err); }
+  });
+}
+
+function _idbGet(key) {
+  return _openDb().then(function(db) {
+    return new Promise(function(resolve, reject) {
+      var tx = db.transaction('snapshot', 'readonly');
+      var req = tx.objectStore('snapshot').get(key);
+      req.onsuccess = function() { resolve(req.result); };
+      req.onerror = function() { reject(req.error); };
+    });
+  });
+}
+
+function _idbSet(key, value) {
+  return _openDb().then(function(db) {
+    return new Promise(function(resolve, reject) {
+      var tx = db.transaction('snapshot', 'readwrite');
+      tx.objectStore('snapshot').put(value, key);
+      tx.oncomplete = function() { resolve(); };
+      tx.onerror = function() { reject(tx.error); };
+    });
+  });
+}
+
+async function loadSnapshotLocal() {
+  try {
+    var data = await _idbGet('v1');
+    if (data && Array.isArray(data.products)) {
+      _snapshot = data;
+    }
+  } catch(e) { /* IDB may not be available in incognito; just skip */ }
+  updateFreshness();
+}
+
+async function refreshSnapshot(userInitiated) {
+  if (!_token) return;
+  var btn = document.getElementById('refresh-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⌛'; }
+  try {
+    var res = await fetch('/api/price/snapshot', {headers: _priceHeaders()});
+    if (res.status === 401) { showUnpaired(); return; }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var data = await res.json();
+    if (!data || !Array.isArray(data.products)) throw new Error('bad snapshot');
+    _snapshot = data;
+    try { await _idbSet('v1', data); } catch(e) {}
+    updateFreshness();
+    // Re-run current search over the fresh data.
+    var q = (document.getElementById('search-input').value || '').trim();
+    if (q) doSearch(q);
+    if (userInitiated) {
+      setScanStatus('✅ Catalog updated · ' + data.count + ' products');
+      setTimeout(function(){ setScanStatus(''); }, 2000);
+    }
+  } catch(e) {
+    if (userInitiated) {
+      setScanStatus('❌ No connection — using last saved catalog');
+      setTimeout(function(){ setScanStatus(''); }, 2500);
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄'; }
+  }
+}
+
+function updateFreshness() {
+  var bar = document.getElementById('catalog-status');
+  if (!bar) return;
+  if (!_snapshot) {
+    bar.innerHTML = '<span class="text-warning">⚠ Catalog not loaded — connect once</span>';
+    return;
+  }
+  var gen = new Date(_snapshot.generated_at);
+  var ageMin = Math.floor((Date.now() - gen.getTime()) / 60000);
+  var color, note;
+  if (ageMin < 120) { color = 'success'; note = ageMin + ' min'; }
+  else if (ageMin < 24 * 60) { color = 'info'; note = Math.floor(ageMin / 60) + ' h'; }
+  else { color = 'warning'; note = Math.floor(ageMin / 60 / 24) + ' d'; }
+  var timeStr;
+  try {
+    timeStr = gen.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+  } catch(e) { timeStr = _snapshot.generated_at.slice(11, 16); }
+  bar.innerHTML = '<span class="text-' + color + '">📦 ' + (_snapshot.count || _snapshot.products.length)
+    + ' · ' + timeStr + ' (' + note + ')</span>';
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
@@ -209,20 +326,49 @@ document.getElementById('search-input').addEventListener('input', function() {
   _debounce = setTimeout(function() { doSearch(val); }, 300);
 });
 
-async function doSearch(q) {
-  if (!_token) return;
-  try {
-    var res = await fetch('/api/price/search?q=' + encodeURIComponent(q), {
-      headers: _priceHeaders()
-    });
-    if (res.status === 401) { showUnpaired(); return; }
-    var data = await res.json();
-    _lastResults = data.results || [];
+function doSearch(q) {
+  // Phase 14 — local search over the IndexedDB snapshot. No network call,
+  // instant results even on 0.1 Mb/s. Priority ordering mirrors the old
+  // server-side search_products_for_price so results look familiar.
+  if (!_snapshot || !Array.isArray(_snapshot.products)) {
+    document.getElementById('results').innerHTML =
+      '<p class="text-warning small">Catalog not loaded yet. Tap 🔄 to refresh.</p>';
     showList();
-    renderList(_lastResults);
-  } catch(e) {
-    document.getElementById('results').innerHTML = '<p class="text-warning small">Offline or error.</p>';
+    return;
   }
+  var needle = (q || '').trim().toLowerCase();
+  if (!needle) {
+    _lastResults = [];
+    renderList(_lastResults);
+    return;
+  }
+  var isBarcode = /^\d{6,}$/.test(needle);
+  var scored = [];
+  var products = _snapshot.products;
+  for (var i = 0; i < products.length; i++) {
+    var p = products[i];
+    var brand = (p.brand || '').toLowerCase();
+    var model = (p.model || '').toLowerCase();
+    var name  = (p.name  || '').toLowerCase();
+    var barcode = p.barcode || '';
+    var prio = 9;
+    if (model === needle) prio = 1;
+    else if (model.indexOf(needle) === 0) prio = 2;
+    else if (model.indexOf(needle) >= 0) prio = 3;
+    else if (brand.indexOf(needle) >= 0) prio = 4;
+    else if (name.indexOf(needle) >= 0) prio = 4;
+    else if (isBarcode && barcode.indexOf(needle) === 0) prio = 5;
+    if (prio < 9) scored.push({p: p, prio: prio});
+  }
+  scored.sort(function(a, b) {
+    if (a.prio !== b.prio) return a.prio - b.prio;
+    var ab = (a.p.brand || ''), bb = (b.p.brand || '');
+    if (ab !== bb) return ab.localeCompare(bb);
+    return (a.p.model || '').localeCompare(b.p.model || '');
+  });
+  _lastResults = scored.slice(0, 30).map(function(s) { return s.p; });
+  showList();
+  renderList(_lastResults);
 }
 
 function renderList(items) {
@@ -362,15 +508,46 @@ function startBarcodeDetection(video) {
 }
 
 async function lookupBarcode(code) {
+  // Phase 14 — try local snapshot first (works offline, instant); only
+  // hit the API if we don't have a snapshot at all.
   setScanStatus('Looking up: ' + code);
   document.getElementById('search-input').value = code;
+  if (_snapshot && Array.isArray(_snapshot.products)) {
+    var exact = null;
+    var prefixHits = [];
+    for (var i = 0; i < _snapshot.products.length; i++) {
+      var p = _snapshot.products[i];
+      if (!p.barcode) continue;
+      if (p.barcode === code) { exact = p; break; }
+      if (p.barcode.indexOf(code) === 0) prefixHits.push(p);
+    }
+    if (exact) {
+      _lastResults = [exact];
+      renderList(_lastResults);
+      selectProduct(0);
+      setScanStatus('');
+      return;
+    }
+    if (prefixHits.length > 0) {
+      _lastResults = prefixHits.slice(0, 30);
+      renderList(_lastResults);
+      if (prefixHits.length === 1) selectProduct(0);
+      setScanStatus('');
+      return;
+    }
+    // Fall back to a text search for a last-chance partial match.
+    doSearch(code);
+    setScanStatus('');
+    return;
+  }
+  // No snapshot — hit the server as before.
   try {
     var res = await fetch('/api/price/barcode?code=' + encodeURIComponent(code), {
       headers: _priceHeaders()
     });
     if (res.status === 401) { showUnpaired(); return; }
     if (res.status === 404) {
-      await doSearch(code);
+      doSearch(code);
       setScanStatus('');
       return;
     }
@@ -380,7 +557,7 @@ async function lookupBarcode(code) {
     selectProduct(0);
     setScanStatus('');
   } catch(e) {
-    setScanStatus('Error: ' + e.message);
+    setScanStatus('No connection and no local catalog yet');
   }
 }
 </script>
