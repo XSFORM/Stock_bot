@@ -295,20 +295,25 @@ function updateFreshness() {
   var bar = document.getElementById('catalog-status');
   if (!bar) return;
   if (!_snapshot) {
-    bar.innerHTML = '<span class="text-warning">⚠ Catalog not loaded — connect once</span>';
+    // Vivid orange, bold — stands out against the dark Pocket Price bg.
+    bar.innerHTML = '<span style="color:#ff8c42;font-weight:600">⚠ Catalog not loaded — connect once</span>';
     return;
   }
   var gen = new Date(_snapshot.generated_at);
   var ageMin = Math.floor((Date.now() - gen.getTime()) / 60000);
+  // Explicit bright colors instead of Bootstrap text-success / text-info /
+  // text-warning — the Bootstrap defaults are a bit dark on our deep-blue
+  // Pocket Price background and get lost on phone screens in sunlight.
   var color, note;
-  if (ageMin < 120) { color = 'success'; note = ageMin + ' min'; }
-  else if (ageMin < 24 * 60) { color = 'info'; note = Math.floor(ageMin / 60) + ' h'; }
-  else { color = 'warning'; note = Math.floor(ageMin / 60 / 24) + ' d'; }
+  if (ageMin < 120)         { color = '#4aff91'; note = ageMin + ' min'; }         // vivid green
+  else if (ageMin < 24*60)  { color = '#5ac8ff'; note = Math.floor(ageMin/60) + ' h'; } // bright cyan
+  else                      { color = '#ffb020'; note = Math.floor(ageMin/60/24) + ' d'; } // bright amber
   var timeStr;
   try {
     timeStr = gen.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
   } catch(e) { timeStr = _snapshot.generated_at.slice(11, 16); }
-  bar.innerHTML = '<span class="text-' + color + '">📦 ' + (_snapshot.count || _snapshot.products.length)
+  bar.innerHTML = '<span style="color:' + color + ';font-weight:600;font-size:0.95rem">'
+    + '📦 ' + (_snapshot.count || _snapshot.products.length)
     + ' · ' + timeStr + ' (' + note + ')</span>';
 }
 
