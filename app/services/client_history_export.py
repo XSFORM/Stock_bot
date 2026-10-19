@@ -88,6 +88,7 @@ _LABELS = {
         "generated":   "Создано",
         "advance":     "предоплата",
         "owes":        "долг",
+        "period_last_n": "последние {n} записей",
     },
     "en": {
         "title":       "Client history",
@@ -111,6 +112,7 @@ _LABELS = {
         "generated":   "Generated",
         "advance":     "advance",
         "owes":        "owes",
+        "period_last_n": "last {n} records",
     },
     "tm": {
         "title":       "Müşderi taryhy",
@@ -134,6 +136,7 @@ _LABELS = {
         "generated":   "Döredildi",
         "advance":     "öňünden",
         "owes":        "bergi",
+        "period_last_n": "iň soňky {n} ýazgy",
     },
 }
 
@@ -220,7 +223,44 @@ def _fmt_date(dt: str | None) -> str:
     return s[:10].replace("T", "")
 
 
-def _fmt_period(date_from: str | None, date_to: str | None, lang: str) -> str:
+def _ru_plural(n: int, one: str, few: str, many: str) -> str:
+    """Pick the right Russian noun form for a count (1 / 2–4 / 5+ rule)."""
+    nn = abs(int(n))
+    if 10 <= nn % 100 <= 20:
+        return many
+    tail = nn % 10
+    if tail == 1:
+        return one
+    if 2 <= tail <= 4:
+        return few
+    return many
+
+
+def _fmt_last_n(n: int, lang: str) -> str:
+    """Localised "last N records" with correct grammar per language."""
+    if (lang or "").lower() == "ru":
+        word = _ru_plural(n, "запись", "записи", "записей")
+        prefix = "последняя" if _ru_plural(n, "a", "b", "c") == "a" else "последние"
+        return f"{prefix} {n} {word}"
+    if (lang or "").lower() == "tm":
+        return f"iň soňky {n} ýazgy"
+    word = "record" if n == 1 else "records"
+    return f"last {n} {word}"
+
+
+def _fmt_period(
+    date_from: str | None,
+    date_to: str | None,
+    lang: str,
+    shown_count: int | None = None,
+) -> str:
+    """Human-readable period line.
+
+    If dates are picked we print them literally. If neither is picked but
+    the caller passed the row count we show "last N records" instead of
+    a lonely dash — the elderly reader gets a clear statement of how
+    much of the ledger is on this page.
+    """
     f = (date_from or "").strip()
     tto = (date_to or "").strip()
     if f and tto:
@@ -229,6 +269,8 @@ def _fmt_period(date_from: str | None, date_to: str | None, lang: str) -> str:
         return f"≥ {f}"
     if tto:
         return f"≤ {tto}"
+    if shown_count is not None and shown_count > 0:
+        return _fmt_last_n(shown_count, lang)
     return "—"
 
 
@@ -253,6 +295,41 @@ _HEADER_TEXT = colors.white
 _PLUS_FILL   = colors.HexColor("#FDECEA")
 _MINUS_FILL  = colors.HexColor("#E8F5E9")
 _BORDER      = colors.HexColor("#000000")
+
+
+# ── Optional company stamp (reuses the invoice stamp image) ─────────────────
+#
+# On the server the stamp lives at /opt/stock_bot/stamp.png (same path as
+# invoice_pdf.STAMP_PATH); on desktop it's absent, so we silently skip it.
+# STOCK_BOT_STAMP_PATH lets the admin override the location.
+
+_STAMP_PATH = Path(os.getenv("STOCK_BOT_STAMP_PATH", "/opt/stock_bot/stamp.png"))
+_STAMP_PDF_W_MM = 50
+_STAMP_PDF_H_MM = 20
+_STAMP_JPG_W_PX = 180        # width when pasted into the JPEG
+_STAMP_XLSX_W_PX = 180       # width when embedded in the XLSX
+
+
+def _draw_stamp_pdf(canvas, doc) -> None:
+    """SimpleDocTemplate onFirstPage callback — draws the stamp top-right."""
+    if not _STAMP_PATH.exists():
+        return
+    try:
+        canvas.saveState()
+        page_w, page_h = A4
+        margin = 10 * mm
+        w = _STAMP_PDF_W_MM * mm
+        h = _STAMP_PDF_H_MM * mm
+        x = page_w - margin - w
+        y = page_h - margin - h
+        canvas.drawImage(
+            str(_STAMP_PATH), x, y, width=w, height=h,
+            preserveAspectRatio=True, mask="auto",
+        )
+        canvas.restoreState()
+    except Exception:
+        # Stamp is optional — never fail generation because of it.
+        pass
 
 
 def generate_client_history_pdf(
@@ -296,7 +373,8 @@ def generate_client_history_pdf(
     story.append(Paragraph(f"<b>{t['client']}:</b> {_esc(client_name)}", info_style))
     if phone:
         story.append(Paragraph(f"<b>{t['phone']}:</b> {_esc(phone)}", info_style))
-    story.append(Paragraph(f"<b>{t['period']}:</b> {_esc(_fmt_period(date_from, date_to, lang))}", info_style))
+    period_str = _fmt_period(date_from, date_to, lang, shown_count=len(events))
+    story.append(Paragraph(f"<b>{t['period']}:</b> {_esc(period_str)}", info_style))
     story.append(Spacer(1, 4 * mm))
 
     header = [t["col_date"], t["col_op"], t["col_amount"], t["col_balance"], t["col_note"]]
@@ -368,7 +446,8 @@ def generate_client_history_pdf(
         small_style,
     ))
 
-    doc.build(story)
+    # Stamp on page 1 only — on continuation pages it would overlap the table.
+    doc.build(story, onFirstPage=_draw_stamp_pdf)
     return str(filename)
 
 
@@ -431,7 +510,8 @@ def generate_client_history_xlsx(
         ws.cell(row=r, column=2, value=phone).font = body_font
         r += 1
     ws.cell(row=r, column=1, value=f"{t['period']}:").font = bold
-    ws.cell(row=r, column=2, value=_fmt_period(date_from, date_to, lang)).font = body_font
+    ws.cell(row=r, column=2,
+            value=_fmt_period(date_from, date_to, lang, shown_count=len(events))).font = body_font
     r += 2
 
     header_row = r
@@ -498,6 +578,20 @@ def generate_client_history_xlsx(
     widths = [14, 22, 14, 18, 32]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[chr(ord("A") + i - 1)].width = w
+
+    # Optional stamp in the top-right (column E, row 1) — mirrors sale XLSX.
+    if _STAMP_PATH.exists():
+        try:
+            from openpyxl.drawing.image import Image as OpenpyxlImage
+            with Image.open(_STAMP_PATH) as _probe:
+                ratio = _probe.height / max(1, _probe.width)
+            xlimg = OpenpyxlImage(str(_STAMP_PATH))
+            xlimg.width = _STAMP_XLSX_W_PX
+            xlimg.height = int(_STAMP_XLSX_W_PX * ratio)
+            xlimg.anchor = "E1"
+            ws.add_image(xlimg)
+        except Exception:
+            pass
 
     wb.save(str(filename))
     return str(filename)
@@ -622,7 +716,7 @@ def generate_client_history_jpeg(
     _draw_info(t["client"], str(client.get("name") or ""))
     if phone:
         _draw_info(t["phone"], phone)
-    _draw_info(t["period"], _fmt_period(date_from, date_to, lang))
+    _draw_info(t["period"], _fmt_period(date_from, date_to, lang, shown_count=len(events)))
     y += 12
 
     # Table header
@@ -705,6 +799,21 @@ def generate_client_history_jpeg(
     gen = f"{t['generated']}: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     gw, _ = _measure(d, gen, f_small)
     d.text((_JPG_WIDTH - _JPG_LEFT_PAD - gw, y), gen, font=f_small, fill="#888")
+
+    # Optional stamp pasted in the top-right corner, scaled to a width
+    # that fits beside the centered title without overlapping it.
+    if _STAMP_PATH.exists():
+        try:
+            with Image.open(_STAMP_PATH) as stamp_src:
+                stamp = stamp_src.convert("RGBA")
+            sw = _STAMP_JPG_W_PX
+            sh = max(1, int(stamp.height * (sw / stamp.width)))
+            stamp = stamp.resize((sw, sh), Image.LANCZOS)
+            px = _JPG_WIDTH - _JPG_LEFT_PAD - sw
+            py = _JPG_TOP_PAD
+            img.paste(stamp, (px, py), stamp)
+        except Exception:
+            pass
 
     img.save(str(filename), format="JPEG", quality=90, optimize=True)
     return str(filename)
