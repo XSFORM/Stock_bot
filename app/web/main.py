@@ -3291,7 +3291,9 @@ def set_theme(theme: str = Form(...), next: str = Form("/")):
 @app.get("/admin/settings", response_class=HTMLResponse)
 def admin_settings_get(request: Request, saved: str = "", msg: str = ""):
     from app.services.signature_asset import get_signature_path
+    from app.services.stamp_asset import get_stamp_path
     _sig_path = get_signature_path()
+    _stamp_path = get_stamp_path()
     return _render(
         request,
         "admin_settings.html",
@@ -3313,6 +3315,9 @@ def admin_settings_get(request: Request, saved: str = "", msg: str = ""):
             # Seller signature overlay (shows preview + delete button when present).
             "signature_present": _sig_path is not None,
             "signature_ts": int(_sig_path.stat().st_mtime) if _sig_path else 0,
+            # Company stamp overlay (same pattern).
+            "stamp_present": _stamp_path is not None,
+            "stamp_ts": int(_stamp_path.stat().st_mtime) if _stamp_path else 0,
         },
     )
 
@@ -3362,6 +3367,57 @@ def admin_settings_signature_preview(request: Request, ts: int = 0):
     if p is None:
         return RedirectResponse(url="/admin/settings?msg=signature_error:missing", status_code=303)
     # Cache-bust via `ts` query param — the template passes the file mtime.
+    return FileResponse(str(p), media_type="image/png",
+                        headers={"Cache-Control": "no-store, max-age=0"})
+
+
+@app.post("/admin/settings/stamp/upload")
+async def admin_settings_stamp_upload(
+    request: Request,
+    stamp_file: UploadFile = File(...),
+):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
+    from app.services.stamp_asset import (
+        get_stamp_path_for_upload, process_uploaded_stamp,
+    )
+    if not stamp_file or not stamp_file.filename:
+        return RedirectResponse(url="/admin/settings?msg=stamp_error:no_file", status_code=303)
+    suffix = Path(stamp_file.filename).suffix.lower()
+    if suffix != ".png":
+        return RedirectResponse(url="/admin/settings?msg=stamp_error:png_only", status_code=303)
+    try:
+        raw = await stamp_file.read()
+        cleaned = process_uploaded_stamp(raw)
+        dest = get_stamp_path_for_upload()
+        dest.write_bytes(cleaned)
+    except Exception:
+        logger.exception("Failed to write stamp file")
+        return RedirectResponse(url="/admin/settings?msg=stamp_error:write", status_code=303)
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
+@app.post("/admin/settings/stamp/delete")
+def admin_settings_stamp_delete(request: Request):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
+    from app.services.stamp_asset import delete_stamp
+    delete_stamp()
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
+@app.get("/admin/settings/stamp/preview")
+def admin_settings_stamp_preview(request: Request, ts: int = 0):
+    """Serve the uploaded stamp PNG (admin-only, cache-busted via ts)."""
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
+    from app.services.stamp_asset import get_stamp_path
+    p = get_stamp_path()
+    if p is None:
+        return RedirectResponse(url="/admin/settings?msg=stamp_error:missing", status_code=303)
     return FileResponse(str(p), media_type="image/png",
                         headers={"Cache-Control": "no-store, max-age=0"})
 
