@@ -59,6 +59,7 @@ from app.bot.keyboards import (
     income_note_kb,
     main_menu_kb,
     search_results_kb,
+    update_confirm_kb,
 )
 from app.bot.states import ClientSearch, ExpenseFlow, IncomeFlow, Payment
 from app.config import settings
@@ -261,6 +262,9 @@ async def cmd_help(message: Message) -> None:
         "/income — внести доход от услуги (ремонт, установка ПО…)\n"
         "/income_today — сколько заработал на услугах сегодня\n\n"
         "/cancel — отменить текущий шаг\n\n"
+        "<b>Обслуживание</b>\n"
+        "🔄 кнопка «Обновить» в главном меню — git pull + перезапуск веб-сервиса,\n"
+        "чтобы не ходить по SSH ради каждого обновления.\n\n"
         "Товары, приходы, склад и продажи — только в вэб-версии."
     )
     await message.answer(text)
@@ -322,6 +326,52 @@ async def cb_menu(callback: CallbackQuery, state: FSMContext) -> None:
     recent = get_recent_active_clients(days=7, limit=8)
     await _safe_edit(callback, _main_menu_text(), reply_markup=main_menu_kb(recent))
     await callback.answer()
+
+
+# ─── Self-update (git pull + restart) ────────────────────────────────────────
+
+@router.callback_query(F.data == "upd")
+async def cb_update_confirm(callback: CallbackQuery) -> None:
+    """Ask for confirmation before running git pull + systemctl restart."""
+    if not await _guard(callback):
+        return
+    text = (
+        "<b>🔄 Обновление</b>\n\n"
+        "Выполнится:\n"
+        "• <code>git pull --ff-only</code> в репозитории\n"
+        "• <code>systemctl restart</code> веб-сервиса\n\n"
+        "Старые данные (БД, накладные, подпись/штамп) не затрагиваются. "
+        "Продолжить?"
+    )
+    await _safe_edit(callback, text, reply_markup=update_confirm_kb())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "upd:go")
+async def cb_update_run(callback: CallbackQuery) -> None:
+    """Actually run the update. Captures everything and sends it back."""
+    if not await _guard(callback):
+        return
+    await callback.answer("Запускаю…")
+    try:
+        await _safe_edit(callback, "⏳ Выполняю git pull и перезапуск…")
+    except Exception:
+        pass
+
+    from app.bot.updater import run_update, schedule_bot_self_restart
+    try:
+        message, restart_bot = await run_update()
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("updater crashed")
+        message = f"❌ <b>Updater crashed</b>\n<pre>{html.escape(str(exc))}</pre>"
+        restart_bot = False
+
+    # Send the full report as a NEW message (editing the inline one is
+    # tricky at 4096-char limits and the report can be long).
+    await callback.message.answer(message, parse_mode="HTML")
+
+    if restart_bot:
+        await schedule_bot_self_restart(delay_s=3.0)
 
 
 @router.callback_query(F.data == "top")

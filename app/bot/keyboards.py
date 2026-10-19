@@ -70,7 +70,19 @@ def main_menu_kb(recent_clients: list[dict[str, Any]]) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="💸 Добавить расход", callback_data="xm"),
         InlineKeyboardButton(text="💵 Внести доход",   callback_data="im"),
     ])
+    # Self-update (admin-only; the bot itself is single-admin so no extra guard needed).
+    rows.append([
+        InlineKeyboardButton(text="🔄 Обновить (Git Pull)", callback_data="upd"),
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def update_confirm_kb() -> InlineKeyboardMarkup:
+    """Yes/No confirmation before running git pull + restart."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Да, обновить", callback_data="upd:go"),
+        InlineKeyboardButton(text="❌ Отмена",       callback_data="menu"),
+    ]])
 
 
 def client_card_kb(client_id: int, phone: str | None) -> InlineKeyboardMarkup:
