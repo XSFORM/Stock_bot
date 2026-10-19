@@ -18,11 +18,17 @@
       <li><a href="#ru-about">О системе</a></li>
       <li><a href="#ru-quickstart">Быстрый старт</a></li>
       <li><a href="#ru-products">Товары</a></li>
-      <li><a href="#ru-stock">Склад</a></li>
+      <li><a href="#ru-stock">Склад</a>
+        <ul class="mt-1"><li><a href="#ru-stock-filters">Фильтры показа и экспорт</a></li></ul>
+      </li>
       <li><a href="#ru-receive">Приход</a></li>
       <li><a href="#ru-move">Перемещение</a></li>
       <li><a href="#ru-sale">Продажа</a>
-        <ul class="mt-1"><li><a href="#ru-free-item">Свободная позиция вне склада</a></li></ul>
+        <ul class="mt-1">
+          <li><a href="#ru-free-item">Свободная позиция вне склада</a></li>
+          <li><a href="#ru-sale-discount">Скидка на всю накладную</a></li>
+          <li><a href="#ru-sale-sort">Сортировка и дубли</a></li>
+        </ul>
       </li>
       <li><a href="#ru-return">Возврат</a></li>
       <li><a href="#ru-reports">Отчёты</a>
@@ -32,7 +38,10 @@
         </ul>
       </li>
       <li><a href="#ru-inventory">Инвентаризация</a>
-        <ul class="mt-1"><li><a href="#ru-inv-report">Отчёт расхождений</a></li></ul>
+        <ul class="mt-1">
+          <li><a href="#ru-inv-report">Отчёт расхождений</a></li>
+          <li><a href="#ru-inventory-invoices">Накладные + отмена</a></li>
+        </ul>
       </li>
       <li><a href="#ru-expenses">Расходы</a>
         <ul class="mt-1">
@@ -47,8 +56,15 @@
       </li>
       <li><a href="#ru-suppliers">Поставщики</a></li>
       <li><a href="#ru-invoices">Накладные</a></li>
-      <li><a href="#ru-history">История</a></li>
-      <li><a href="#ru-admin">Настройки (Admin)</a></li>
+      <li><a href="#ru-history">История</a>
+        <ul class="mt-1"><li><a href="#ru-client-history-export">Экспорт истории клиента (PDF/XLSX/JPEG)</a></li></ul>
+      </li>
+      <li><a href="#ru-admin">Настройки (Admin)</a>
+        <ul class="mt-1">
+          <li><a href="#ru-signature">Подпись продавца</a></li>
+          <li><a href="#ru-stamp">Штамп компании</a></li>
+        </ul>
+      </li>
       <li><a href="#ru-pocket-price">Pocket Price</a></li>
       <li><a href="#ru-pocket-catalog">Pocket Catalog</a></li>
       <li><a href="#ru-telegram-bot">Telegram-бот (только вэб)</a></li>
@@ -124,6 +140,23 @@
   </ul>
   <p><strong>STK</strong> в правом верхнем углу навигации — это общая стоимость всех товаров на всех складах по цене закупки.</p>
 
+  {# 4a. Stock view filters + exports (added 2026-10) #}
+  <h5 id="ru-stock-filters" class="mt-3">Фильтры показа и экспорт</h5>
+  <p>В шапке таблицы остатков — 4 чекбокса:</p>
+  <ul>
+    <li><strong>Приход</strong> — показать колонку себестоимости (твоя закупочная цена).</li>
+    <li><strong>+15%</strong>, <strong>+25%</strong> — показать колонки с накруткой.</li>
+    <li><strong>Скрыть пустые</strong> — спрятать позиции с 0 остатком.</li>
+  </ul>
+  <p>
+    Выбор сохраняется в cookie <code>stock_view_prefs</code> — в следующий раз откроется с теми же колонками.
+    Кнопки <strong>XLSX</strong> и <strong>PDF</strong> экспортируют именно то, что сейчас показано.
+  </p>
+  <p class="text-warning-emphasis">
+    ⚠️ В экспорте колонка «+15%»/«+25%» подписана как просто <strong>«Цена»</strong> —
+    чтобы клиент, которому ты пришлёшь прайс, не видел твой процент наценки.
+  </p>
+
   {# 5. Receive #}
   <h4 id="ru-receive" class="mt-4">5. Приход</h4>
   <p>Операция оприходования: товар поступает на склад от поставщика или из другого источника.</p>
@@ -193,6 +226,34 @@
     ⚠️ <strong>Предупреждение:</strong> используйте свободную позицию только для товаров, которые действительно
     не ведутся в складском учёте. Для обычных складских товаров выбирайте товар из выпадающего списка —
     это обеспечивает правильное списание остатков.
+  </p>
+
+  {# 7a-1. Sale discount / sort / duplicates (added 2026-10) #}
+  <h5 id="ru-sale-discount" class="mt-3">Скидка на всю накладную</h5>
+  <p>
+    В строке с кнопкой «Завершить» есть поле <strong>«Скидка %»</strong> (0–100).
+    После завершения в XLSX/PDF и в превью появляются три строки:
+    <em>Подытог / Скидка X% / Итого</em>. Долг клиента и выручка считаются
+    по итоговой сумме после скидки. Для старых накладных без скидки
+    отображается прежний один TOTAL — ничего не меняется в истории.
+  </p>
+  <p>
+    Скидку можно поменять в <strong>редактировании накладной</strong> уже
+    после закрытия — все цифры пересчитаются.
+  </p>
+
+  <h5 id="ru-sale-sort" class="mt-3">Сортировка и подсветка дубликатов</h5>
+  <ul>
+    <li>Кнопка <strong>📑 «Сгруппировать по моделям»</strong> перегруппирует позиции по бренду+модели — удобно если набирал долго и позиции идут вперемешку.</li>
+    <li>Повторная строка одной модели автоматически подсвечивается жёлтым с бейджем <strong>⚠ дубль модели</strong> — защита от двойного ввода (случай когда ты сам же ввёл sf-9768 дважды).</li>
+  </ul>
+
+  <h5 id="ru-sale-free-split" class="mt-3">Свободная позиция — поля разделены</h5>
+  <p>
+    У позиции «вне склада» теперь 4 отдельных поля:
+    <strong>Бренд / Модель / Название / Штрих-код</strong>. Это важно для
+    чистого XLSX/PDF — в накладной каждое поле попадает в свою колонку,
+    как у обычных товаров.
   </p>
 
   {# 8. Return #}
@@ -293,6 +354,22 @@
     <li><strong>Журнал</strong> — последние 200 ADJUST-операций с датой, складом, товаром, разницей и комментарием.</li>
   </ul>
   <p><strong>Фильтры:</strong> период (С/По) и склад.</p>
+
+  {# 8c-2. Inventory invoices + cancellation (added 2026-10) #}
+  <h5 id="ru-inventory-invoices" class="mt-3">Накладные инвентаризации + отмена</h5>
+  <p>
+    Каждая инвентаризация теперь создаёт <strong>нумерованную накладную</strong>
+    в разделе <strong>/documents/inventory</strong>. Внутри — список товаров
+    со столбцами:
+    <em>Было по системе / Факт / Разница / Себестоимость</em>. Себестоимость — snapshot
+    на момент инвентаризации; задним числом она не пересчитывается.
+  </p>
+  <ul>
+    <li>Список всех инвентаризационных накладных: <code>/documents/inventory</code></li>
+    <li>Детали одной накладной: клик по номеру → <code>/documents/inventory/{id}</code></li>
+    <li>Экспорт XLSX — кнопка на странице накладной</li>
+  </ul>
+  <p><strong>Отмена инвентаризации.</strong> Внизу накладной — красная зона с кнопкой «Отменить». Откроется форма с полем причины. При отмене создаётся <strong>обратная накладная</strong> с зеркальными дельтами (−X → +X) — склад возвращается в состояние до инвентаризации, а обе накладные остаются в истории с перекрёстными ссылками (поля <code>cancels_invoice_id</code> / <code>cancelled_by_invoice_id</code>). Это обеспечивает полный аудит без «удаления» данных.</p>
 
   {# 8d. Expenses #}
   <h4 id="ru-expenses" class="mt-4">11. Расходы (/expenses)</h4>
@@ -484,6 +561,31 @@
     <li>Скачать XLSX или просмотреть документ прямо из истории.</li>
   </ul>
 
+  {# 13a. Client history export (added 2026-10) #}
+  <h5 id="ru-client-history-export" class="mt-3">Экспорт истории клиента (PDF / XLSX / JPEG)</h5>
+  <p>
+    На странице <code>/clients/{id}/history</code> — три кнопки для скачивания
+    упрощённой истории клиента для него самого. Задача — отдать клиенту
+    (особенно пожилому, который привык к бумажной тетради) понятный
+    документ без технического шума.
+  </p>
+  <ul>
+    <li>Колонки: <em>Дата · Операция · Сумма · Остался должен · Заметка</em>. Внутренние номера, кнопки действий, бейджи типов — убраны.</li>
+    <li>Операции на человеческом языке: <strong>Товар взял / Заплатил / Возврат / Долг</strong>. Строки роста долга — розовые, уменьшения — зелёные.</li>
+    <li>Внизу крупно: общий долг + подписи продавца и клиента. Штамп и подпись продавца подставляются автоматически (см. раздел «Админ»).</li>
+  </ul>
+  <p><strong>Параметры:</strong></p>
+  <ul>
+    <li><strong>Записей</strong> — сколько последних движений показать (по умолчанию 15).</li>
+    <li><strong>С / По</strong> — выбор периода. Без фильтра пишется «последние 15 записей».</li>
+    <li>Язык документа — такой же как интерфейса (<code>cookie: ui_lang</code>, ru/tm/en).</li>
+  </ul>
+  <p>
+    <strong>JPEG</strong> — одно изображение (высокое, но одно) — удобно пересылать в IMO / WhatsApp / Telegram.<br>
+    <strong>PDF</strong> — печать / A4.<br>
+    <strong>XLSX</strong> — для клиента с бухгалтером.
+  </p>
+
   {# 14. Admin #}
   <h4 id="ru-admin" class="mt-4">17. Настройки (Admin)</h4>
   <p>Системные настройки и управление ERP.</p>
@@ -523,6 +625,35 @@
     <em>не пересчитывает</em> старые накладные и уже сохранённые цены.
     Новый процент применяется только при добавлении <em>новой позиции</em> в продажу.
   </div>
+
+  {# 14b. Signature + Stamp upload (added 2026-10) #}
+  <h5 id="ru-signature" class="mt-3">Подпись продавца</h5>
+  <p>
+    В разделе <strong>«✍️ Подпись продавца»</strong> на странице
+    <code>/admin/settings</code> загружается PNG твоей подписи.
+    Подпись автоматически накладывается на строку <em>«Продавец: ______»</em> во всех документах:
+    sale-накладная (PDF/XLSX), экспорт истории клиента (PDF/XLSX/JPEG).
+    Клиентская сторона всегда остаётся пустой — чтобы клиент расписался сам.
+  </p>
+  <ul>
+    <li>Файл обязательно PNG с <strong>прозрачным фоном</strong>. Иначе получится белый прямоугольник поверх подложки.</li>
+    <li>Соотношение сторон ~3:1 (широкая и невысокая) — так подпись аккуратно сядет на строку. Квадратная тоже работает, просто визуально меньше.</li>
+    <li>Хранится в <code>/opt/stock_bot/signature.png</code> (переопределяется env <code>STOCK_BOT_SIGNATURE_PATH</code>).</li>
+    <li>Если файла нет — везде рисуется обычная строка подчёркивания.</li>
+  </ul>
+
+  <h5 id="ru-stamp" class="mt-3">Штамп компании</h5>
+  <p>
+    В разделе <strong>«🏷 Штамп компании»</strong> на той же странице <code>/admin/settings</code>
+    загружается PNG штампа/логотипа. Штамп показывается в правом верхнем углу накладных и
+    экспорта истории клиента.
+  </p>
+  <ul>
+    <li>При загрузке <strong>автоматически очищается</strong>: все пиксели светлее 230 становятся прозрачными, картинка обрезается по рамке реального содержимого. Это убирает белый фон и тонкую серую рамку/закруглённые углы, которые раньше печатались вокруг штампа.</li>
+    <li>Если ширина больше 1200 px — автоматически уменьшается.</li>
+    <li>Хранится в <code>/opt/stock_bot/stamp.png</code> (переопределяется env <code>STOCK_BOT_STAMP_PATH</code>).</li>
+    <li>Если файла нет — штамп просто не рисуется, никаких ошибок.</li>
+  </ul>
 
   {# 15. Pocket Price #}
   <h4 id="ru-pocket-price" class="mt-4">18. Pocket Price — публичный прайс-лист</h4>
@@ -822,7 +953,9 @@
       <li><a href="#tm-about">Ulgam hakynda</a></li>
       <li><a href="#tm-quickstart">Çalt başlangyç</a></li>
       <li><a href="#tm-products">Harytlar</a></li>
-      <li><a href="#tm-stock">Ammar</a></li>
+      <li><a href="#tm-stock">Ammar</a>
+        <ul class="mt-1"><li><a href="#tm-stock-filters">Görkeziş süzgüçleri</a></li></ul>
+      </li>
       <li><a href="#tm-receive">Kabul etmek</a></li>
       <li><a href="#tm-move">Geçirmek</a></li>
       <li><a href="#tm-sale">Satyş</a>
@@ -848,8 +981,15 @@
       </li>
       <li><a href="#tm-suppliers">Üpjün edijiler</a></li>
       <li><a href="#tm-invoices">Hasap-fakturalar</a></li>
-      <li><a href="#tm-history">Taryh</a></li>
-      <li><a href="#tm-admin">Sazlamalar (Admin)</a></li>
+      <li><a href="#tm-history">Taryh</a>
+        <ul class="mt-1"><li><a href="#tm-client-history-export">Müşderi taryhyny eksport (PDF/XLSX/JPEG)</a></li></ul>
+      </li>
+      <li><a href="#tm-admin">Sazlamalar (Admin)</a>
+        <ul class="mt-1">
+          <li><a href="#tm-signature">Satyjynyň goly</a></li>
+          <li><a href="#tm-stamp">Kompaniýa möhüri</a></li>
+        </ul>
+      </li>
       <li><a href="#tm-pocket-price">Pocket Price</a></li>
       <li><a href="#tm-pocket-catalog">Pocket Catalog</a></li>
       <li><a href="#tm-telegram-bot">Telegram bot (diňe web)</a></li>
@@ -920,6 +1060,17 @@
     <li>XLSX ýüklemek — häzirki galdyklary Excel formatynda almak.</li>
   </ul>
 
+  {# 4a. Stock view filters (added 2026-10) #}
+  <h5 id="tm-stock-filters" class="mt-3">Görkeziş süzgüçleri we eksport</h5>
+  <p>Ammar tablisasynyň başynda 4 bellik bar:</p>
+  <ul>
+    <li><strong>Kabul</strong> — satyn alyş bahasyny görkez.</li>
+    <li><strong>+15%</strong>, <strong>+25%</strong> — ýokarlanan bahalary görkez.</li>
+    <li><strong>Boşlary gizle</strong> — galyndysy 0 bolan harytlary gizle.</li>
+  </ul>
+  <p>Seçim <code>stock_view_prefs</code> cookie-de saklanýar. <strong>XLSX</strong> we <strong>PDF</strong> düwmeleri edil görünýäni ýaly eksport edýär.</p>
+  <p class="text-warning-emphasis">⚠️ Eksportda «+15%»/«+25%» sütüni diňe <strong>«Baha»</strong> diýip ýazylýar — müşderi seniň üstüňiň göterimini görmez.</p>
+
   {# 5. Receive #}
   <h4 id="tm-receive" class="mt-4">5. Kabul etmek</h4>
   <p>Haryt üpjün edijiden ýa-da başga çeşmeden ammara gelýär.</p>
@@ -982,6 +1133,29 @@
   <p class="text-warning-emphasis">
     ⚠️ <strong>Duýduryş:</strong> erkin pozisiýany diňe ammar hasabyna alynmaýan harytlar üçin ulanyň.
     Adaty ammar harytlary üçin açylýan sanawdan haryt saýlaň.
+  </p>
+
+  {# 7a-1. Sale extras (added 2026-10) #}
+  <h5 id="tm-sale-discount" class="mt-3">Hasap-faktura üçin arzanladyş</h5>
+  <p>
+    «Tamamla» düwmesiniň ýanynda <strong>«Arzanladyş %»</strong> meýdançasy bar (0–100).
+    Tamamlanansoň XLSX/PDF-de üç setir görünýär: <em>Aralyk jem / Arzanladyş X% / Jemi</em>.
+    Müşderiniň bergisi we girdeji — arzanladyşdan soňky jemä görä. Köne hasap-fakturalar
+    (arzanladyş ýok) öňki ýaly bir TOTAL bilen görünýär.
+  </p>
+  <p>Hasap-fakturanyň <strong>redaktirlemesinde</strong> arzanladyşy ýapylandan soňam üýtgedip bolar — ähli sanlar täzeden hasaplanýar.</p>
+
+  <h5 id="tm-sale-sort" class="mt-3">Tertipleşdirmek we gaýtalanmalary belläp görkezmek</h5>
+  <ul>
+    <li><strong>📑 «Modeller boýunça toparlamak»</strong> düwmesi pozisiýalary brend+model boýunça toparlaýar.</li>
+    <li>Bir modelden ikinji setir awtomatik sary reňk + <strong>⚠ model gaýtalanýar</strong> belligi bilen görkezilýär — iki gezek goşmakdan goraýar.</li>
+  </ul>
+
+  <h5 id="tm-sale-free-split" class="mt-3">Ammardan daşary pozisiýa — meýdançalar bölündi</h5>
+  <p>
+    «Ammardan daşary» pozisiýasynda indi 4 aýratyn meýdança bar:
+    <strong>Brend / Model / Ady / Ştrih-kod</strong>. Her meýdança hasap-fakturada
+    öz sütünine düşýär — adaty harytlar ýaly arassa görünýär.
   </p>
 
   {# 8. Return #}
@@ -1082,6 +1256,21 @@
     <li><strong>Žurnal</strong> — soňky 200 ADJUST-operasiýa: sene, ammar, haryt, tapawut we bellik.</li>
   </ul>
   <p><strong>Süzgüçler:</strong> döwür (Başlangyç/Sonky) we ammar.</p>
+
+  {# 8c-2. Inventory invoices + cancellation (added 2026-10) #}
+  <h5 id="tm-inventory-invoices" class="mt-3">Inwentarizasiýa hasap-fakturalary + ýatyrmak</h5>
+  <p>
+    Her inwentarizasiýa indi <strong>belgili hasap-faktura</strong> döredýär
+    (<strong>/documents/inventory</strong>). Içinde harytlar + sütünler:
+    <em>Sistemada / Hakyky / Tapawut / Satyn alyş bahasy</em>.
+    Baha — şu wagtky snapshot, soň üýtgemeýär.
+  </p>
+  <ul>
+    <li>Hemmesi: <code>/documents/inventory</code></li>
+    <li>Detallar: <code>/documents/inventory/{id}</code></li>
+    <li>XLSX eksport — hasap-fakturada düwme bar</li>
+  </ul>
+  <p><strong>Ýatyrmak.</strong> Hasap-fakturanyň aşagynda gyzyl zonadaky «Ýatyrmak» düwmesi. Sebäp meýdançasy bilen açylýar. Ýatyrylanda <strong>ters hasap-faktura</strong> döredilýär (−X → +X) — ammar yzyna gaýdýar, emma iki hasap-faktura hem taryhda galýar (<code>cancels_invoice_id</code> / <code>cancelled_by_invoice_id</code> baglanyşyklary bilen). Audit-trail doly saklanýar.</p>
 
   {# 8d. Expenses #}
   <h4 id="tm-expenses" class="mt-4">11. Çykdajylar (/expenses)</h4>
@@ -1203,6 +1392,22 @@
     <li>Tarypdan XLSX ýüklemek ýa-da resminamany görmek.</li>
   </ul>
 
+  {# 13a. Client history export (added 2026-10) #}
+  <h5 id="tm-client-history-export" class="mt-3">Müşderi taryhyny eksport etmek (PDF / XLSX / JPEG)</h5>
+  <p><code>/clients/{id}/history</code> sahypasynda üç ýükle düwmesi bar — müşderi üçin ýeňilleşdirilen görnüşi berýär. Hususan-da garry müşderiler, kim tetradde «goşul-aýyr» ýazýar — tehniki şow ýok.</p>
+  <ul>
+    <li>Sütünler: <em>Sene · Hereket · Mukdary · Galan bergi · Bellik</em>. Içki belgiler, hereket düwmeleri — aýryldy.</li>
+    <li>Hereketleriň adamkärçilikli ady: <strong>Haryt aldy / Töledi / Yza gaýtardy / Bergi</strong>. Bergi artanda — gyzyl setir, azalanda — ýaşyl.</li>
+    <li>Aşakda uly: umumy bergi + satyjy we müşderi gollary. Möhür we satyjynyň goly awtomatik ýerleşýär.</li>
+  </ul>
+  <p><strong>Parametrler:</strong></p>
+  <ul>
+    <li><strong>Ýazgylar</strong> — iň soňky näçe hereket (deslapky 15).</li>
+    <li><strong>Döwürden / Çenli</strong> — döwür saýlamak. Süzgüçsiz «iň soňky 15 ýazgy» ýazylýar.</li>
+    <li>Resminama dili — interfeýs ýaly (<code>cookie: ui_lang</code>, ru/tm/en).</li>
+  </ul>
+  <p><strong>JPEG</strong> — bir surat (uzyn ýöne bir) — IMO / WhatsApp üçin amatly. <strong>PDF</strong> — çap / A4. <strong>XLSX</strong> — buhgalter üçin.</p>
+
   {# 14. Admin #}
   <h4 id="tm-admin" class="mt-4">17. Sazlamalar (Admin)</h4>
   <ul>
@@ -1239,6 +1444,33 @@
     <em>öňki hasap-fakturaları we eýýäm ýazylan bahalary täzeden hasaplamaýar</em>.
     Täze göterim diňe satyşa <em>täze pozisiýa</em> goşulanda ulanylýar.
   </div>
+
+  {# 14b. Signature + Stamp upload (added 2026-10) #}
+  <h5 id="tm-signature" class="mt-3">Satyjynyň goly</h5>
+  <p>
+    <code>/admin/settings</code> sahypasynda <strong>«✍️ Satyjynyň goly»</strong>
+    bölümi arkaly goluň PNG-sini ýükleýärsiň. Gol ähli resminamalarda
+    <em>«Satyjy: ______»</em> setiriniň üstüne awtomatik goýulýar: satyş hasap-fakturasy
+    (PDF/XLSX), müşderi taryhy eksporty (PDF/XLSX/JPEG). Müşderi tarapy her wagt boş galýar.
+  </p>
+  <ul>
+    <li>Faýl hökman <strong>düýbi dury</strong> PNG. Bolmasa ak gönüburçluk görüner.</li>
+    <li>Nisbat ~3:1 (giň we gysga) iň oňat. Inedördül hem bolar, diňe kiçi görner.</li>
+    <li>Ýeri: <code>/opt/stock_bot/signature.png</code> (<code>STOCK_BOT_SIGNATURE_PATH</code> env bilen üýtgedip bolýar).</li>
+    <li>Faýl ýok bolsa — adaty astdan çyzyk görkezilýär.</li>
+  </ul>
+
+  <h5 id="tm-stamp" class="mt-3">Kompaniýa möhüri</h5>
+  <p>
+    Şol <code>/admin/settings</code>-de <strong>«🏷 Kompaniýa möhüri»</strong> bölümi.
+    Möhür hasap-fakturalaryň we müşderi taryhynyň ýokary sag burçunda görkezilýär.
+  </p>
+  <ul>
+    <li>Ýüklenende <strong>awtomatik arassalanýar</strong>: 230-dan açyk ähli pikseller dury bolýar, surat hakyky mazmunyň daşynda kesilýär. Şeýdip ak fon we inçe çal çarçuwa aýrylýar.</li>
+    <li>Giňligi 1200 px-den uly bolsa — awtomatik kiçeldilýär.</li>
+    <li>Ýeri: <code>/opt/stock_bot/stamp.png</code> (<code>STOCK_BOT_STAMP_PATH</code> env bilen üýtgedip bolýar).</li>
+    <li>Faýl ýok bolsa — möhür ýöne çyzylmaýar, ýalňyşlyk hem bolmaýar.</li>
+  </ul>
 
   {# 15. Pocket Price #}
   <h4 id="tm-pocket-price" class="mt-4">18. Pocket Price — jemgyýetçilik bahalar sanawy</h4>
@@ -1478,7 +1710,9 @@
       <li><a href="#en-about">About the system</a></li>
       <li><a href="#en-quickstart">Quick start</a></li>
       <li><a href="#en-products">Products</a></li>
-      <li><a href="#en-stock">Stock</a></li>
+      <li><a href="#en-stock">Stock</a>
+        <ul class="mt-1"><li><a href="#en-stock-filters">View filters and exports</a></li></ul>
+      </li>
       <li><a href="#en-receive">Receive</a></li>
       <li><a href="#en-move">Move</a></li>
       <li><a href="#en-sale">Sale</a>
@@ -1504,8 +1738,15 @@
       </li>
       <li><a href="#en-suppliers">Suppliers</a></li>
       <li><a href="#en-invoices">Invoices</a></li>
-      <li><a href="#en-history">History</a></li>
-      <li><a href="#en-admin">Admin settings</a></li>
+      <li><a href="#en-history">History</a>
+        <ul class="mt-1"><li><a href="#en-client-history-export">Client history export (PDF/XLSX/JPEG)</a></li></ul>
+      </li>
+      <li><a href="#en-admin">Admin settings</a>
+        <ul class="mt-1">
+          <li><a href="#en-signature">Seller signature</a></li>
+          <li><a href="#en-stamp">Company stamp</a></li>
+        </ul>
+      </li>
       <li><a href="#en-pocket-price">Pocket Price</a></li>
       <li><a href="#en-pocket-catalog">Pocket Catalog</a></li>
       <li><a href="#en-telegram-bot">Telegram bot (web only)</a></li>
@@ -1582,6 +1823,17 @@
   <p><strong>STK</strong> in the top-right navigation bar is the total value of all stock across all warehouses
   at purchase price.</p>
 
+  {# 4a. Stock view filters (added 2026-10) #}
+  <h5 id="en-stock-filters" class="mt-3">View filters and exports</h5>
+  <p>Four checkboxes in the stock table header:</p>
+  <ul>
+    <li><strong>Purchase</strong> — show cost (your purchase price).</li>
+    <li><strong>+15%</strong>, <strong>+25%</strong> — show markup columns.</li>
+    <li><strong>Hide empty</strong> — hide rows with 0 stock.</li>
+  </ul>
+  <p>Choice is persisted in cookie <code>stock_view_prefs</code>. <strong>XLSX</strong> and <strong>PDF</strong> buttons export whatever is currently shown.</p>
+  <p class="text-warning-emphasis">⚠️ On exports the «+15%»/«+25%» column is relabelled just <strong>«Price»</strong> — so a customer you share the price list with doesn't see your markup percentage.</p>
+
   {# 5. Receive #}
   <h4 id="en-receive" class="mt-4">5. Receive</h4>
   <p>Stock intake operation: goods arrive at a warehouse from a supplier or another source.</p>
@@ -1651,6 +1903,31 @@
     ⚠️ <strong>Warning:</strong> use a free position only for items that are genuinely not tracked in the
     warehouse. For regular warehouse products, always select the item from the drop-down list to ensure
     correct stock deduction.
+  </p>
+
+  {# 7a-1. Sale extras (added 2026-10) #}
+  <h5 id="en-sale-discount" class="mt-3">Invoice-level discount</h5>
+  <p>
+    Next to the «Finish» button there is a <strong>«Discount %»</strong> field (0–100).
+    After finishing, the XLSX/PDF and preview show three rows:
+    <em>Subtotal / Discount X% / Total</em>. The client's debt and the
+    revenue are computed from the discounted total. Legacy invoices
+    without a discount render the single TOTAL line as before — nothing
+    is rewritten.
+  </p>
+  <p>The discount can be changed in <strong>invoice edit</strong> even after the invoice is closed — every number is recomputed.</p>
+
+  <h5 id="en-sale-sort" class="mt-3">Sort and duplicate highlighting</h5>
+  <ul>
+    <li>The <strong>📑 «Group by model»</strong> button re-sorts cart items by brand+model.</li>
+    <li>A repeated row for the same model is auto-highlighted yellow with a <strong>⚠ duplicate model</strong> badge — protects against entering the same SKU twice by mistake.</li>
+  </ul>
+
+  <h5 id="en-sale-free-split" class="mt-3">Free (non-stock) line — split fields</h5>
+  <p>
+    Non-stock lines now have four separate fields:
+    <strong>Brand / Model / Name / Barcode</strong>. Each one maps to its
+    own invoice column so a free line prints as cleanly as a regular item.
   </p>
 
   {# 8. Return #}
@@ -1751,6 +2028,21 @@
     <li><strong>Journal</strong> — last 200 ADJUST operations with date, warehouse, product, delta and comment.</li>
   </ul>
   <p><strong>Filters:</strong> period (From/To) and warehouse.</p>
+
+  {# 8c-2. Inventory invoices + cancellation (added 2026-10) #}
+  <h5 id="en-inventory-invoices" class="mt-3">Inventory invoices + cancellation</h5>
+  <p>
+    Every stock-take now creates a <strong>numbered invoice</strong> under
+    <strong>/documents/inventory</strong>. Each row shows
+    <em>system qty / actual qty / delta / cost price</em>. The cost is a
+    snapshot at the time of the stock-take and is never recomputed later.
+  </p>
+  <ul>
+    <li>List: <code>/documents/inventory</code></li>
+    <li>Details: <code>/documents/inventory/{id}</code></li>
+    <li>XLSX export — button inside the invoice page</li>
+  </ul>
+  <p><strong>Cancellation.</strong> A red zone at the bottom has a «Cancel» button with a reason field. Cancellation creates a <strong>reverse invoice</strong> (mirror deltas, −X → +X) — stock returns to its previous state, both invoices stay in history with cross-links (<code>cancels_invoice_id</code> / <code>cancelled_by_invoice_id</code>). Full audit trail, no destructive deletion.</p>
 
   {# 8d. Expenses #}
   <h4 id="en-expenses" class="mt-4">11. Expenses (/expenses)</h4>
@@ -1874,6 +2166,26 @@
     <li>Download XLSX or view the document directly from history.</li>
   </ul>
 
+  {# 13a. Client history export (added 2026-10) #}
+  <h5 id="en-client-history-export" class="mt-3">Client history export (PDF / XLSX / JPEG)</h5>
+  <p>
+    On <code>/clients/{id}/history</code> there are three download buttons that
+    produce a simplified history for the client themselves. Intended audience:
+    elderly customers used to paper ledgers with just plus and minus columns.
+  </p>
+  <ul>
+    <li>Columns: <em>Date · Operation · Amount · Debt remaining · Note</em>. Internal invoice numbers, action buttons and type badges are removed.</li>
+    <li>Operations use plain words: <strong>Took goods / Paid / Return / Debt</strong>. Rows where debt grew are pink, rows where it shrank are green.</li>
+    <li>Bottom shows the total debt prominently + seller and client signature lines. The company stamp and seller signature are inserted automatically.</li>
+  </ul>
+  <p><strong>Parameters:</strong></p>
+  <ul>
+    <li><strong>Records</strong> — how many recent movements (default 15).</li>
+    <li><strong>From / To</strong> — pick a period. Without filters the period line reads «last 15 records».</li>
+    <li>Document language follows the UI (<code>cookie: ui_lang</code>, ru/tm/en).</li>
+  </ul>
+  <p><strong>JPEG</strong> — a single tall image, easy to forward in IMO / WhatsApp / Telegram. <strong>PDF</strong> — printable A4. <strong>XLSX</strong> — if the client works with a bookkeeper.</p>
+
   {# 14. Admin #}
   <h4 id="en-admin" class="mt-4">17. Admin settings</h4>
   <ul>
@@ -1916,6 +2228,35 @@
     <em>not recalculate</em> old invoices or already-saved prices.
     The new markup applies only when <em>adding a new line item</em> to a sale.
   </div>
+
+  {# 14b. Signature + Stamp upload (added 2026-10) #}
+  <h5 id="en-signature" class="mt-3">Seller signature</h5>
+  <p>
+    The <strong>«✍️ Seller signature»</strong> block on
+    <code>/admin/settings</code> uploads your signature PNG. It is overlaid
+    automatically on the <em>«Seller: ______»</em> line of every printable
+    document: sale invoice (PDF/XLSX), client-history export (PDF/XLSX/JPEG).
+    The client side always stays blank so the customer can sign manually.
+  </p>
+  <ul>
+    <li>Must be a PNG with a <strong>transparent background</strong>, otherwise you'll see a white rectangle over the page.</li>
+    <li>Aspect ratio ~3:1 (wide and short) sits best on the signature line. Square also works, just visually smaller.</li>
+    <li>Stored at <code>/opt/stock_bot/signature.png</code> (overridable via <code>STOCK_BOT_SIGNATURE_PATH</code>).</li>
+    <li>With no file — a plain underscore line is drawn as before.</li>
+  </ul>
+
+  <h5 id="en-stamp" class="mt-3">Company stamp</h5>
+  <p>
+    The <strong>«🏷 Company stamp»</strong> block on the same
+    <code>/admin/settings</code> page uploads a stamp/logo PNG. It appears in
+    the top-right corner of invoices and the client-history export.
+  </p>
+  <ul>
+    <li>On upload the file is <strong>auto-cleaned</strong>: every pixel brighter than 230 becomes transparent, then the image is cropped to the bounding box of the real content. This removes the white background and any faint grey border or rounded corners that used to print around the stamp.</li>
+    <li>Width above 1200 px is scaled down.</li>
+    <li>Stored at <code>/opt/stock_bot/stamp.png</code> (overridable via <code>STOCK_BOT_STAMP_PATH</code>).</li>
+    <li>With no file — the stamp is simply not drawn, no error.</li>
+  </ul>
 
   {# 15. Pocket Price #}
   <h4 id="en-pocket-price" class="mt-4">18. Pocket Price — public price list</h4>
