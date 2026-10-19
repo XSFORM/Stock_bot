@@ -161,16 +161,18 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     ws.merge_cells(start_row=sig_row, start_column=5, end_row=sig_row, end_column=7)
 
     try:
-        from app.services.signature_asset import get_signature_path
+        from app.services.signature_asset import get_signature_path, signature_fit
         _sig_png = get_signature_path()
-        if _sig_png is not None:
+        _sig_size = signature_fit(200, 55)  # px box; preserves aspect
+        if _sig_png is not None and _sig_size is not None:
             from openpyxl.drawing.image import Image as OpenpyxlImage
+            _sw, _sh = _sig_size
             # Make the seller row tall enough so the pasted signature
             # doesn't bleed into neighbouring rows when printed.
             ws.row_dimensions[sig_row].height = 36
             sig_img = OpenpyxlImage(str(_sig_png))
-            sig_img.width = 150
-            sig_img.height = 44
+            sig_img.width = _sw
+            sig_img.height = _sh
             sig_img.anchor = f"A{sig_row}"
             ws.add_image(sig_img)
     except Exception:

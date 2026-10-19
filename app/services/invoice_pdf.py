@@ -342,12 +342,15 @@ def generate_invoice_pdf(invoice: dict[str, Any],
     )
     # Overlay the seller's stored handwritten signature over the line, if any.
     # Buyer side always stays as a blank line for the client to sign manually.
-    from app.services.signature_asset import get_signature_path
+    # Scale by HEIGHT so a square-ish scan doesn't stretch and overlap rows.
+    from app.services.signature_asset import get_signature_path, signature_fit
     _sig_png = get_signature_path()
-    if _sig_png is not None:
+    _sig_size = signature_fit(160, 50)  # pt — fits a 50mm×17mm box max
+    if _sig_png is not None and _sig_size is not None:
+        _sw, _sh = _sig_size
         seller_html = (
             f'{t["seller"]}: '
-            f'<img src="{_sig_png}" width="113" height="42" valign="middle"/>'
+            f'<img src="{_sig_png}" width="{_sw}" height="{_sh}" valign="middle"/>'
         )
     else:
         seller_html = f"{t['seller']}: ______________________________"

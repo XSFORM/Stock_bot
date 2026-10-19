@@ -59,3 +59,32 @@ def delete_signature() -> bool:
     except OSError:
         pass
     return False
+
+
+def signature_fit(max_w_px: int, max_h_px: int) -> tuple[int, int] | None:
+    """Fit the stored signature into a (max_w_px × max_h_px) box, preserving aspect.
+
+    Returns (width, height) in pixels, or None if no signature uploaded /
+    could not be read. Letting the renderer provide BOTH limits means a
+    wide signature (3:1) uses the full width, while a near-square scan
+    (e.g. 600×538) stays within the height budget — either way it never
+    bleeds into neighbouring rows.
+    """
+    p = get_signature_path()
+    if p is None:
+        return None
+    try:
+        from PIL import Image as _PILImage
+        with _PILImage.open(p) as im:
+            w, h = im.size
+    except Exception:
+        return None
+    if h <= 0 or w <= 0:
+        return None
+    scale = min(max_w_px / w, max_h_px / h)
+    return (max(1, int(round(w * scale))), max(1, int(round(h * scale))))
+
+
+# Backwards-compat alias — kept for callers that only cared about height.
+def signature_fit_to_height(max_height_px: int) -> tuple[int, int] | None:
+    return signature_fit(10_000, max_height_px)

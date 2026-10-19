@@ -434,13 +434,16 @@ def generate_client_history_pdf(
 
     story.append(Spacer(1, 10 * mm))
     # Overlay the admin's stored signature over the seller line, if any.
-    from app.services.signature_asset import get_signature_path
+    # Scale by HEIGHT so a tall / square scan doesn't overlap other rows.
+    from app.services.signature_asset import get_signature_path, signature_fit
     _sig_png = get_signature_path()
+    _sig_size = signature_fit(160, 50)
     sig_style_para = ParagraphStyle("ch_sig", fontName=_FONT, fontSize=10, leading=14)
-    if _sig_png is not None:
+    if _sig_png is not None and _sig_size is not None:
+        _sw, _sh = _sig_size
         seller_html = (
             f'{t["seller"]}: '
-            f'<img src="{_sig_png}" width="113" height="42" valign="middle"/>'
+            f'<img src="{_sig_png}" width="{_sw}" height="{_sh}" valign="middle"/>'
         )
     else:
         seller_html = f"{t['seller']}: __________________"
@@ -598,14 +601,16 @@ def generate_client_history_xlsx(
 
     # Optional seller-signature overlay — pasted on the Seller row (col A).
     try:
-        from app.services.signature_asset import get_signature_path
+        from app.services.signature_asset import get_signature_path, signature_fit
         _sig_png = get_signature_path()
-        if _sig_png is not None:
+        _sig_size = signature_fit(200, 55)
+        if _sig_png is not None and _sig_size is not None:
             from openpyxl.drawing.image import Image as OpenpyxlImage
+            _sw, _sh = _sig_size
             ws.row_dimensions[sig_text_row].height = 36
             sig_img = OpenpyxlImage(str(_sig_png))
-            sig_img.width = 150
-            sig_img.height = 44
+            sig_img.width = _sw
+            sig_img.height = _sh
             sig_img.anchor = f"A{sig_text_row}"
             ws.add_image(sig_img)
     except Exception:
@@ -712,6 +717,9 @@ def generate_client_history_jpeg(
     rows_count = max(1, len(events))
     body_block = _JPG_HEADER_HEIGHT + rows_count * _JPG_ROW_HEIGHT
 
+    # Signature block budget: 50px top gap + 56px for a tall signature image
+    # (plus text height) so a square-ish scan doesn't push the generated-at
+    # line off the canvas.
     total_h = (
         _JPG_TOP_PAD
         + title_h + 14
@@ -720,8 +728,8 @@ def generate_client_history_jpeg(
         + body_block
         + 24
         + info_h + 8   # final balance line
-        + 30
-        + info_h       # signature line
+        + 50           # gap before signature
+        + 72           # signature image max height
         + 24
         + info_h       # generated line
         + _JPG_TOP_PAD
@@ -824,7 +832,8 @@ def generate_client_history_jpeg(
 
     # Signature line — paste the admin's signature over the seller underscores
     # when uploaded; the client half stays blank for a manual signature.
-    y += 30
+    # Extra top gap gives a square scan room without clipping balance line.
+    y += 50
     seller_label = f"{t['seller']}: "
     client_label = f"    {t['signature']}: ______________"
     sl_w, sl_h = _measure(d, seller_label, f_info)
@@ -838,14 +847,18 @@ def generate_client_history_jpeg(
         try:
             with Image.open(_sig_png) as _sig_src:
                 _sig = _sig_src.convert("RGBA")
-            sig_w = 170
-            sig_h = max(1, int(_sig.height * (sig_w / _sig.width)))
+            # Fit into a 240×72 box, preserving aspect — so wide scans use
+            # width freely, square scans stay inside the height budget.
+            max_w, max_h = 240, 72
+            scale = min(max_w / _sig.width, max_h / _sig.height)
+            sig_w = max(1, int(_sig.width * scale))
+            sig_h = max(1, int(_sig.height * scale))
             _sig = _sig.resize((sig_w, sig_h), Image.LANCZOS)
-            # Centre vertically on the baseline where underscores would sit.
+            # Sit visually on the baseline where underscores would be.
             px = _JPG_LEFT_PAD + sl_w
-            py = y + (sl_h - sig_h) // 2 - sig_h // 4
+            py = y + sl_h - sig_h + 6
             img.paste(_sig, (px, max(0, py)), _sig)
-            tail_x = _JPG_LEFT_PAD + sl_w + sig_w
+            tail_x = _JPG_LEFT_PAD + sl_w + sig_w + 12
         except Exception:
             d.text((_JPG_LEFT_PAD + sl_w, y), sig_underline, font=f_info, fill="#333")
             tail_x = _JPG_LEFT_PAD + sl_w + su_w
