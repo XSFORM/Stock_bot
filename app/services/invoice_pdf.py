@@ -340,7 +340,18 @@ def generate_invoice_pdf(invoice: dict[str, Any],
     sig_style = ParagraphStyle(
         "sig", fontName=FONT, fontSize=10, leading=14,
     )
-    sig_cell_seller = Paragraph(f"{t['seller']}: ______________________________", sig_style)
+    # Overlay the seller's stored handwritten signature over the line, if any.
+    # Buyer side always stays as a blank line for the client to sign manually.
+    from app.services.signature_asset import get_signature_path
+    _sig_png = get_signature_path()
+    if _sig_png is not None:
+        seller_html = (
+            f'{t["seller"]}: '
+            f'<img src="{_sig_png}" width="113" height="42" valign="middle"/>'
+        )
+    else:
+        seller_html = f"{t['seller']}: ______________________________"
+    sig_cell_seller = Paragraph(seller_html, sig_style)
     sig_cell_buyer  = Paragraph(f"{t['buyer']}: ______________________________",  sig_style)
 
     sig_table = Table(

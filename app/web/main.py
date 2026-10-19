@@ -3290,6 +3290,8 @@ def set_theme(theme: str = Form(...), next: str = Form("/")):
 
 @app.get("/admin/settings", response_class=HTMLResponse)
 def admin_settings_get(request: Request, saved: str = "", msg: str = ""):
+    from app.services.signature_asset import get_signature_path
+    _sig_path = get_signature_path()
     return _render(
         request,
         "admin_settings.html",
@@ -3308,8 +3310,60 @@ def admin_settings_get(request: Request, saved: str = "", msg: str = ""):
             "allowed_markups": _ALLOWED_MARKUPS,
             "pocket_tmt_rate": get_pocket_price_tmt_rate(),
             "pocket_tmt_show": get_pocket_price_show_tmt(),
+            # Seller signature overlay (shows preview + delete button when present).
+            "signature_present": _sig_path is not None,
+            "signature_ts": int(_sig_path.stat().st_mtime) if _sig_path else 0,
         },
     )
+
+
+@app.post("/admin/settings/signature/upload")
+async def admin_settings_signature_upload(
+    request: Request,
+    signature_file: UploadFile = File(...),
+):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
+    from app.services.signature_asset import get_signature_path_for_upload
+    if not signature_file or not signature_file.filename:
+        return RedirectResponse(url="/admin/settings?msg=signature_error:no_file", status_code=303)
+    suffix = Path(signature_file.filename).suffix.lower()
+    if suffix != ".png":
+        return RedirectResponse(url="/admin/settings?msg=signature_error:png_only", status_code=303)
+    dest = get_signature_path_for_upload()
+    try:
+        with dest.open("wb") as fout:
+            shutil.copyfileobj(signature_file.file, fout)
+    except Exception:
+        logger.exception("Failed to write signature file")
+        return RedirectResponse(url="/admin/settings?msg=signature_error:write", status_code=303)
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
+@app.post("/admin/settings/signature/delete")
+def admin_settings_signature_delete(request: Request):
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
+    from app.services.signature_asset import delete_signature
+    delete_signature()
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
+@app.get("/admin/settings/signature/preview")
+def admin_settings_signature_preview(request: Request, ts: int = 0):
+    """Serve the uploaded signature PNG (admin-only, cache-busted via ts)."""
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
+    from app.services.signature_asset import get_signature_path
+    p = get_signature_path()
+    if p is None:
+        return RedirectResponse(url="/admin/settings?msg=signature_error:missing", status_code=303)
+    # Cache-bust via `ts` query param — the template passes the file mtime.
+    return FileResponse(str(p), media_type="image/png",
+                        headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @app.post("/admin/settings/sitelock")

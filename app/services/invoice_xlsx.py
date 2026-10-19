@@ -152,12 +152,29 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     # --- Signature block (two side-by-side signatures) ---
     # Leave 2 blank rows, then put Seller on the left half (cols A–C)
     # and Buyer on the right half (cols E–G). Merge each label into a
-    # single visual cell so it prints nicely on one line.
+    # single visual cell so it prints nicely on one line. If the admin
+    # has uploaded a signature PNG we overlay it on the seller row.
     sig_row = total_row_idx + 3
     ws.cell(row=sig_row, column=1, value="Seller: ______________________________").alignment = Alignment(horizontal="left")
     ws.merge_cells(start_row=sig_row, start_column=1, end_row=sig_row, end_column=3)
     ws.cell(row=sig_row, column=5, value="Buyer: ______________________________").alignment = Alignment(horizontal="left")
     ws.merge_cells(start_row=sig_row, start_column=5, end_row=sig_row, end_column=7)
+
+    try:
+        from app.services.signature_asset import get_signature_path
+        _sig_png = get_signature_path()
+        if _sig_png is not None:
+            from openpyxl.drawing.image import Image as OpenpyxlImage
+            # Make the seller row tall enough so the pasted signature
+            # doesn't bleed into neighbouring rows when printed.
+            ws.row_dimensions[sig_row].height = 36
+            sig_img = OpenpyxlImage(str(_sig_png))
+            sig_img.width = 150
+            sig_img.height = 44
+            sig_img.anchor = f"A{sig_row}"
+            ws.add_image(sig_img)
+    except Exception:
+        pass
 
     # --- Print setup: A4, fit to 1 page wide, multi-page tall ---
     ws.page_setup.paperSize = ws.PAPERSIZE_A4

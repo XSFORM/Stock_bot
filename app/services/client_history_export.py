@@ -433,11 +433,27 @@ def generate_client_history_pdf(
     ))
 
     story.append(Spacer(1, 10 * mm))
+    # Overlay the admin's stored signature over the seller line, if any.
+    from app.services.signature_asset import get_signature_path
+    _sig_png = get_signature_path()
+    sig_style_para = ParagraphStyle("ch_sig", fontName=_FONT, fontSize=10, leading=14)
+    if _sig_png is not None:
+        seller_html = (
+            f'{t["seller"]}: '
+            f'<img src="{_sig_png}" width="113" height="42" valign="middle"/>'
+        )
+    else:
+        seller_html = f"{t['seller']}: __________________"
     sig_tbl = Table(
-        [[f"{t['seller']}: __________________", f"{t['signature']}: __________________"]],
+        [[Paragraph(seller_html, sig_style_para),
+          Paragraph(f"{t['signature']}: __________________", sig_style_para)]],
         colWidths=[90 * mm, 90 * mm],
     )
-    sig_tbl.setStyle(TableStyle([("FONT", (0, 0), (-1, -1), _FONT, 10)]))
+    sig_tbl.setStyle(TableStyle([
+        ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
     story.append(sig_tbl)
 
     story.append(Spacer(1, 4 * mm))
@@ -568,6 +584,7 @@ def generate_client_history_xlsx(
     tot_cell.alignment = right
     r += 2
 
+    sig_text_row = r
     ws.cell(row=r, column=1, value=f"{t['seller']}: ______________________").font = body_font
     ws.cell(row=r, column=3, value=f"{t['signature']}: ______________________").font = body_font
     r += 2
@@ -578,6 +595,21 @@ def generate_client_history_xlsx(
     widths = [14, 22, 14, 18, 32]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[chr(ord("A") + i - 1)].width = w
+
+    # Optional seller-signature overlay — pasted on the Seller row (col A).
+    try:
+        from app.services.signature_asset import get_signature_path
+        _sig_png = get_signature_path()
+        if _sig_png is not None:
+            from openpyxl.drawing.image import Image as OpenpyxlImage
+            ws.row_dimensions[sig_text_row].height = 36
+            sig_img = OpenpyxlImage(str(_sig_png))
+            sig_img.width = 150
+            sig_img.height = 44
+            sig_img.anchor = f"A{sig_text_row}"
+            ws.add_image(sig_img)
+    except Exception:
+        pass
 
     # Optional stamp in the top-right (column E, row 1) — mirrors sale XLSX.
     if _STAMP_PATH.exists():
@@ -790,10 +822,37 @@ def generate_client_history_jpeg(
     d.text((_JPG_LEFT_PAD, y), tot, font=f_info_bold, fill="#1a1a1a")
     y += info_h + 8
 
-    # Signature line
+    # Signature line — paste the admin's signature over the seller underscores
+    # when uploaded; the client half stays blank for a manual signature.
     y += 30
-    sig = f"{t['seller']}: ______________    {t['signature']}: ______________"
-    d.text((_JPG_LEFT_PAD, y), sig, font=f_info, fill="#333")
+    seller_label = f"{t['seller']}: "
+    client_label = f"    {t['signature']}: ______________"
+    sl_w, sl_h = _measure(d, seller_label, f_info)
+    sig_underline = "______________"
+    su_w, _ = _measure(d, sig_underline, f_info)
+
+    d.text((_JPG_LEFT_PAD, y), seller_label, font=f_info, fill="#333")
+    from app.services.signature_asset import get_signature_path
+    _sig_png = get_signature_path()
+    if _sig_png is not None:
+        try:
+            with Image.open(_sig_png) as _sig_src:
+                _sig = _sig_src.convert("RGBA")
+            sig_w = 170
+            sig_h = max(1, int(_sig.height * (sig_w / _sig.width)))
+            _sig = _sig.resize((sig_w, sig_h), Image.LANCZOS)
+            # Centre vertically on the baseline where underscores would sit.
+            px = _JPG_LEFT_PAD + sl_w
+            py = y + (sl_h - sig_h) // 2 - sig_h // 4
+            img.paste(_sig, (px, max(0, py)), _sig)
+            tail_x = _JPG_LEFT_PAD + sl_w + sig_w
+        except Exception:
+            d.text((_JPG_LEFT_PAD + sl_w, y), sig_underline, font=f_info, fill="#333")
+            tail_x = _JPG_LEFT_PAD + sl_w + su_w
+    else:
+        d.text((_JPG_LEFT_PAD + sl_w, y), sig_underline, font=f_info, fill="#333")
+        tail_x = _JPG_LEFT_PAD + sl_w + su_w
+    d.text((tail_x, y), client_label, font=f_info, fill="#333")
     y += info_h + 24
 
     gen = f"{t['generated']}: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
