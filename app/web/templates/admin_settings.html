@@ -133,7 +133,7 @@
   </form>
   {% if signature_present %}
     <form method="post" action="/admin/settings/signature/delete" class="mb-4"
-          onsubmit="return confirm('{{ t.settings_signature_delete_confirm | default(\"Удалить подпись?\") }}');">
+          onsubmit="return confirm('{{ t.settings_signature_delete_confirm | default('Удалить подпись?') }}');">
       <button type="submit" class="btn btn-sm btn-outline-danger">
         🗑 {{ t.settings_signature_delete | default('Удалить подпись') }}
       </button>
