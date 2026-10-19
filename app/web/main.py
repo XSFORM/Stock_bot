@@ -1397,19 +1397,168 @@ def client_ledger_delete_post(client_id: int, ledger_id: int):
     )
 
 
+def _filter_client_history_events(
+    events: list[dict[str, Any]],
+    *,
+    limit: int,
+    date_from: str,
+    date_to: str,
+) -> list[dict[str, Any]]:
+    """Trim a client's history for a printable export.
+
+    Rules (deliberately simple so elderly clients don't get a 10-page PDF):
+      * date_from / date_to clip the window (YYYY-MM-DD, inclusive).
+      * limit caps the result to the N most-recent rows (0 → no cap).
+      * Already sorted DESC by caller — we keep that order.
+    """
+    out = events
+    if date_from:
+        df = (date_from or "").strip()[:10]
+        if df:
+            out = [e for e in out if (str(e.get("dt") or e.get("created_at") or "")[:10] >= df)]
+    if date_to:
+        dt = (date_to or "").strip()[:10]
+        if dt:
+            out = [e for e in out if (str(e.get("dt") or e.get("created_at") or "")[:10] <= dt)]
+    if limit and limit > 0:
+        out = out[:int(limit)]
+    return out
+
+
 @app.get("/clients/{client_id}/history", response_class=HTMLResponse)
-def client_history_get(request: Request, client_id: int):
+def client_history_get(
+    request: Request,
+    client_id: int,
+    limit: int = 15,
+    date_from: str = "",
+    date_to: str = "",
+):
     c = get_client(int(client_id))
     if not c:
         return RedirectResponse(url="/clients?msg=client_not_found", status_code=303)
     events = get_client_history(int(client_id))
     balance = get_client_balance(int(client_id))
-    _ps = get_client_payment_stats(int(client_id))
+    payment_stats = get_client_payment_stats(int(client_id))
     return _render(request, "client_history.html", {
         "client": c,
         "events": events,
         "balance": balance,
+        "payment_stats": payment_stats,
+        # Pre-fill the export form; the three download buttons use these.
+        "export_limit": int(limit) if limit else 15,
+        "export_date_from": (date_from or "").strip(),
+        "export_date_to": (date_to or "").strip(),
     })
+
+
+def _client_history_export_params(
+    client_id: int,
+    limit: int,
+    date_from: str,
+    date_to: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]], float, str, str]:
+    """Shared helper: load client + filtered events + balance for exports."""
+    c = get_client(int(client_id))
+    if not c:
+        return {}, [], 0.0, "", ""
+    events = get_client_history(int(client_id))
+    df = (date_from or "").strip()[:10]
+    dt = (date_to or "").strip()[:10]
+    filtered = _filter_client_history_events(
+        events, limit=int(limit or 0), date_from=df, date_to=dt,
+    )
+    balance = get_client_balance(int(client_id))
+    return c, filtered, float(balance), df, dt
+
+
+@app.get("/clients/{client_id}/history/pdf")
+def client_history_pdf(
+    request: Request,
+    client_id: int,
+    limit: int = 15,
+    date_from: str = "",
+    date_to: str = "",
+):
+    from app.services.client_history_export import generate_client_history_pdf
+    c, events, balance, df, dto = _client_history_export_params(
+        client_id, limit, date_from, date_to,
+    )
+    if not c:
+        return RedirectResponse(url="/clients?msg=client_not_found", status_code=303)
+    try:
+        path = generate_client_history_pdf(
+            c, events, balance, df or None, dto or None,
+            lang=_get_ui_lang(request),
+        )
+    except Exception:
+        logger.exception("client_history_pdf failed for client %s", client_id)
+        return RedirectResponse(
+            url=f"/clients/{int(client_id)}/history?msg=export_error:pdf",
+            status_code=303,
+        )
+    fname = f"client_{int(client_id):04d}_history.pdf"
+    return FileResponse(path, filename=fname, media_type="application/pdf")
+
+
+@app.get("/clients/{client_id}/history/xlsx")
+def client_history_xlsx(
+    request: Request,
+    client_id: int,
+    limit: int = 15,
+    date_from: str = "",
+    date_to: str = "",
+):
+    from app.services.client_history_export import generate_client_history_xlsx
+    c, events, balance, df, dto = _client_history_export_params(
+        client_id, limit, date_from, date_to,
+    )
+    if not c:
+        return RedirectResponse(url="/clients?msg=client_not_found", status_code=303)
+    try:
+        path = generate_client_history_xlsx(
+            c, events, balance, df or None, dto or None,
+            lang=_get_ui_lang(request),
+        )
+    except Exception:
+        logger.exception("client_history_xlsx failed for client %s", client_id)
+        return RedirectResponse(
+            url=f"/clients/{int(client_id)}/history?msg=export_error:xlsx",
+            status_code=303,
+        )
+    fname = f"client_{int(client_id):04d}_history.xlsx"
+    return FileResponse(
+        path, filename=fname,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.get("/clients/{client_id}/history/jpeg")
+def client_history_jpeg(
+    request: Request,
+    client_id: int,
+    limit: int = 15,
+    date_from: str = "",
+    date_to: str = "",
+):
+    from app.services.client_history_export import generate_client_history_jpeg
+    c, events, balance, df, dto = _client_history_export_params(
+        client_id, limit, date_from, date_to,
+    )
+    if not c:
+        return RedirectResponse(url="/clients?msg=client_not_found", status_code=303)
+    try:
+        path = generate_client_history_jpeg(
+            c, events, balance, df or None, dto or None,
+            lang=_get_ui_lang(request),
+        )
+    except Exception:
+        logger.exception("client_history_jpeg failed for client %s", client_id)
+        return RedirectResponse(
+            url=f"/clients/{int(client_id)}/history?msg=export_error:jpeg",
+            status_code=303,
+        )
+    fname = f"client_{int(client_id):04d}_history.jpg"
+    return FileResponse(path, filename=fname, media_type="image/jpeg")
 
 
 @app.get("/suppliers", response_class=HTMLResponse)

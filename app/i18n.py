@@ -357,6 +357,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "history_no_product_events": "No history events found for this product.",
         "client_history_no_events": "No history yet.",
         "history_back_to_stock": "\u2190 Back to Stock",
+        # Client-friendly history export (PDF / XLSX / JPEG)
+        "client_export_limit": "Records",
+        "client_export_from": "From",
+        "client_export_to": "To",
+        "client_export_hint": "Simplified view for the client: only date, operation, amount and remaining debt. Last 15 movements by default.",
         # XLSX view pages
         "xlsx_col_purchase_price": "Purchase Price",
         "xlsx_lbl_supplier": "Supplier:",
@@ -916,6 +921,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "history_no_product_events": "Нет событий для этого товара.",
         "client_history_no_events": "История пуста.",
         "history_back_to_stock": "\u2190 Назад к складу",
+        # Client-friendly history export (PDF / XLSX / JPEG)
+        "client_export_limit": "Записей",
+        "client_export_from": "С",
+        "client_export_to": "По",
+        "client_export_hint": "Упрощённый вид для клиента: только дата, операция, сумма и остаток долга. По умолчанию последние 15 движений.",
         # XLSX view pages
         "xlsx_col_purchase_price": "Цена закупки",
         "xlsx_lbl_supplier": "Поставщик:",
@@ -1476,6 +1486,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "history_no_product_events": "Bu haryt üçin taryh ýok.",
         "client_history_no_events": "Taryh ýok.",
         "history_back_to_stock": "\u2190 Ammara gaýt",
+        # Client-friendly history export (PDF / XLSX / JPEG)
+        "client_export_limit": "Ýazgylar",
+        "client_export_from": "Döwürden",
+        "client_export_to": "Çenli",
+        "client_export_hint": "Müşderi üçin ýeňilleşdirilen görnüş: diňe sene, hereket, mukdar we galan bergi. Deslapky — iň soňky 15 hereket.",
         # XLSX view pages
         "xlsx_col_purchase_price": "Satyn alyş bahasy",
         "xlsx_lbl_supplier": "Üpjünçi:",

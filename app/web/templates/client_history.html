@@ -13,10 +13,53 @@
   }
 </style>
 <div class="bg-white p-3 rounded shadow-sm">
-  <div class="d-flex align-items-center gap-3 mb-3">
+  <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
     <h4 class="mb-0">{{ t.history_title }} — {{ client.name }}</h4>
     <a class="btn btn-sm btn-outline-secondary" href="/clients">{{ t.btn_back }}</a>
   </div>
+
+  {# Client-friendly export: simplified view for elderly clients used to a paper notebook. #}
+  {# One form, three buttons via formaction — each honours the current limit/period inputs. #}
+  <form class="row g-2 align-items-end mb-3 small" method="get" id="clientHistoryExportForm">
+    <div class="col-auto">
+      <label class="form-label mb-0 text-muted">{{ t.client_export_limit | default('Записей') }}</label>
+      <input type="number" name="limit" min="0" max="500"
+             value="{{ export_limit | default(15) }}"
+             class="form-control form-control-sm" style="width:5.5rem;">
+    </div>
+    <div class="col-auto">
+      <label class="form-label mb-0 text-muted">{{ t.client_export_from | default('С') }}</label>
+      <input type="date" name="date_from"
+             value="{{ export_date_from | default('') }}"
+             class="form-control form-control-sm">
+    </div>
+    <div class="col-auto">
+      <label class="form-label mb-0 text-muted">{{ t.client_export_to | default('По') }}</label>
+      <input type="date" name="date_to"
+             value="{{ export_date_to | default('') }}"
+             class="form-control form-control-sm">
+    </div>
+    <div class="col-auto">
+      <button type="submit"
+              formaction="/clients/{{ client.id }}/history/pdf"
+              class="btn btn-sm btn-outline-danger">
+        📄 PDF
+      </button>
+      <button type="submit"
+              formaction="/clients/{{ client.id }}/history/xlsx"
+              class="btn btn-sm btn-outline-success">
+        📊 XLSX
+      </button>
+      <button type="submit"
+              formaction="/clients/{{ client.id }}/history/jpeg"
+              class="btn btn-sm btn-outline-primary">
+        🖼️ JPEG
+      </button>
+    </div>
+    <div class="col-12 text-muted small">
+      {{ t.client_export_hint | default('Упрощённый вид для клиента: только дата, операция, сумма и остаток долга. По умолчанию последние 15 движений.') }}
+    </div>
+  </form>
 
   {% if request.query_params.get('msg') == 'ledger_deleted' %}
     <div class="alert alert-success py-2 small">{{ t.client_history_deleted_ok | default('Entry deleted.') }}</div>
