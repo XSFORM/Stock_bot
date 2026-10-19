@@ -9,3 +9,10 @@ build/
 *.log
 exports/
 backups/
+# Runtime assets uploaded by the admin via /admin/settings — not code.
+# These live at /opt/stock_bot/ on the server (writable by the webapp)
+# and must never be shipped through the repo.
+signature.png
+stamp.png
+bg.jpg
+price-bg.jpg
