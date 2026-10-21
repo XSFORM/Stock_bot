@@ -73,6 +73,7 @@
               <li><a class="dropdown-item" href="/brands">{{ t.nav_brands if t is defined else 'Brands' }}</a></li>
               <li><a class="dropdown-item" href="/clients">{{ t.nav_clients if t is defined else 'Clients' }}</a></li>
               <li><a class="dropdown-item" href="/suppliers">{{ t.nav_dealers if t is defined else 'Suppliers' }}</a></li>
+              <li><a class="dropdown-item" href="/loans">{{ t.nav_loans if t is defined else 'Personal loans' }}</a></li>
             </ul>
           </div>
           <a class="nav-link" href="/admin/settings">{{ t.nav_admin if t is defined else 'Admin' }}</a>
@@ -93,6 +94,18 @@
             <span class="fw-semibold text-info" style="font-size:.82rem">STK</span>
             <span class="text-info fw-semibold" style="font-size:.82rem">{{ "%.2f"|format(nav_stock_value_usd) }} $</span>
           </div>
+          {# Personal loans — "I owe" / "owed to me". Hidden when both are zero
+             so the navbar stays clean for people who don't use this feature. #}
+          {% set _ls = nav_loans_summary if nav_loans_summary is defined else none %}
+          {% if _ls and (_ls.i_owe > 0 or _ls.owed_to_me > 0) %}
+          <a href="/loans" class="small text-decoration-none" style="color:inherit"
+             title="{{ t.nav_loans_tooltip if t is defined else 'Personal loans' }}">
+            <span class="fw-semibold" style="font-size:.82rem; color:#d47c00">LOAN</span>
+            <span class="fw-semibold" style="font-size:.82rem; color:#d04444">{{ "%.2f"|format(_ls.i_owe) }}</span>
+            <span class="text-muted" style="font-size:.82rem">/</span>
+            <span class="fw-semibold" style="font-size:.82rem; color:#2e8b57">{{ "%.2f"|format(_ls.owed_to_me) }} $</span>
+          </a>
+          {% endif %}
         </div>
 
         <!-- Language selector -->

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block content %}
+{% set _side = cp.side %}
+{% set _is_lender = _side == 'LENDER' %}
+{# Balance semantics:
+     LENDER   positive = I still owe them  → red
+     BORROWER positive = they owe me       → green
+#}
+{% set _bal_pos_class = 'text-danger' if _is_lender else 'text-success' %}
+{% set _loan_verb   = (t.loan_action_took if _is_lender else t.loan_action_lent) | default(('Занять ещё' if _is_lender else 'Одолжить ещё')) %}
+{% set _repay_verb  = (t.loan_action_repay if _is_lender else t.loan_action_receive) | default(('Вернуть часть' if _is_lender else 'Получить часть')) %}
+
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <h4 class="mb-0">
+      {% if _is_lender %}🔻{% else %}🔺{% endif %}
+      {{ cp.name }}
+      {% if cp.archived %}<span class="badge bg-secondary">{{ t.badge_archived | default('архив') }}</span>{% endif %}
+    </h4>
+    <a href="/loans?tab={{ 'lender' if _is_lender else 'borrower' }}"
+       class="btn btn-sm btn-outline-secondary">{{ t.btn_back | default('← Назад') }}</a>
+  </div>
+
+  {# ── Messages ────────────────────────────────────────────── #}
+  {% if request.query_params.get('msg') %}
+    {% set _m = request.query_params.get('msg') %}
+    {% set _k = _m.split(':')[0] %}
+    {% set _p = _m[(_k|length)+1:] if ':' in _m else '' %}
+    {% if _k == 'loan_entry_added' %}
+      <div class="alert alert-success py-2 small">{{ t.msg_loan_entry_added | default('Запись добавлена:') }} {{ _p }} USD</div>
+    {% elif _k == 'loan_cp_updated' %}
+      <div class="alert alert-success py-2 small">{{ t.msg_loan_cp_updated | default('Сохранено.') }}</div>
+    {% elif _k == 'loan_entry_deleted' %}
+      <div class="alert alert-info py-2 small">{{ t.msg_loan_entry_deleted | default('Запись удалена.') }}</div>
+    {% elif _k.endswith('_error') or _k.endswith('_not_found') or _k.endswith('_wrong_counterparty') %}
+      <div class="alert alert-danger py-2 small">{{ _m }}</div>
+    {% endif %}
+  {% endif %}
+
+  {# ── Current balance (big) ──────────────────────────────── #}
+  <div class="mb-4">
+    <div class="text-muted small">
+      {% if _is_lender %}
+        {{ t.loan_card_owed_hint | default('Я должен этому человеку:') }}
+      {% else %}
+        {{ t.loan_card_owes_me_hint | default('Этот человек должен мне:') }}
+      {% endif %}
+    </div>
+    <div class="fs-3 fw-semibold
+      {% if balance > 0 %}{{ _bal_pos_class }}
+      {% elif balance < 0 %}text-muted
+      {% else %}text-muted{% endif %}">
+      {{ "%.2f"|format(balance) }} USD
+    </div>
+    {% if cp.phone %}<div class="small text-muted">📞 {{ cp.phone }}</div>{% endif %}
+    {% if cp.note %}<div class="small text-muted">📝 {{ cp.note }}</div>{% endif %}
+  </div>
+
+  <div class="row g-3">
+    {# ── Add entry ──────────────────────────────────────── #}
+    <div class="col-md-6">
+      <h6>{{ t.loan_card_add_heading | default('Добавить движение') }}</h6>
+      <form method="post" action="/loans/{{ cp.id }}/entry" class="border rounded p-3">
+        <div class="mb-2">
+          <label class="form-label small">{{ t.loan_card_kind | default('Тип операции') }}</label>
+          <select name="kind" class="form-select form-select-sm" required>
+            <option value="LOAN">+ {{ _loan_verb }}</option>
+            <option value="REPAYMENT">− {{ _repay_verb }}</option>
+          </select>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small">{{ t.lbl_amount_usd | default('Сумма (USD)') }} *</label>
+          <input type="number" step="0.01" min="0.01" name="amount" required
+                 class="form-control form-control-sm">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small">{{ t.lbl_note | default('Заметка') }}</label>
+          <input type="text" name="note" class="form-control form-control-sm"
+                 placeholder="{{ t.loan_card_note_placeholder | default('на закупку холодильников') }}">
+        </div>
+        <button type="submit" class="btn btn-sm btn-primary">
+          {{ t.btn_add | default('Добавить') }}
+        </button>
+      </form>
+    </div>
+
+    {# ── Edit metadata + archive ────────────────────────── #}
+    <div class="col-md-6">
+      <h6>{{ t.loan_card_edit_heading | default('Редактировать карточку') }}</h6>
+      <form method="post" action="/loans/{{ cp.id }}/edit" class="border rounded p-3">
+        <div class="mb-2">
+          <label class="form-label small">{{ t.lbl_name | default('Имя') }} *</label>
+          <input type="text" name="name" required value="{{ cp.name }}"
+                 class="form-control form-control-sm">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small">{{ t.lbl_phone | default('Телефон') }}</label>
+          <input type="text" name="phone" value="{{ cp.phone }}" class="form-control form-control-sm">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small">{{ t.lbl_note | default('Заметка') }}</label>
+          <input type="text" name="note" value="{{ cp.note }}" class="form-control form-control-sm">
+        </div>
+        <button type="submit" class="btn btn-sm btn-outline-primary">
+          {{ t.btn_save | default('Сохранить') }}
+        </button>
+      </form>
+
+      <div class="mt-2">
+        {% if cp.archived %}
+          <form method="post" action="/loans/{{ cp.id }}/unarchive" class="d-inline">
+            <button class="btn btn-sm btn-outline-secondary">
+              {{ t.loans_btn_unarchive | default('Вернуть из архива') }}
+            </button>
+          </form>
+        {% else %}
+          <form method="post" action="/loans/{{ cp.id }}/archive" class="d-inline"
+                onsubmit="return confirm('{{ t.loans_confirm_archive | default('Отправить в архив?') }}');">
+            <button class="btn btn-sm btn-outline-secondary">
+              🗄 {{ t.loans_btn_archive | default('В архив') }}
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── History ──────────────────────────────────────────── #}
+  <h6 class="mt-4 mb-2">{{ t.loan_card_history_heading | default('История операций') }}</h6>
+  <table class="table table-sm table-striped align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{{ t.lbl_date_time | default('Дата') }}</th>
+        <th>{{ t.loan_card_operation | default('Операция') }}</th>
+        <th class="text-end">{{ t.lbl_amount_usd | default('Сумма USD') }}</th>
+        <th class="text-end">{{ t.loan_card_balance_after | default('Баланс после') }}</th>
+        <th>{{ t.lbl_note | default('Заметка') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ev in history %}
+      <tr>
+        <td>{{ ev.dt[:16] | replace('T', ' ') }}</td>
+        <td>
+          {% if ev.kind == 'LOAN' %}
+            <span class="badge bg-danger-subtle text-danger-emphasis">+ {{ _loan_verb }}</span>
+          {% elif ev.kind == 'REPAYMENT' %}
+            <span class="badge bg-success-subtle text-success-emphasis">− {{ _repay_verb }}</span>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          {% if ev.amount > 0 %}
+            <span class="text-danger">+{{ "%.2f"|format(ev.amount) }}</span>
+          {% elif ev.amount < 0 %}
+            <span class="text-success">{{ "%.2f"|format(ev.amount) }}</span>
+          {% else %}
+            <span class="text-muted">0.00</span>
+          {% endif %}
+        </td>
+        <td class="text-end fw-semibold {{ _bal_pos_class if ev.balance_after > 0 else 'text-muted' }}">
+          {{ "%.2f"|format(ev.balance_after) }}
+        </td>
+        <td>{{ ev.note or '—' }}</td>
+        <td class="text-end">
+          <form method="post" action="/loans/{{ cp.id }}/entry/{{ ev.id }}/delete"
+                class="d-inline"
+                onsubmit="return confirm('{{ t.loan_confirm_delete | default('Удалить запись?') }}');">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              {{ t.btn_delete | default('Удалить') }}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="text-muted text-center">{{ t.loan_card_no_history | default('Пока нет движений.') }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

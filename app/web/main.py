@@ -104,6 +104,17 @@ from app.db.sqlite import (
     get_supplier_balance,
     list_suppliers_with_balance,
     get_supplier_history,
+    # personal loans
+    list_loan_counterparties_with_balance,
+    add_loan_counterparty,
+    get_loan_counterparty,
+    update_loan_counterparty,
+    set_loan_counterparty_archived,
+    add_loan_entry,
+    delete_loan_entry,
+    get_loan_counterparty_balance,
+    get_loan_counterparty_history,
+    get_loans_summary,
     # sale by id
     get_open_cart,
     cart_start_by_id,
@@ -447,6 +458,7 @@ def _render(request: Request, name: str, ctx: dict[str, Any]) -> HTMLResponse:
         "nav_total_debt_usd": get_total_clients_debt(),
         "nav_total_suppliers_debt_usd": get_total_suppliers_debt(),
         "nav_stock_value_usd": get_total_stock_value(),
+        "nav_loans_summary": get_loans_summary(),
     }
     base.update(ctx)
     return templates.TemplateResponse(request, name, base)
@@ -1682,6 +1694,135 @@ def supplier_history_get(request: Request, supplier_id: int):
         "balance": balance,
     })
 
+
+# ─── Personal loans (/loans) ──────────────────────────────────────────────────
+
+_LOAN_SIDE_LENDER = "LENDER"      # он дал мне в долг
+_LOAN_SIDE_BORROWER = "BORROWER"  # я дал ему в долг
+
+
+@app.get("/loans", response_class=HTMLResponse)
+def loans_get(request: Request, msg: str = "", show_archived: Optional[int] = None,
+              tab: str = "lender"):
+    # Remember show_archived across navigation via cookie, like /suppliers.
+    if "show_archived" not in request.query_params:
+        try:
+            show_archived = int(request.cookies.get("loans_show_archived", "0") or "0")
+        except (TypeError, ValueError):
+            show_archived = 0
+    if show_archived is None:
+        show_archived = 0
+    tab = tab if tab in ("lender", "borrower") else "lender"
+    lenders = list_loan_counterparties_with_balance(
+        side=_LOAN_SIDE_LENDER, include_archived=bool(show_archived),
+    )
+    borrowers = list_loan_counterparties_with_balance(
+        side=_LOAN_SIDE_BORROWER, include_archived=bool(show_archived),
+    )
+    summary = get_loans_summary()
+    response = _render(request, "loans.html", {
+        "lenders": lenders,
+        "borrowers": borrowers,
+        "summary": summary,
+        "show_archived": int(show_archived),
+        "message": msg,
+        "active_tab": tab,
+    })
+    response.set_cookie("loans_show_archived", str(int(show_archived)),
+                        max_age=_CLIENTS_FILTER_COOKIE_MAX_AGE, samesite="lax")
+    return response
+
+
+@app.post("/loans/add")
+def loans_add(
+    name: str = Form(...),
+    side: str = Form(...),
+    phone: str = Form(""),
+    note: str = Form(""),
+):
+    if side not in (_LOAN_SIDE_LENDER, _LOAN_SIDE_BORROWER):
+        return RedirectResponse(url="/loans?msg=loan_bad_side", status_code=303)
+    ok, err = add_loan_counterparty(name, side, phone, note)
+    tab = "lender" if side == _LOAN_SIDE_LENDER else "borrower"
+    msg = "loan_cp_added" if ok else f"loan_cp_add_error:{err}"
+    return RedirectResponse(url=f"/loans?msg={quote(msg)}&tab={tab}", status_code=303)
+
+
+@app.get("/loans/{cp_id}", response_class=HTMLResponse)
+def loan_card_get(request: Request, cp_id: int, msg: str = ""):
+    cp = get_loan_counterparty(int(cp_id))
+    if not cp:
+        return RedirectResponse(url="/loans?msg=loan_cp_not_found", status_code=303)
+    history = get_loan_counterparty_history(int(cp_id))
+    balance = get_loan_counterparty_balance(int(cp_id))
+    return _render(request, "loan_card.html", {
+        "cp": cp,
+        "history": history,
+        "balance": balance,
+        "message": msg,
+    })
+
+
+@app.post("/loans/{cp_id}/edit")
+def loan_edit_post(
+    cp_id: int,
+    name: str = Form(...),
+    phone: str = Form(""),
+    note: str = Form(""),
+):
+    ok, err = update_loan_counterparty(int(cp_id), name, phone, note)
+    msg = "loan_cp_updated" if ok else f"loan_cp_update_error:{err}"
+    return RedirectResponse(url=f"/loans/{int(cp_id)}?msg={quote(msg)}", status_code=303)
+
+
+@app.post("/loans/{cp_id}/archive")
+def loan_archive_post(cp_id: int, show_archived: int = Form(0)):
+    ok, err = set_loan_counterparty_archived(int(cp_id), 1)
+    msg = "loan_cp_archived" if ok else f"loan_cp_archive_error:{err}"
+    return RedirectResponse(
+        url=f"/loans?msg={quote(msg)}&show_archived={show_archived}",
+        status_code=303,
+    )
+
+
+@app.post("/loans/{cp_id}/unarchive")
+def loan_unarchive_post(cp_id: int, show_archived: int = Form(0)):
+    ok, err = set_loan_counterparty_archived(int(cp_id), 0)
+    msg = "loan_cp_unarchived" if ok else f"loan_cp_unarchive_error:{err}"
+    return RedirectResponse(
+        url=f"/loans?msg={quote(msg)}&show_archived={show_archived}",
+        status_code=303,
+    )
+
+
+@app.post("/loans/{cp_id}/entry")
+def loan_entry_post(
+    cp_id: int,
+    amount: float = Form(...),
+    kind: str = Form(...),  # LOAN | REPAYMENT
+    note: str = Form(""),
+):
+    if kind not in ("LOAN", "REPAYMENT"):
+        return RedirectResponse(
+            url=f"/loans/{int(cp_id)}?msg=loan_entry_bad_kind", status_code=303,
+        )
+    ok, err = add_loan_entry(int(cp_id), float(amount), kind, note)
+    msg = f"loan_entry_added:{float(amount):.2f}" if ok else f"loan_entry_error:{err}"
+    return RedirectResponse(url=f"/loans/{int(cp_id)}?msg={quote(msg)}", status_code=303)
+
+
+@app.post("/loans/{cp_id}/entry/{entry_id}/delete")
+def loan_entry_delete_post(cp_id: int, entry_id: int):
+    ok, err = delete_loan_entry(int(entry_id), int(cp_id))
+    if ok:
+        msg = "loan_entry_deleted"
+    elif err == "not_found":
+        msg = "loan_entry_not_found"
+    elif err == "wrong_counterparty":
+        msg = "loan_entry_wrong_counterparty"
+    else:
+        msg = f"loan_entry_delete_error:{err}"
+    return RedirectResponse(url=f"/loans/{int(cp_id)}?msg={quote(msg)}", status_code=303)
 
 
 @app.get("/sale", response_class=HTMLResponse)

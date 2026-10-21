@@ -55,6 +55,7 @@
         <ul class="mt-1"><li><a href="#ru-payments">Дисциплина платежей</a></li></ul>
       </li>
       <li><a href="#ru-suppliers">Поставщики</a></li>
+      <li><a href="#ru-loans">Личные займы</a></li>
       <li><a href="#ru-invoices">Накладные</a></li>
       <li><a href="#ru-history">История</a>
         <ul class="mt-1"><li><a href="#ru-client-history-export">Экспорт истории клиента (PDF/XLSX/JPEG)</a></li></ul>
@@ -530,6 +531,33 @@
     <li><strong>Средний платёж за 90 дней</strong> — средний размер оплаты по последним 3 месяцам. Понимание, каким кусочком клиент обычно закрывает долг.</li>
   </ul>
 
+  {# 10b. Personal loans (added 2026-10) #}
+  <h4 id="ru-loans" class="mt-4">🔸 Личные займы (/loans)</h4>
+  <p>
+    Отдельная книжка для <strong>денежных</strong> долгов между физическими лицами —
+    то, что не ложится в «Поставщиков» (там товарные долги с накладными). Если
+    ты занял у друга наличку на закупку — это сюда, а не в SUP.
+  </p>
+  <p>Две симметричные вкладки:</p>
+  <ul>
+    <li><strong>🔻 Я должен (кредиторы)</strong> — у кого я занял. Положительный баланс = мой непогашенный долг.</li>
+    <li><strong>🔺 Мне должны (должники)</strong> — кому я одолжил. Положительный баланс = не вернули.</li>
+  </ul>
+  <p><strong>Как добавить займ:</strong></p>
+  <ol>
+    <li>Открой <code>/loans</code> → выбери нужную вкладку</li>
+    <li>Внизу «➕ Добавить кредитора/должника» → имя, телефон, заметка → <strong>Добавить</strong></li>
+    <li>Нажми на имя → откроется карточка</li>
+    <li>Форма «Добавить движение»: тип (<em>+ Занять ещё</em> / <em>− Вернуть часть</em>), сумма, заметка</li>
+    <li>Баланс пересчитается, в истории появится строка</li>
+  </ol>
+  <p><strong>Бейдж LOAN в навбаре</strong> — показывает <code>«сколько я должен» / «сколько мне должны»</code>. Появляется только когда есть движения; клик ведёт на <code>/loans</code>.</p>
+  <p><strong>Чистая позиция</strong> в сводке — <em>мне должны</em> минус <em>я должен</em>. Отрицательная (красная) — я больше занимаю, положительная (зелёная) — я больше одалживаю.</p>
+  <p class="text-muted small">
+    Удалить одно движение из истории можно кнопкой «Удалить» в строке — баланс пересчитается.
+    Контрагента можно отправить «В архив» (не удалять) — так долг не влияет на сводку, но карточка остаётся с историей.
+  </p>
+
   {# 11. Suppliers #}
   <h4 id="ru-suppliers" class="mt-4">14. Поставщики</h4>
   <p>Справочник поставщиков доступен из выпадающего меню <strong>«Справочники»</strong>. Здесь хранится информация о поставщиках и текущий долг перед ними в USD.</p>
@@ -980,6 +1008,7 @@
         <ul class="mt-1"><li><a href="#tm-payments">Töleg düzgün-nyzamy</a></li></ul>
       </li>
       <li><a href="#tm-suppliers">Üpjün edijiler</a></li>
+      <li><a href="#tm-loans">Şahsy karzlar</a></li>
       <li><a href="#tm-invoices">Hasap-fakturalar</a></li>
       <li><a href="#tm-history">Taryh</a>
         <ul class="mt-1"><li><a href="#tm-client-history-export">Müşderi taryhyny eksport (PDF/XLSX/JPEG)</a></li></ul>
@@ -1362,6 +1391,20 @@
     <li><strong>90 günde orta töleg</strong> — soňky 3 aý boýunça ortaça töleg möçberi. Müşderiniň adatça näçelik bilen bergini ýapýandygyny bilmek.</li>
   </ul>
 
+  {# 10b. Personal loans (added 2026-10) #}
+  <h4 id="tm-loans" class="mt-4">🔸 Şahsy karzlar (/loans)</h4>
+  <p>
+    Fiziki şahslar arasyndaky <strong>pul</strong> bergileri üçin aýratyn kitapça —
+    «Üpjünçilere» (ol ýerde haryt bergileri hasap-faktura bilen) girmeýän ýagdaýlar.
+    Dostuňdan satyn alyş üçin pul karz alsaň — bu ýere, SUP-a däl.
+  </p>
+  <ul>
+    <li><strong>🔻 Men bergili (karz berenler)</strong></li>
+    <li><strong>🔺 Maňa bergili (karz alanlar)</strong></li>
+  </ul>
+  <p><strong>Nädip goşmaly:</strong> <code>/loans</code> → gerekli bölüm → aşakda «➕ goşmak» → kartoçkany açyp «Hereket goşmak» (<em>+ ýene karz al</em> / <em>− bölegini gaýtar</em>).</p>
+  <p>Navbar-da <strong>LOAN</strong> belgisi — «näçe bergili» / «näçe maňa bergili».</p>
+
   {# 11. Suppliers #}
   <h4 id="tm-suppliers" class="mt-4">14. Üpjün edijiler</h4>
   <p><strong>Üpjün edijiler</strong> bölümi <strong>«Salgylanmalar»</strong> açylýan menýusyndan elýeterlidir. Bu ýerde üpjün edijileriň maglumaty we olaryň öňündäki USD bergiňiz alnyp barylýar.</p>
@@ -1737,6 +1780,7 @@
         <ul class="mt-1"><li><a href="#en-payments">Payment discipline</a></li></ul>
       </li>
       <li><a href="#en-suppliers">Suppliers</a></li>
+      <li><a href="#en-loans">Personal loans</a></li>
       <li><a href="#en-invoices">Invoices</a></li>
       <li><a href="#en-history">History</a>
         <ul class="mt-1"><li><a href="#en-client-history-export">Client history export (PDF/XLSX/JPEG)</a></li></ul>
@@ -2134,6 +2178,21 @@
     <li><strong>Paid in 30 days</strong> — how much the client paid over the last month. Shows recent activity.</li>
     <li><strong>Average payment in 90 days</strong> — average payment size over the last 3 months. Gives a sense of the typical instalment the client makes.</li>
   </ul>
+
+  {# 10b. Personal loans (added 2026-10) #}
+  <h4 id="en-loans" class="mt-4">🔸 Personal loans (/loans)</h4>
+  <p>
+    A separate ledger for <strong>cash</strong> debts between individuals —
+    the kind that doesn't fit under «Suppliers» (which is for goods-based
+    debts tied to receive invoices). If you borrow cash from a friend to
+    fund a purchase, it belongs here, not under SUP.
+  </p>
+  <ul>
+    <li><strong>🔻 I owe (lenders)</strong> — people I borrowed from. Positive balance = my open debt.</li>
+    <li><strong>🔺 Owed to me (borrowers)</strong> — people I lent to. Positive balance = not repaid.</li>
+  </ul>
+  <p><strong>How to add:</strong> go to <code>/loans</code> → pick a tab → use the «➕ add» form at the bottom → click the name → use «Add entry» (<em>Borrow more</em> / <em>Repay part</em>).</p>
+  <p>The <strong>LOAN</strong> badge in the navbar shows «I owe» / «owed to me» totals; click to open the section.</p>
 
   {# 11. Suppliers #}
   <h4 id="en-suppliers" class="mt-4">14. Suppliers</h4>

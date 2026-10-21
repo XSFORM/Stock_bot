@@ -170,6 +170,63 @@ def _ensure_suppliers_table(conn: sqlite3.Connection) -> None:
     )
 
 
+# ─── Personal loans (неформальные займы) ──────────────────────────────────────
+#
+# Отдельная книжка от suppliers/clients. Поставщики — товарные долги с
+# накладными; клиенты — товарные долги мне. Здесь — чистые денежные займы
+# между физическими лицами, в обе стороны:
+#
+#   side='LENDER'   — я у него занял, я ему должен
+#   side='BORROWER' — я ему одолжил, он мне должен
+#
+# Знак amount в loan_ledger отражает изменение МОЕЙ позиции по долгу:
+#   LENDER:
+#     +N — я занял ещё N (мой долг вырос)
+#     -N — я вернул N (мой долг сократился)
+#   BORROWER:
+#     +N — я одолжил ещё N (мне должны больше)
+#     -N — мне вернули N (мне должны меньше)
+# Так один и тот же код пересчёта баланса работает для обеих сторон.
+
+def _ensure_loan_counterparties_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS loan_counterparties (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            phone TEXT NOT NULL DEFAULT '',
+            side TEXT NOT NULL CHECK(side IN ('LENDER','BORROWER')),
+            note TEXT NOT NULL DEFAULT '',
+            archived INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_loan_counterparties_side ON loan_counterparties(side)"
+    )
+
+
+def _ensure_loan_ledger_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS loan_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            counterparty_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            amount REAL NOT NULL,
+            kind TEXT NOT NULL CHECK(kind IN ('LOAN','REPAYMENT')),
+            note TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY (counterparty_id) REFERENCES loan_counterparties(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_loan_ledger_counterparty "
+        "ON loan_ledger(counterparty_id)"
+    )
+
+
 def _ensure_supplier_ledger_table(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -864,6 +921,8 @@ def init_db() -> None:
         _ensure_income_categories_table(conn)
         _ensure_incomes_table(conn)
         _seed_default_income_categories(conn)
+        _ensure_loan_counterparties_table(conn)
+        _ensure_loan_ledger_table(conn)
         conn.commit()
 
 
@@ -3894,6 +3953,234 @@ def get_total_suppliers_debt() -> float:
         ).fetchone()
         paid = float(ledger_row["paid"]) if ledger_row else 0.0
         return round(max(0.0, inv_total - paid), 2)
+
+
+# ─── Personal loans CRUD ──────────────────────────────────────────────────────
+
+# Allowed sides for API-side validation (table-level CHECK also enforces it).
+_LOAN_SIDES = ("LENDER", "BORROWER")
+
+
+def list_loan_counterparties(
+    side: Optional[str] = None,
+    include_archived: bool = False,
+) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if side and side in _LOAN_SIDES:
+            clauses.append("side = ?")
+            params.append(side)
+        if not include_archived:
+            clauses.append("archived = 0")
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        rows = conn.execute(
+            f"SELECT * FROM loan_counterparties {where} ORDER BY name",
+            params,
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
+def add_loan_counterparty(
+    name: str, side: str, phone: str = "", note: str = ""
+) -> tuple[bool, str]:
+    name = (name or "").strip()
+    if not name:
+        return False, "empty_name"
+    if side not in _LOAN_SIDES:
+        return False, "bad_side"
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "INSERT INTO loan_counterparties (name, phone, side, note) VALUES (?, ?, ?, ?)",
+                (name, phone.strip(), side, note.strip()),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def get_loan_counterparty(cp_id: int) -> Optional[dict[str, Any]]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM loan_counterparties WHERE id = ?", (cp_id,)
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+
+
+def update_loan_counterparty(
+    cp_id: int, name: str, phone: str, note: str
+) -> tuple[bool, str]:
+    name = (name or "").strip()
+    if not name:
+        return False, "empty_name"
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE loan_counterparties SET name = ?, phone = ?, note = ? WHERE id = ?",
+                (name, phone.strip(), note.strip(), cp_id),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def set_loan_counterparty_archived(cp_id: int, archived: int) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE loan_counterparties SET archived = ? WHERE id = ?",
+                (int(bool(archived)), cp_id),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def add_loan_entry(
+    cp_id: int, amount: float, kind: str, note: str = ""
+) -> tuple[bool, str]:
+    """Record a loan ledger entry.
+
+    `amount` must be POSITIVE (absolute value) — the sign that will be
+    persisted is derived from `kind`:
+      kind='LOAN'      → stored as +amount  (I took more / lent more)
+      kind='REPAYMENT' → stored as -amount  (I repaid / got repaid)
+    """
+    try:
+        amt = float(amount)
+    except (TypeError, ValueError):
+        return False, "bad_amount"
+    if amt <= 0:
+        return False, "non_positive"
+    if kind not in ("LOAN", "REPAYMENT"):
+        return False, "bad_kind"
+    signed = amt if kind == "LOAN" else -amt
+    try:
+        with _connect() as conn:
+            cp = conn.execute(
+                "SELECT id FROM loan_counterparties WHERE id = ?", (cp_id,)
+            ).fetchone()
+            if cp is None:
+                return False, "not_found"
+            conn.execute(
+                "INSERT INTO loan_ledger (counterparty_id, amount, kind, note) "
+                "VALUES (?, ?, ?, ?)",
+                (int(cp_id), signed, kind, (note or "").strip()),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def delete_loan_entry(entry_id: int, cp_id: int) -> tuple[bool, str]:
+    """Delete a single loan_ledger row; verifies it belongs to counterparty_id."""
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT counterparty_id FROM loan_ledger WHERE id = ?", (entry_id,)
+            ).fetchone()
+            if row is None:
+                return False, "not_found"
+            if int(row["counterparty_id"]) != int(cp_id):
+                return False, "wrong_counterparty"
+            conn.execute("DELETE FROM loan_ledger WHERE id = ?", (entry_id,))
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def get_loan_counterparty_balance(cp_id: int) -> float:
+    """SUM(amount) over the counterparty's ledger — positive = debt open.
+
+    Interpretation depends on counterparty.side; the SIGN of this number
+    always means "how much is still owed to the natural creditor":
+      LENDER:   positive → I still owe them
+      BORROWER: positive → they still owe me
+    """
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS bal FROM loan_ledger WHERE counterparty_id = ?",
+            (cp_id,),
+        ).fetchone()
+        return round(float(row["bal"]) if row else 0.0, 2)
+
+
+def list_loan_counterparties_with_balance(
+    side: Optional[str] = None, include_archived: bool = False
+) -> list[dict[str, Any]]:
+    cps = list_loan_counterparties(side=side, include_archived=include_archived)
+    for cp in cps:
+        cp["balance"] = get_loan_counterparty_balance(cp["id"])
+    return cps
+
+
+def get_loan_counterparty_history(cp_id: int) -> list[dict[str, Any]]:
+    """Chronological ledger with a running balance, newest-first for display."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, created_at, amount, kind, note FROM loan_ledger "
+            "WHERE counterparty_id = ? ORDER BY created_at ASC, id ASC",
+            (cp_id,),
+        ).fetchall()
+    events: list[dict[str, Any]] = []
+    running = 0.0
+    for r in rows:
+        row = _row_to_dict(r)
+        amt = float(row.get("amount") or 0)
+        running += amt
+        events.append({
+            "id": row["id"],
+            "dt": row.get("created_at", ""),
+            "created_at": row.get("created_at", ""),
+            "amount": amt,
+            "kind": row.get("kind", ""),
+            "note": row.get("note", ""),
+            "balance_after": round(running, 2),
+        })
+    events.reverse()  # newest first for UI
+    return events
+
+
+def get_loans_summary() -> dict[str, float]:
+    """Aggregate across all non-archived counterparties.
+
+    Returns:
+      i_owe   — sum over LENDER counterparties with positive balance
+      owed_to_me — sum over BORROWER counterparties with positive balance
+      net     — owed_to_me - i_owe (positive = net creditor position)
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT lc.side AS side,
+                   COALESCE(SUM(ll.amount), 0) AS bal
+            FROM loan_counterparties lc
+            LEFT JOIN loan_ledger ll ON ll.counterparty_id = lc.id
+            WHERE lc.archived = 0
+            GROUP BY lc.id, lc.side
+            """
+        ).fetchall()
+    i_owe = 0.0
+    owed_to_me = 0.0
+    for r in rows:
+        bal = float(r["bal"] or 0)
+        if bal <= 0:
+            continue
+        if str(r["side"]) == "LENDER":
+            i_owe += bal
+        else:
+            owed_to_me += bal
+    return {
+        "i_owe": round(i_owe, 2),
+        "owed_to_me": round(owed_to_me, 2),
+        "net": round(owed_to_me - i_owe, 2),
+    }
 
 
 def get_total_stock_value() -> float:

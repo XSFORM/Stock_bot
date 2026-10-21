@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center flex-wrap gap-3 mb-3">
+    <h4 class="mb-0">💸 {{ t.loans_title | default('Личные займы') }}</h4>
+    <form method="get" action="/loans" class="d-inline">
+      <input type="hidden" name="tab" value="{{ active_tab }}">
+      {% if show_archived %}
+        <input type="hidden" name="show_archived" value="0">
+        <button class="btn btn-sm btn-secondary">{{ t.hide_archived | default('Скрыть архивные') }}</button>
+      {% else %}
+        <input type="hidden" name="show_archived" value="1">
+        <button class="btn btn-sm btn-outline-secondary">{{ t.show_archived | default('Показать архивные') }}</button>
+      {% endif %}
+    </form>
+  </div>
+
+  {# ── Messages ────────────────────────────────────────────── #}
+  {% if request.query_params.get('msg') %}
+    {% set _m = request.query_params.get('msg') %}
+    {% set _k = _m.split(':')[0] %}
+    {% set _p = _m[(_k|length)+1:] if ':' in _m else '' %}
+    {% if _k == 'loan_cp_added' %}
+      <div class="alert alert-success py-2 small">{{ t.msg_loan_cp_added | default('Контрагент добавлен.') }}</div>
+    {% elif _k == 'loan_entry_added' %}
+      <div class="alert alert-success py-2 small">{{ t.msg_loan_entry_added | default('Запись добавлена:') }} {{ _p }} USD</div>
+    {% elif _k == 'loan_cp_archived' %}
+      <div class="alert alert-info py-2 small">{{ t.msg_loan_cp_archived | default('Контрагент заархивирован.') }}</div>
+    {% elif _k == 'loan_cp_unarchived' %}
+      <div class="alert alert-info py-2 small">{{ t.msg_loan_cp_unarchived | default('Контрагент возвращён из архива.') }}</div>
+    {% elif _k == 'loan_cp_not_found' %}
+      <div class="alert alert-warning py-2 small">{{ t.msg_loan_cp_not_found | default('Контрагент не найден.') }}</div>
+    {% elif _k.endswith('_error') %}
+      <div class="alert alert-danger py-2 small">{{ _m }}</div>
+    {% endif %}
+  {% endif %}
+
+  {# ── Summary tiles ──────────────────────────────────────── #}
+  <div class="row g-2 mb-3 small">
+    <div class="col-sm-4">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted">{{ t.loans_summary_i_owe | default('Я должен (всего)') }}</div>
+        <div class="fw-semibold fs-5 text-danger">{{ "%.2f"|format(summary.i_owe) }} USD</div>
+      </div>
+    </div>
+    <div class="col-sm-4">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted">{{ t.loans_summary_owed_to_me | default('Мне должны (всего)') }}</div>
+        <div class="fw-semibold fs-5 text-success">{{ "%.2f"|format(summary.owed_to_me) }} USD</div>
+      </div>
+    </div>
+    <div class="col-sm-4">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted">{{ t.loans_summary_net | default('Чистая позиция') }}</div>
+        <div class="fw-semibold fs-5
+          {% if summary.net > 0 %}text-success
+          {% elif summary.net < 0 %}text-danger
+          {% else %}text-muted{% endif %}">
+          {{ "%+.2f"|format(summary.net) }} USD
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Tabs ──────────────────────────────────────────────── #}
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'lender' %}active{% endif %}"
+         href="?tab=lender&show_archived={{ show_archived }}">
+        🔻 {{ t.loans_tab_lenders | default('Я должен (кредиторы)') }}
+        <span class="badge bg-danger-subtle text-danger-emphasis ms-1">{{ lenders|length }}</span>
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'borrower' %}active{% endif %}"
+         href="?tab=borrower&show_archived={{ show_archived }}">
+        🔺 {{ t.loans_tab_borrowers | default('Мне должны (должники)') }}
+        <span class="badge bg-success-subtle text-success-emphasis ms-1">{{ borrowers|length }}</span>
+      </a>
+    </li>
+  </ul>
+
+  {# ── Table ────────────────────────────────────────────── #}
+  {% set _list = lenders if active_tab == 'lender' else borrowers %}
+  {% set _balance_positive_class = 'text-danger' if active_tab == 'lender' else 'text-success' %}
+  <table class="table table-sm table-striped align-middle">
+    <thead>
+      <tr>
+        <th>{{ t.lbl_name | default('Имя') }}</th>
+        <th>{{ t.lbl_phone | default('Телефон') }}</th>
+        <th>{{ t.lbl_note | default('Заметка') }}</th>
+        <th class="text-end">{{ t.loans_col_balance | default('Текущий баланс') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for cp in _list %}
+      <tr {% if cp.archived %}class="text-muted"{% endif %}>
+        <td>
+          <a href="/loans/{{ cp.id }}">{{ cp.name }}</a>
+          {% if cp.archived %}<span class="badge bg-secondary ms-1">{{ t.badge_archived | default('архив') }}</span>{% endif %}
+        </td>
+        <td>{{ cp.phone or '—' }}</td>
+        <td>{{ cp.note or '—' }}</td>
+        <td class="text-end">
+          {% if cp.balance > 0 %}
+            <span class="fw-semibold {{ _balance_positive_class }}">{{ "%.2f"|format(cp.balance) }} USD</span>
+          {% elif cp.balance < 0 %}
+            <span class="text-muted">{{ "%.2f"|format(cp.balance) }} USD</span>
+          {% else %}
+            <span class="text-muted">0.00 USD</span>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          <a href="/loans/{{ cp.id }}" class="btn btn-sm btn-outline-primary">
+            {{ t.loans_btn_open | default('Открыть') }}
+          </a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="text-muted text-center">{{ t.loans_empty | default('Пока никого.') }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {# ── Add counterparty ──────────────────────────────────── #}
+  <h6 class="mt-4 mb-2">
+    {% if active_tab == 'lender' %}
+      ➕ {{ t.loans_add_lender | default('Добавить кредитора (кому я должен)') }}
+    {% else %}
+      ➕ {{ t.loans_add_borrower | default('Добавить должника (кто мне должен)') }}
+    {% endif %}
+  </h6>
+  <form method="post" action="/loans/add" class="row g-2 align-items-end">
+    <input type="hidden" name="side" value="{{ 'LENDER' if active_tab == 'lender' else 'BORROWER' }}">
+    <div class="col-sm-4">
+      <label class="form-label small mb-1">{{ t.lbl_name | default('Имя') }} *</label>
+      <input type="text" name="name" required class="form-control form-control-sm" placeholder="Иванов (сосед)">
+    </div>
+    <div class="col-sm-3">
+      <label class="form-label small mb-1">{{ t.lbl_phone | default('Телефон') }}</label>
+      <input type="text" name="phone" class="form-control form-control-sm">
+    </div>
+    <div class="col-sm-3">
+      <label class="form-label small mb-1">{{ t.lbl_note | default('Заметка') }}</label>
+      <input type="text" name="note" class="form-control form-control-sm">
+    </div>
+    <div class="col-sm-2">
+      <button type="submit" class="btn btn-sm btn-primary w-100">
+        {{ t.btn_add | default('Добавить') }}
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
