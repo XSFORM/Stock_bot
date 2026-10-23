@@ -28,10 +28,29 @@
         {% endfor %}
       </select>
     </div>
+    {% if channel_options and channel_options|length > 1 %}
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-1">{{ t.profit_channel | default('Канал продаж') }}</label>
+      <select name="channel" class="form-select form-select-sm">
+        <option value="all"    {% if channel == 'all'    %}selected{% endif %}>{{ t.profit_channel_all    | default('Общий (все)') }}</option>
+        <option value="opt"    {% if channel == 'opt'    %}selected{% endif %}>{{ t.profit_channel_opt    | default('🤝 Опт') }}</option>
+        <option value="retail" {% if channel == 'retail' %}selected{% endif %}>{{ t.profit_channel_retail | default('🏪 Розница') }}</option>
+      </select>
+    </div>
+    {% endif %}
     <div class="col-auto">
       <button type="submit" class="btn btn-sm btn-primary">{{ t.btn_apply | default('Применить') }}</button>
     </div>
   </form>
+  {% if channel == 'retail' %}
+    <div class="alert alert-info py-2 small">
+      {{ t.profit_channel_retail_note | default('Показана ТОЛЬКО розница (инвойсы с флагом is_retail=1). Возвраты не включены — они относятся к оптовому процессу.') }}
+    </div>
+  {% elif channel == 'opt' %}
+    <div class="alert alert-info py-2 small">
+      {{ t.profit_channel_opt_note | default('Показан ТОЛЬКО опт (без розничных сводных накладных).') }}
+    </div>
+  {% endif %}
 
   {# ─── KPI cards ─── #}
   <div class="row g-2 mb-3">

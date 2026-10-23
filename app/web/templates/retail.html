@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center flex-wrap gap-3 mb-3">
+    <h4 class="mb-0">🏪 {{ retail_shop_name }} — {{ t.retail_title | default('Розница') }}</h4>
+    <span class="small text-muted">
+      {{ t.retail_current_rate | default('Курс:') }}
+      <strong>{{ "%.4f"|format(retail_tmt_rate) }}</strong> TMT/USD ·
+      {{ t.retail_partner_pct_label | default('Партнёр:') }}
+      <strong>{{ retail_partner_pct|int }}%</strong>
+      ({{ retail_partner_name }})
+    </span>
+    <a href="/admin/settings#retail" class="small">{{ t.retail_edit_settings | default('⚙ Настройки') }}</a>
+  </div>
+
+  {# ── Messages ────────────────────────────────────────────── #}
+  {% if request.query_params.get('msg') %}
+    {% set _m = request.query_params.get('msg') %}
+    {% set _k = _m.split(':')[0] %}
+    {% set _p = _m[(_k|length)+1:] if ':' in _m else '' %}
+    {% if _k == 'retail_session_opened' %}
+      <div class="alert alert-success py-2 small">{{ t.msg_retail_session_opened | default('Неделя открыта.') }}</div>
+    {% elif _k == 'retail_line_added' %}
+      <div class="alert alert-success py-2 small">{{ t.msg_retail_line_added | default('Строка добавлена.') }}</div>
+    {% elif _k == 'retail_line_deleted' %}
+      <div class="alert alert-info py-2 small">{{ t.msg_retail_line_deleted | default('Строка удалена.') }}</div>
+    {% elif _k == 'retail_no_active' %}
+      <div class="alert alert-warning py-2 small">{{ t.msg_retail_no_active | default('Открой неделю сначала.') }}</div>
+    {% elif _k.endswith('_error') %}
+      <div class="alert alert-danger py-2 small">{{ _m }}</div>
+    {% endif %}
+  {% endif %}
+
+  {# ── No active session — show "Start week" button ────────── #}
+  {% if not active_session %}
+    <div class="text-center py-5 border rounded bg-light">
+      <p class="text-muted mb-3">{{ t.retail_no_week | default('Активной недели нет.') }}</p>
+      <form method="post" action="/retail/start" class="d-inline">
+        <button class="btn btn-primary btn-lg">
+          📘 {{ t.retail_start_week | default('Открыть новую неделю') }}
+        </button>
+      </form>
+    </div>
+  {% else %}
+    {# ── Active session ──────────────────────────────────── #}
+    <div class="mb-3 small text-muted">
+      {{ t.retail_week_opened_at | default('Неделя открыта:') }}
+      <strong>{{ active_session.opened_at[:16] | replace('T',' ') }}</strong>
+      · ID {{ active_session.id }}
+    </div>
+
+    {# ── Totals summary ─────────────────────────────────── #}
+    <div class="row g-2 mb-3 small">
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted">{{ t.retail_total_tmt | default('Собрано TMT') }}</div>
+          <div class="fw-semibold fs-5">{{ "%.0f"|format(totals.total_tmt) }} m</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted">{{ t.retail_total_sold | default('Продано USD') }}</div>
+          <div class="fw-semibold fs-5">{{ "%.2f"|format(totals.total_sold_usd) }} $</div>
+          <div class="small text-muted">{{ t.retail_qty | default('Количество:') }} {{ "%.0f"|format(totals.total_qty) }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted">{{ t.retail_profit_total | default('Прибыль') }}</div>
+          <div class="fw-semibold fs-5 text-success">{{ "%.2f"|format(totals.total_profit_usd) }} $</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="text-muted">
+            {{ t.retail_split_partner | default('Партнёру:') }} {{ retail_partner_pct|int }}%
+          </div>
+          <div class="fw-semibold text-warning">{{ "%.2f"|format(totals.partner_share_usd) }} $</div>
+          <div class="small text-muted">
+            {{ t.retail_split_me | default('Моё:') }}
+            <strong>{{ "%.2f"|format(totals.my_share_usd) }} $</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Add line form ──────────────────────────────────── #}
+    <h6>{{ t.retail_add_line | default('Добавить строку') }}</h6>
+    <form method="post" action="/retail/line/add" class="border rounded p-3 mb-3" id="retailAddForm">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label small mb-1">{{ t.retail_product | default('Товар') }} *</label>
+          <select name="product_id" required class="form-select form-select-sm" id="retailProductSelect">
+            <option value="">— {{ t.retail_pick_product | default('выбери модель') }} —</option>
+            {% for p in products %}
+            <option value="{{ p.id }}" data-cost="{{ "%.4f"|format(p.wh_price or 0) }}">
+              {{ p.brand }} {{ p.model }} — {{ p.name }}
+              ({{ "%.2f"|format(p.wh_price or 0) }}$)
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-1">
+          <label class="form-label small mb-1">{{ t.retail_qty_label | default('Шт.') }}</label>
+          <input type="number" step="1" min="1" value="1" name="qty" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">{{ t.retail_kind | default('Тип') }}</label>
+          <select name="kind" class="form-select form-select-sm" id="retailKindSelect">
+            <option value="RETAIL">🏪 {{ t.retail_kind_retail | default('Розница (TMT)') }}</option>
+            <option value="WHOLESALE">🤝 {{ t.retail_kind_wholesale | default('Опт (USD)') }}</option>
+            <option value="COST_PRICE">🎁 {{ t.retail_kind_cost | default('По приходной') }}</option>
+          </select>
+        </div>
+        <div class="col-md-2" id="retailTmtField">
+          <label class="form-label small mb-1">{{ t.retail_tmt_price | default('Цена TMT') }}</label>
+          <input type="number" step="0.01" min="0" name="tmt_price" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2" id="retailRateField">
+          <label class="form-label small mb-1">{{ t.retail_rate_label | default('Курс') }}</label>
+          <input type="number" step="0.0001" min="0" name="exchange_rate"
+                 value="{{ "%.4f"|format(retail_tmt_rate) }}"
+                 class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2 d-none" id="retailUsdField">
+          <label class="form-label small mb-1">{{ t.retail_usd_price | default('Цена USD') }}</label>
+          <input type="number" step="0.01" min="0" name="unit_sale_usd" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-12 col-lg-3">
+          <label class="form-label small mb-1">{{ t.retail_note | default('Заметка') }}</label>
+          <input type="text" name="note" class="form-control form-control-sm"
+                 placeholder="{{ t.retail_note_ph | default('необязательно') }}">
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-primary btn-sm w-100">
+            ➕ {{ t.retail_add_btn | default('Добавить') }}
+          </button>
+        </div>
+      </div>
+      <div class="mt-2 small text-muted" id="retailLivePreview"></div>
+    </form>
+
+    {# ── Lines table ────────────────────────────────────── #}
+    <h6>{{ t.retail_lines_heading | default('Строки недели') }}</h6>
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>{{ t.retail_col_time | default('Время') }}</th>
+            <th>{{ t.retail_col_product | default('Товар') }}</th>
+            <th class="text-end">{{ t.retail_col_qty | default('Шт.') }}</th>
+            <th>{{ t.retail_col_kind | default('Тип') }}</th>
+            <th class="text-end">{{ t.retail_col_tmt | default('TMT') }}</th>
+            <th class="text-end">{{ t.retail_col_sale | default('Продано $') }}</th>
+            <th class="text-end">{{ t.retail_col_cost | default('Приход $') }}</th>
+            <th class="text-end">{{ t.retail_col_profit | default('Прибыль') }}</th>
+            <th class="text-end">{{ t.retail_col_partner | default('Партнёру') }}</th>
+            <th>{{ t.retail_col_note | default('Заметка') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in lines %}
+          <tr>
+            <td class="small text-muted">{{ (l.created_at or '')[11:16] }}</td>
+            <td>{{ l.brand }} {{ l.model }}
+              <div class="small text-muted">{{ l.name }}</div>
+            </td>
+            <td class="text-end">{{ "%.0f"|format(l.qty) }}</td>
+            <td>
+              {% if l.kind == 'RETAIL' %}
+                <span class="badge bg-primary-subtle text-primary-emphasis">🏪 {{ t.retail_kind_retail | default('Розница') }}</span>
+              {% elif l.kind == 'WHOLESALE' %}
+                <span class="badge bg-warning-subtle text-warning-emphasis">🤝 {{ t.retail_kind_wholesale | default('Опт') }}</span>
+              {% else %}
+                <span class="badge bg-secondary-subtle text-secondary-emphasis">🎁 {{ t.retail_kind_cost | default('По приходной') }}</span>
+              {% endif %}
+            </td>
+            <td class="text-end">{% if l.tmt_price %}{{ "%.0f"|format(l.tmt_price) }}{% else %}—{% endif %}</td>
+            <td class="text-end">{{ "%.2f"|format(l.unit_sale_usd * l.qty) }}</td>
+            <td class="text-end text-muted">{{ "%.2f"|format(l.unit_cost_usd * l.qty) }}</td>
+            <td class="text-end {% if l.line_profit_usd > 0 %}text-success{% elif l.line_profit_usd < 0 %}text-danger{% else %}text-muted{% endif %}">
+              {{ "%.2f"|format(l.line_profit_usd) }}
+            </td>
+            <td class="text-end text-warning">{{ "%.2f"|format(l.partner_share_usd) }}</td>
+            <td class="small text-muted">{{ l.note or '' }}</td>
+            <td class="text-end">
+              <form method="post" action="/retail/line/{{ l.id }}/delete" class="d-inline"
+                    onsubmit="return confirm('{{ t.retail_confirm_del_line | default('Удалить строку?') }}');">
+                <button type="submit" class="btn btn-sm btn-outline-danger">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="11" class="text-muted text-center">
+            {{ t.retail_no_lines | default('Пока ни одной продажи за эту неделю.') }}
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# ── Close week — placeholder for Э4 ────────────────── #}
+    {% if lines %}
+    <div class="d-flex gap-2 mt-3">
+      <a href="/retail/cards" class="btn btn-outline-secondary btn-sm">
+        💳 {{ t.retail_cards_link | default('Обнал картой') }}
+      </a>
+      <form method="post" action="/retail/close" class="d-inline ms-auto"
+            onsubmit="return confirm('{{ t.retail_confirm_close | default('Закрыть неделю и создать сводную накладную?') }}');">
+        <button type="submit" class="btn btn-success">
+          🔒 {{ t.retail_close_week | default('Закрыть неделю') }}
+          ({{ "%.2f"|format(totals.total_sold_usd) }} $)
+        </button>
+      </form>
+    </div>
+    {% endif %}
+  {% endif %}
+
+  {# ── History (closed weeks) ───────────────────────────── #}
+  {% if history %}
+  <h6 class="mt-4">📚 {{ t.retail_history_heading | default('Прошлые недели') }}</h6>
+  <table class="table table-sm table-striped align-middle">
+    <thead>
+      <tr>
+        <th>{{ t.retail_hist_opened | default('Открыта') }}</th>
+        <th>{{ t.retail_hist_closed | default('Закрыта') }}</th>
+        <th>{{ t.retail_hist_invoice | default('Накладная') }}</th>
+        <th class="text-end">{{ t.retail_hist_rate | default('Курс') }}</th>
+        <th>{{ t.retail_hist_shop | default('Магазин') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sess in history %}
+      <tr>
+        <td class="small">{{ (sess.opened_at or '')[:16] | replace('T',' ') }}</td>
+        <td class="small">{{ (sess.closed_at or '')[:16] | replace('T',' ') }}</td>
+        <td>
+          {% if sess.invoice_number %}
+            <a href="/sale/xlsx/view?n={{ sess.invoice_number }}">#{{ "%06d"|format(sess.invoice_number) }}</a>
+          {% else %}—{% endif %}
+        </td>
+        <td class="text-end">{{ "%.4f"|format(sess.tmt_rate_at_close or 0) }}</td>
+        <td>{{ sess.shop_name or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+<script>
+(function() {
+  // Toggle fields for the add-line form by kind.
+  var kindSel = document.getElementById('retailKindSelect');
+  var tmtField = document.getElementById('retailTmtField');
+  var rateField = document.getElementById('retailRateField');
+  var usdField = document.getElementById('retailUsdField');
+  var preview = document.getElementById('retailLivePreview');
+  var productSel = document.getElementById('retailProductSelect');
+  if (!kindSel) return;
+
+  function toggleFields() {
+    var k = kindSel.value;
+    tmtField.classList.toggle('d-none', k !== 'RETAIL');
+    rateField.classList.toggle('d-none', k !== 'RETAIL');
+    usdField.classList.toggle('d-none', k !== 'WHOLESALE');
+    recomputePreview();
+  }
+  kindSel.addEventListener('change', toggleFields);
+
+  function recomputePreview() {
+    if (!productSel.value) { preview.textContent = ''; return; }
+    var opt = productSel.options[productSel.selectedIndex];
+    var cost = parseFloat(opt.getAttribute('data-cost') || '0');
+    var qty = parseFloat(document.querySelector('[name=qty]').value || '1');
+    var k = kindSel.value;
+    var saleUsd = 0;
+    if (k === 'RETAIL') {
+      var tmt = parseFloat(document.querySelector('[name=tmt_price]').value || '0');
+      var rate = parseFloat(document.querySelector('[name=exchange_rate]').value || '0');
+      if (tmt > 0 && rate > 0) saleUsd = tmt / rate;
+    } else if (k === 'WHOLESALE') {
+      var usd = parseFloat(document.querySelector('[name=unit_sale_usd]').value || '0');
+      saleUsd = usd * qty;
+    } else {
+      saleUsd = cost * qty;
+    }
+    var totalCost = cost * qty;
+    var profit = saleUsd - totalCost;
+    var partner = profit * {{ retail_partner_pct }} / 100;
+    var me = profit - partner;
+    preview.innerHTML =
+      '💰 ' + '{{ t.retail_live_sold | default("Продано") }}' + ': <strong>' + saleUsd.toFixed(2) + ' $</strong>' +
+      ' · ' + '{{ t.retail_live_cost | default("приход") }}' + ' ' + totalCost.toFixed(2) + ' $' +
+      ' · {{ t.retail_live_profit | default("прибыль") }} ' +
+      '<span style="color:' + (profit>=0?'#2e8b57':'#d04444') + '">' + profit.toFixed(2) + ' $</span>' +
+      ' → ' + '{{ t.retail_live_partner | default("партнёру") }} ' + partner.toFixed(2) +
+      ' / ' + '{{ t.retail_live_me | default("моё") }} ' + me.toFixed(2);
+  }
+  document.querySelectorAll('[name=tmt_price],[name=exchange_rate],[name=unit_sale_usd],[name=qty]').forEach(function(el){
+    el.addEventListener('input', recomputePreview);
+  });
+  productSel.addEventListener('change', recomputePreview);
+  toggleFields();
+})();
+</script>
+{% endblock %}

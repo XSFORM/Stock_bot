@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white p-3 rounded shadow-sm">
+  <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <h4 class="mb-0">💳 {{ t.retail_cards_title | default('Обнал картой') }}</h4>
+    <a href="/retail" class="btn btn-sm btn-outline-secondary">← {{ t.btn_back | default('Назад к рознице') }}</a>
+  </div>
+  <p class="small text-muted">
+    {{ t.retail_cards_hint | default('Простой журнал для памяти — операции обналивания карточных платежей через твой счёт. В прибыль и в накладные НЕ входит.') }}
+  </p>
+
+  {% if request.query_params.get('msg') %}
+    {% set _m = request.query_params.get('msg') %}
+    {% if _m == 'retail_cashout_added' %}
+      <div class="alert alert-success py-2 small">{{ t.msg_retail_cashout_added | default('Записано.') }}</div>
+    {% elif _m == 'retail_cashout_deleted' %}
+      <div class="alert alert-info py-2 small">{{ t.msg_retail_cashout_deleted | default('Удалено.') }}</div>
+    {% elif _m.endswith('_error') %}
+      <div class="alert alert-danger py-2 small">{{ _m }}</div>
+    {% endif %}
+  {% endif %}
+
+  <div class="mb-3 small text-muted">
+    {{ t.retail_cards_total | default('Всего обналичено:') }}
+    <strong class="fs-5">{{ "%.0f"|format(total_tmt) }} m</strong>
+  </div>
+
+  <form method="post" action="/retail/cards/add" class="row g-2 align-items-end border rounded p-3 mb-3">
+    <div class="col-sm-3">
+      <label class="form-label small mb-1">{{ t.retail_cards_amount | default('Сумма TMT') }} *</label>
+      <input type="number" step="1" min="1" name="amount_tmt" required class="form-control form-control-sm">
+    </div>
+    <div class="col-sm-7">
+      <label class="form-label small mb-1">{{ t.retail_cards_note | default('Заметка') }}</label>
+      <input type="text" name="note" class="form-control form-control-sm"
+             placeholder="{{ t.retail_cards_note_ph | default('кому / за что') }}">
+    </div>
+    <div class="col-sm-2">
+      <button type="submit" class="btn btn-primary btn-sm w-100">
+        ➕ {{ t.btn_add | default('Добавить') }}
+      </button>
+    </div>
+  </form>
+
+  <table class="table table-sm table-striped align-middle">
+    <thead>
+      <tr>
+        <th>{{ t.lbl_date_time | default('Дата') }}</th>
+        <th class="text-end">{{ t.retail_cards_amount | default('Сумма TMT') }}</th>
+        <th>{{ t.lbl_note | default('Заметка') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in cashouts %}
+      <tr>
+        <td class="small">{{ (c.created_at or '')[:16] | replace('T', ' ') }}</td>
+        <td class="text-end">{{ "%.0f"|format(c.amount_tmt) }} m</td>
+        <td>{{ c.note or '—' }}</td>
+        <td class="text-end">
+          <form method="post" action="/retail/cards/{{ c.id }}/delete" class="d-inline"
+                onsubmit="return confirm('{{ t.retail_cards_confirm_del | default('Удалить запись?') }}');">
+            <button type="submit" class="btn btn-sm btn-outline-danger">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="text-muted text-center">
+        {{ t.retail_cards_empty | default('Записей ещё нет.') }}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

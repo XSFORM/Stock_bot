@@ -149,12 +149,53 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
         _total_row(base_row, "TOTAL", grand_total, put_qty=True, italic=True)
         total_row_idx = base_row
 
+    # --- Retail 50/50 profit block (only for shop invoices) ---
+    # Shown between the totals and the signatures when this invoice was
+    # created via /retail. Mirrors the handwritten weekly summary that
+    # the shop owner sends to their partner.
+    extra_row = total_row_idx
+    if invoice.get("is_retail"):
+        partner_pct = float(invoice.get("retail_partner_pct") or 50)
+        partner_name = str(invoice.get("retail_partner_name") or "").strip() or "Партнёр"
+        shop_name = str(invoice.get("retail_shop_name") or "").strip() or "Магазин"
+        total_cost = 0.0
+        for it in items:
+            cp = it.get("cost_price")
+            if cp is None:
+                continue
+            total_cost += float(cp) * float(it.get("qty") or 0)
+        profit = round(grand_total - total_cost, 2)
+        partner_share = round(profit * partner_pct / 100.0, 2)
+        my_share = round(profit - partner_share, 2)
+
+        heading_row = total_row_idx + 2
+        ws.cell(row=heading_row, column=1,
+                value=f"{shop_name} — отчёт о прибыли:").font = Font(bold=True)
+        ws.merge_cells(start_row=heading_row, start_column=1,
+                       end_row=heading_row, end_column=7)
+
+        def _retail_pair(r: int, label: str, value: float, bold: bool = False) -> None:
+            c_lbl = ws.cell(row=r, column=1, value=label)
+            if bold:
+                c_lbl.font = Font(bold=True)
+            c_val = ws.cell(row=r, column=7, value=value)
+            c_val.alignment = _RIGHT
+            c_val.number_format = "0.00"
+            if bold:
+                c_val.font = Font(bold=True)
+
+        _retail_pair(heading_row + 1, "Приход (себестоимость):", round(total_cost, 2))
+        _retail_pair(heading_row + 2, "Прибыль:", profit, bold=True)
+        _retail_pair(heading_row + 3, f"Доля партнёра ({partner_name}, {int(partner_pct)}%):", partner_share)
+        _retail_pair(heading_row + 4, f"Моя доля ({int(100 - partner_pct)}%):", my_share, bold=True)
+        extra_row = heading_row + 4
+
     # --- Signature block (two side-by-side signatures) ---
     # Leave 2 blank rows, then put Seller on the left half (cols A–C)
     # and Buyer on the right half (cols E–G). Merge each label into a
     # single visual cell so it prints nicely on one line. If the admin
     # has uploaded a signature PNG we overlay it on the seller row.
-    sig_row = total_row_idx + 3
+    sig_row = extra_row + 3
     ws.cell(row=sig_row, column=1, value="Seller: ______________________________").alignment = Alignment(horizontal="left")
     ws.merge_cells(start_row=sig_row, start_column=1, end_row=sig_row, end_column=3)
     ws.cell(row=sig_row, column=5, value="Buyer: ______________________________").alignment = Alignment(horizontal="left")

@@ -331,6 +331,48 @@ def generate_invoice_pdf(invoice: dict[str, Any],
     table.setStyle(style)
     story.append(table)
 
+    # ── Retail 50/50 profit block (only for shop invoices) ──────────────────
+    # Prints between totals and signatures when this invoice was created via
+    # /retail. Mirrors the owner's handwritten weekly summary.
+    if invoice.get("is_retail"):
+        partner_pct = float(invoice.get("retail_partner_pct") or 50)
+        partner_name = str(invoice.get("retail_partner_name") or "").strip() or "Партнёр"
+        shop_name = str(invoice.get("retail_shop_name") or "").strip() or "Магазин"
+        total_cost = 0.0
+        for it in items:
+            cp = it.get("cost_price")
+            if cp is None:
+                continue
+            total_cost += float(cp) * float(it.get("qty") or 0)
+        profit = round(grand_total - total_cost, 2)
+        partner_share = round(profit * partner_pct / 100.0, 2)
+        my_share = round(profit - partner_share, 2)
+
+        story.append(Spacer(1, 6 * mm))
+        story.append(Paragraph(
+            f"<b>{_esc(shop_name)} — отчёт о прибыли:</b>",
+            ParagraphStyle("retail_h", fontName=FONT_BOLD, fontSize=11, spaceAfter=2 * mm),
+        ))
+        retail_rows = [
+            ["Приход (себестоимость):",                                   f"{round(total_cost, 2):.2f}"],
+            ["Прибыль:",                                                   f"{profit:.2f}"],
+            [f"Доля партнёра ({_esc(partner_name)}, {int(partner_pct)}%):",
+                                                                           f"{partner_share:.2f}"],
+            [f"Моя доля ({int(100 - partner_pct)}%):",                     f"{my_share:.2f}"],
+        ]
+        retail_tbl = Table(retail_rows, colWidths=[130 * mm, 40 * mm])
+        retail_tbl.setStyle(TableStyle([
+            ("FONT",         (0, 0), (-1, -1), FONT, 10),
+            ("FONT",         (0, 1), (-1, 1),  FONT_BOLD, 10),
+            ("FONT",         (0, 3), (-1, 3),  FONT_BOLD, 10),
+            ("ALIGN",        (1, 0), (1, -1),  "RIGHT"),
+            ("TOPPADDING",   (0, 0), (-1, -1), 1),
+            ("BOTTOMPADDING",(0, 0), (-1, -1), 1),
+            ("LINEABOVE",    (0, 1), (-1, 1),  0.3, colors.grey),
+            ("LINEABOVE",    (0, 3), (-1, 3),  0.3, colors.grey),
+        ]))
+        story.append(retail_tbl)
+
     # ── Signature block ─────────────────────────────────────────────────────
     # Two side-by-side columns: Seller on the left, Buyer on the right.
     # English-only labels — bold Cyrillic doesn't render reliably on servers

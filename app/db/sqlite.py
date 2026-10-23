@@ -227,6 +227,91 @@ def _ensure_loan_ledger_table(conn: sqlite3.Connection) -> None:
     )
 
 
+# ─── Retail (магазин) — опциональный модуль ───────────────────────────────────
+#
+# Структура повторяет тетрадь: одна «неделя» = одна retail_session.
+# В ней — набор retail_lines (каждая продажа штучно).
+# При закрытии недели session получает closed_at + invoice_number,
+# все строки архивируются вместе с ней.
+#
+# retail_card_cashouts — отдельный журнал обнальных операций «не продажа», для памяти.
+
+def _ensure_retail_sessions_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS retail_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            opened_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            closed_at TEXT,
+            invoice_number INTEGER,
+            partner_pct REAL NOT NULL DEFAULT 50,
+            partner_name TEXT NOT NULL DEFAULT '',
+            shop_name TEXT NOT NULL DEFAULT '',
+            tmt_rate_at_close REAL,
+            note TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_retail_sessions_closed "
+        "ON retail_sessions(closed_at)"
+    )
+
+
+def _ensure_retail_lines_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS retail_lines (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            product_id INTEGER NOT NULL,
+            qty REAL NOT NULL,
+            kind TEXT NOT NULL CHECK(kind IN ('RETAIL','WHOLESALE','COST_PRICE')),
+            tmt_price REAL,
+            exchange_rate REAL,
+            unit_cost_usd REAL NOT NULL,
+            unit_sale_usd REAL NOT NULL,
+            line_profit_usd REAL NOT NULL,
+            partner_share_usd REAL NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY (session_id) REFERENCES retail_sessions(id) ON DELETE CASCADE,
+            FOREIGN KEY (product_id) REFERENCES products(id)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_retail_lines_session "
+        "ON retail_lines(session_id)"
+    )
+
+
+def _ensure_retail_card_cashouts_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS retail_card_cashouts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            amount_tmt REAL NOT NULL,
+            note TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+
+
+def _ensure_invoice_retail_columns(conn: sqlite3.Connection) -> None:
+    """Add retail-related columns to invoices (nullable, non-breaking)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(invoices)")}
+    if "is_retail" not in cols:
+        conn.execute("ALTER TABLE invoices ADD COLUMN is_retail INTEGER NOT NULL DEFAULT 0")
+    if "retail_partner_pct" not in cols:
+        conn.execute("ALTER TABLE invoices ADD COLUMN retail_partner_pct REAL")
+    if "retail_partner_name" not in cols:
+        conn.execute("ALTER TABLE invoices ADD COLUMN retail_partner_name TEXT")
+    if "retail_shop_name" not in cols:
+        conn.execute("ALTER TABLE invoices ADD COLUMN retail_shop_name TEXT")
+
+
 def _ensure_supplier_ledger_table(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -923,6 +1008,10 @@ def init_db() -> None:
         _seed_default_income_categories(conn)
         _ensure_loan_counterparties_table(conn)
         _ensure_loan_ledger_table(conn)
+        _ensure_retail_sessions_table(conn)
+        _ensure_retail_lines_table(conn)
+        _ensure_retail_card_cashouts_table(conn)
+        _ensure_invoice_retail_columns(conn)
         conn.commit()
 
 
@@ -1909,6 +1998,7 @@ def get_profit_report(
     date_from: str,
     date_to: str,
     warehouse_codes: Optional[list[str]] = None,
+    channel: str = "all",
 ) -> dict[str, Any]:
     """
     Gross profit report for sales in [date_from, date_to] (inclusive dates).
@@ -1943,6 +2033,16 @@ def get_profit_report(
         wh_filter_sql_sale = f" AND c.warehouse_code IN ({placeholders})"
         wh_filter_sql_ret  = f" AND ri_inv.warehouse_code IN ({placeholders})"
         params_common.extend(warehouse_codes)
+    # Channel filter: retail/opt split by invoice.is_retail. Returns are a
+    # separate workflow (no is_retail flag) → excluded from "retail" view.
+    ch = (channel or "all").lower()
+    channel_filter_sale = ""
+    skip_returns = False
+    if ch == "retail":
+        channel_filter_sale = " AND COALESCE(i.is_retail, 0) = 1"
+        skip_returns = True
+    elif ch == "opt":
+        channel_filter_sale = " AND COALESCE(i.is_retail, 0) = 0"
 
     with _connect() as conn:
         # ─── SALES ─────────────────────────────────────────────────────────
@@ -1961,26 +2061,30 @@ def get_profit_report(
             WHERE date(i.created_at) BETWEEN ? AND ?
               AND c.status = 'CLOSED'
               {wh_filter_sql_sale}
+              {channel_filter_sale}
             """,
             params_common,
         ).fetchall()
 
         # ─── RETURNS ───────────────────────────────────────────────────────
-        return_rows = conn.execute(
-            f"""
-            SELECT ri.qty, ri.unit_price, ri.cost_price, ri.product_id, ri.free_line,
-                   p.brand, p.model, p.name,
-                   ri_inv.client_id, cl.name AS client_name
-            FROM return_items ri
-            JOIN return_invoices ri_inv ON ri_inv.id = ri.invoice_id
-            LEFT JOIN products p  ON p.id = ri.product_id
-            LEFT JOIN clients  cl ON cl.id = ri_inv.client_id
-            WHERE date(ri_inv.created_at) BETWEEN ? AND ?
-              AND ri_inv.status = 'DONE'
-              {wh_filter_sql_ret}
-            """,
-            params_common,
-        ).fetchall()
+        if skip_returns:
+            return_rows = []
+        else:
+            return_rows = conn.execute(
+                f"""
+                SELECT ri.qty, ri.unit_price, ri.cost_price, ri.product_id, ri.free_line,
+                       p.brand, p.model, p.name,
+                       ri_inv.client_id, cl.name AS client_name
+                FROM return_items ri
+                JOIN return_invoices ri_inv ON ri_inv.id = ri.invoice_id
+                LEFT JOIN products p  ON p.id = ri.product_id
+                LEFT JOIN clients  cl ON cl.id = ri_inv.client_id
+                WHERE date(ri_inv.created_at) BETWEEN ? AND ?
+                  AND ri_inv.status = 'DONE'
+                  {wh_filter_sql_ret}
+                """,
+                params_common,
+            ).fetchall()
 
     # ─── Aggregate ─────────────────────────────────────────────────────────
     revenue = cost = 0.0
@@ -4183,6 +4287,395 @@ def get_loans_summary() -> dict[str, float]:
     }
 
 
+# ─── Retail CRUD (opt-in module) ──────────────────────────────────────────────
+
+# Allowed line kinds.
+_RETAIL_KINDS = ("RETAIL", "WHOLESALE", "COST_PRICE")
+
+
+def _compute_retail_line_usd(
+    kind: str,
+    qty: float,
+    unit_cost_usd: float,
+    tmt_price: Optional[float],
+    exchange_rate: Optional[float],
+    unit_sale_usd_override: Optional[float],
+) -> tuple[float, float]:
+    """Return (unit_sale_usd, line_profit_usd) for a retail line.
+
+    Encodes the three line kinds consistently so the UI never has to
+    duplicate the formulas:
+      RETAIL     — tmt_price is for the whole line; usd = tmt / rate / qty
+      WHOLESALE  — unit_sale_usd_override is the per-unit USD price
+      COST_PRICE — sale == cost, profit == 0 (home/gift/boss)
+    """
+    qty = max(1e-9, float(qty))
+    if kind == "RETAIL":
+        if not tmt_price or not exchange_rate or exchange_rate <= 0:
+            return 0.0, 0.0
+        line_usd = float(tmt_price) / float(exchange_rate)
+        unit_sale = line_usd / qty
+    elif kind == "WHOLESALE":
+        unit_sale = float(unit_sale_usd_override or 0)
+        line_usd = unit_sale * qty
+    else:  # COST_PRICE
+        unit_sale = float(unit_cost_usd)
+        line_usd = unit_sale * qty
+    line_profit = line_usd - (float(unit_cost_usd) * qty)
+    return round(unit_sale, 4), round(line_profit, 2)
+
+
+def retail_get_active_session() -> Optional[dict[str, Any]]:
+    """Return the open retail session (closed_at IS NULL) or None."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM retail_sessions WHERE closed_at IS NULL "
+            "ORDER BY opened_at DESC LIMIT 1"
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+
+
+def retail_start_session() -> tuple[Optional[int], str]:
+    """Open a new retail session; refuses if one is already active."""
+    active = retail_get_active_session()
+    if active:
+        return None, "already_open"
+    partner_pct = get_retail_partner_pct()
+    partner_name = get_retail_partner_name()
+    shop_name = get_retail_shop_name()
+    try:
+        with _connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO retail_sessions (partner_pct, partner_name, shop_name) "
+                "VALUES (?, ?, ?)",
+                (partner_pct, partner_name, shop_name),
+            )
+            conn.commit()
+            return int(cur.lastrowid), ""
+    except Exception as exc:
+        return None, str(exc)
+
+
+def retail_get_session(session_id: int) -> Optional[dict[str, Any]]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM retail_sessions WHERE id = ?", (session_id,)
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+
+
+def retail_list_sessions(limit: int = 20) -> list[dict[str, Any]]:
+    """Closed sessions newest-first (for history page)."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM retail_sessions "
+            "WHERE closed_at IS NOT NULL "
+            "ORDER BY closed_at DESC LIMIT ?",
+            (int(limit),),
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
+def retail_list_lines(session_id: int) -> list[dict[str, Any]]:
+    """Lines for a session + joined product brand/model/name for display."""
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT rl.*,
+                   p.brand   AS brand,
+                   p.model   AS model,
+                   p.name    AS name,
+                   p.barcode AS barcode
+            FROM retail_lines rl
+            LEFT JOIN products p ON p.id = rl.product_id
+            WHERE rl.session_id = ?
+            ORDER BY rl.created_at ASC, rl.id ASC
+            """,
+            (int(session_id),),
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
+def retail_add_line(
+    session_id: int,
+    product_id: int,
+    qty: float,
+    kind: str,
+    tmt_price: Optional[float] = None,
+    exchange_rate: Optional[float] = None,
+    unit_sale_usd_override: Optional[float] = None,
+    partner_pct: Optional[float] = None,
+    note: str = "",
+) -> tuple[Optional[int], str]:
+    if kind not in _RETAIL_KINDS:
+        return None, "bad_kind"
+    try:
+        q = float(qty)
+        if q <= 0:
+            return None, "non_positive_qty"
+    except (ValueError, TypeError):
+        return None, "bad_qty"
+    with _connect() as conn:
+        # Verify product exists; fetch wh_price as unit cost snapshot.
+        pr = conn.execute(
+            "SELECT wh_price FROM products WHERE id = ?", (int(product_id),)
+        ).fetchone()
+        if pr is None:
+            return None, "product_not_found"
+        unit_cost = float(pr["wh_price"] or 0)
+        unit_sale, line_profit = _compute_retail_line_usd(
+            kind, q, unit_cost, tmt_price, exchange_rate, unit_sale_usd_override,
+        )
+        pct = float(partner_pct) if partner_pct is not None else get_retail_partner_pct()
+        partner_share = round(line_profit * pct / 100.0, 2)
+        cur = conn.execute(
+            "INSERT INTO retail_lines "
+            "(session_id, product_id, qty, kind, tmt_price, exchange_rate, "
+            " unit_cost_usd, unit_sale_usd, line_profit_usd, partner_share_usd, note) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (int(session_id), int(product_id), q, kind,
+             (float(tmt_price) if tmt_price not in (None, "") else None),
+             (float(exchange_rate) if exchange_rate not in (None, "") else None),
+             unit_cost, unit_sale, round(line_profit, 2), partner_share,
+             (note or "").strip()),
+        )
+        conn.commit()
+        return int(cur.lastrowid), ""
+
+
+def retail_delete_line(line_id: int) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            conn.execute("DELETE FROM retail_lines WHERE id = ?", (int(line_id),))
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def retail_session_totals(session_id: int) -> dict[str, float]:
+    """Aggregate totals for a session — used by UI and by close-week logic."""
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT
+              COALESCE(SUM(CASE WHEN kind='RETAIL' THEN tmt_price ELSE 0 END), 0) AS total_tmt,
+              COALESCE(SUM(unit_sale_usd * qty),       0) AS total_sold_usd,
+              COALESCE(SUM(unit_cost_usd * qty),       0) AS total_cost_usd,
+              COALESCE(SUM(line_profit_usd),           0) AS total_profit_usd,
+              COALESCE(SUM(partner_share_usd),         0) AS partner_share_usd,
+              COUNT(*)                                     AS line_count,
+              COALESCE(SUM(qty),                       0) AS total_qty
+            FROM retail_lines WHERE session_id = ?
+            """,
+            (int(session_id),),
+        ).fetchone()
+    totals = _row_to_dict(row) if row else {}
+    tot_profit = float(totals.get("total_profit_usd") or 0)
+    partner = float(totals.get("partner_share_usd") or 0)
+    return {
+        "total_tmt": round(float(totals.get("total_tmt") or 0), 2),
+        "total_sold_usd": round(float(totals.get("total_sold_usd") or 0), 2),
+        "total_cost_usd": round(float(totals.get("total_cost_usd") or 0), 2),
+        "total_profit_usd": round(tot_profit, 2),
+        "partner_share_usd": round(partner, 2),
+        "my_share_usd": round(tot_profit - partner, 2),
+        "line_count": int(totals.get("line_count") or 0),
+        "total_qty": round(float(totals.get("total_qty") or 0), 2),
+    }
+
+
+def retail_close_session_mark(
+    session_id: int, invoice_number: int, tmt_rate: float
+) -> tuple[bool, str]:
+    """Mark a retail session as closed with its invoice number."""
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE retail_sessions SET closed_at = datetime('now','localtime'), "
+                "invoice_number = ?, tmt_rate_at_close = ? WHERE id = ?",
+                (int(invoice_number), float(tmt_rate), int(session_id)),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def retail_close_session_full(
+    session_id: int,
+) -> tuple[bool, str, Optional[int]]:
+    """Close a retail session: create one aggregate invoice on the summary
+    client, decrement stock, auto-pay the balance, mark session closed.
+
+    Returns (ok, error_code, invoice_number).
+
+    Steps inside a single DB transaction:
+      1. load session + lines
+      2. verify stock in retail_warehouse_code is sufficient for every line
+      3. create a CLOSED cart on retail_summary_client_id
+      4. insert cart_items with unit_price = retail_lines.unit_sale_usd,
+         cost_price = retail_lines.unit_cost_usd
+      5. decrement stock, write stock_ops SALE rows (source='RETAIL')
+      6. create invoice with next number, is_retail=1, partner fields
+      7. write a client_ledger payment for the invoice total → balance 0
+      8. mark the retail_session closed with invoice_number
+    """
+    session = retail_get_session(int(session_id))
+    if not session:
+        return False, "session_not_found", None
+    if session.get("closed_at"):
+        return False, "already_closed", None
+    client_id = get_retail_summary_client_id()
+    if not client_id:
+        return False, "no_summary_client", None
+    warehouse = get_retail_warehouse_code()
+    partner_pct = float(session.get("partner_pct") or get_retail_partner_pct())
+    partner_name = session.get("partner_name") or get_retail_partner_name()
+    shop_name = session.get("shop_name") or get_retail_shop_name()
+    rate = get_retail_tmt_rate()
+
+    with _connect() as conn:
+        try:
+            lines = conn.execute(
+                "SELECT * FROM retail_lines WHERE session_id = ? ORDER BY id ASC",
+                (int(session_id),),
+            ).fetchall()
+            if not lines:
+                return False, "empty_session", None
+            # Verify stock
+            needed: dict[int, float] = {}
+            for ln in lines:
+                pid = int(ln["product_id"])
+                needed[pid] = needed.get(pid, 0.0) + float(ln["qty"])
+            for pid, qty_needed in needed.items():
+                row = conn.execute(
+                    "SELECT COALESCE(qty, 0) AS q FROM stock "
+                    "WHERE warehouse_code = ? AND product_id = ?",
+                    (warehouse, pid),
+                ).fetchone()
+                have = float(row["q"]) if row else 0.0
+                if have < qty_needed:
+                    pr = conn.execute(
+                        "SELECT brand, model FROM products WHERE id = ?", (pid,)
+                    ).fetchone()
+                    label = f"{pr['brand']} {pr['model']}" if pr else f"#{pid}"
+                    return False, f"insufficient_stock:{label}", None
+            # Verify client exists
+            cl = conn.execute(
+                "SELECT id FROM clients WHERE id = ?", (int(client_id),)
+            ).fetchone()
+            if not cl:
+                return False, "client_not_found", None
+
+            # 3. CLOSED cart (status directly CLOSED — no sale window)
+            cur = conn.execute(
+                "INSERT INTO carts (client_id, warehouse_code, status) VALUES (?, ?, 'CLOSED')",
+                (int(client_id), warehouse),
+            )
+            cart_id = int(cur.lastrowid)
+
+            # 4. cart_items + 5. stock + stock_ops
+            total = 0.0
+            for ln in lines:
+                qty = float(ln["qty"])
+                unit_price = float(ln["unit_sale_usd"])
+                line_total = round(unit_price * qty, 2)
+                total += line_total
+                conn.execute(
+                    "INSERT INTO cart_items "
+                    "(cart_id, product_id, qty, price_mode, unit_price, total, cost_price) "
+                    "VALUES (?, ?, ?, 'custom', ?, ?, ?)",
+                    (cart_id, int(ln["product_id"]), qty, unit_price,
+                     line_total, float(ln["unit_cost_usd"])),
+                )
+                conn.execute(
+                    "UPDATE stock SET qty = qty - ? "
+                    "WHERE warehouse_code = ? AND product_id = ?",
+                    (qty, warehouse, int(ln["product_id"])),
+                )
+                conn.execute(
+                    "INSERT INTO stock_ops "
+                    "(op_type, source, warehouse_code, product_id, qty) "
+                    "VALUES ('SALE', 'RETAIL', ?, ?, ?)",
+                    (warehouse, int(ln["product_id"]), qty),
+                )
+            total = round(total, 2)
+
+            # 6. invoice
+            next_num = conn.execute(
+                "SELECT COALESCE(MAX(number), 0) + 1 AS n FROM invoices"
+            ).fetchone()["n"]
+            conn.execute(
+                "INSERT INTO invoices "
+                "(cart_id, number, total, discount_pct, "
+                " is_retail, retail_partner_pct, retail_partner_name, retail_shop_name) "
+                "VALUES (?, ?, ?, 0, 1, ?, ?, ?)",
+                (cart_id, int(next_num), total,
+                 partner_pct, partner_name, shop_name),
+            )
+
+            # 7. ledger payment (balance back to 0)
+            if total > 0:
+                conn.execute(
+                    "INSERT INTO client_ledger (client_id, amount, note) VALUES (?, ?, ?)",
+                    (int(client_id), total,
+                     f"RETAIL #{int(next_num):06d}"),
+                )
+
+            # 8. mark session closed
+            conn.execute(
+                "UPDATE retail_sessions SET closed_at = datetime('now','localtime'), "
+                "invoice_number = ?, tmt_rate_at_close = ? WHERE id = ?",
+                (int(next_num), float(rate), int(session_id)),
+            )
+            conn.commit()
+            return True, "", int(next_num)
+        except Exception as exc:
+            conn.rollback()
+            return False, str(exc), None
+
+
+# ─── Retail card-cashouts (просто журнал, в прибыль не влияет) ────────────────
+
+def retail_cashout_add(amount_tmt: float, note: str = "") -> tuple[bool, str]:
+    try:
+        amt = float(amount_tmt)
+        if amt <= 0:
+            return False, "non_positive"
+    except (ValueError, TypeError):
+        return False, "bad_amount"
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "INSERT INTO retail_card_cashouts (amount_tmt, note) VALUES (?, ?)",
+                (amt, (note or "").strip()),
+            )
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def retail_cashout_delete(cashout_id: int) -> tuple[bool, str]:
+    try:
+        with _connect() as conn:
+            conn.execute("DELETE FROM retail_card_cashouts WHERE id = ?", (int(cashout_id),))
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def retail_cashout_list(limit: int = 100) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM retail_card_cashouts ORDER BY created_at DESC LIMIT ?",
+            (int(limit),),
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
 def get_total_stock_value() -> float:
     with _connect() as conn:
         row = conn.execute(
@@ -5198,6 +5691,7 @@ def get_invoice_items_by_number(number: int) -> list[dict[str, Any]]:
         rows = conn.execute(
             """
             SELECT ci.id, ci.qty, ci.price_mode, ci.unit_price, ci.total,
+                   ci.cost_price,
                    ci.free_line, ci.free_name,
                    COALESCE(ci.free_brand, '')   AS free_brand,
                    COALESCE(ci.free_model, '')   AS free_model,
@@ -6556,6 +7050,80 @@ def get_pocket_price_show_tmt() -> bool:
     Falls back to False when the setting is missing.
     """
     return get_setting("pocket_price_show_tmt", "0") == "1"
+
+
+# ── Retail module (магазин 1416 — опциональный раздел для продавцов, работающих
+# в партнёрстве 50/50 с владельцем бизнеса; выключен по умолчанию) ─────────────
+
+
+def get_retail_enabled() -> bool:
+    """Default OFF — the module is only useful for shops with a partner/owner split."""
+    return get_setting("retail_enabled", "0") == "1"
+
+
+def get_retail_tmt_rate() -> float:
+    """Current working TMT→USD rate for retail (separate from pocket_price_tmt_rate).
+
+    This is the rate used to convert customer TMT payments into USD when
+    computing retail profit. The admin updates it as the real market rate
+    changes. Fallback 18.20 (plausible current real rate as of 2026-10).
+    """
+    raw = get_setting("retail_tmt_rate", "")
+    if raw:
+        try:
+            v = float(raw)
+            if v > 0:
+                return v
+        except (ValueError, TypeError):
+            pass
+    return 18.20
+
+
+def get_retail_partner_pct() -> float:
+    """Partner's profit share in percent (0..100). Default 50 (50/50)."""
+    raw = get_setting("retail_partner_pct", "")
+    if raw:
+        try:
+            v = float(raw)
+            if 0 <= v <= 100:
+                return v
+        except (ValueError, TypeError):
+            pass
+    return 50.0
+
+
+def get_retail_partner_name() -> str:
+    """Human-readable partner name — printed in the invoice 50/50 block."""
+    return get_setting("retail_partner_name", "Начальник").strip() or "Начальник"
+
+
+def get_retail_shop_name() -> str:
+    return get_setting("retail_shop_name", "Магазин").strip() or "Магазин"
+
+
+def get_retail_summary_client_id() -> int:
+    """Client used as the aggregation counterparty for weekly retail invoices."""
+    raw = get_setting("retail_summary_client_id", "")
+    try:
+        return int(raw) if raw else 0
+    except (ValueError, TypeError):
+        return 0
+
+
+def get_retail_warehouse_code() -> str:
+    """Warehouse that retail items are pulled from on week-close. The admin
+    picks it in settings (defaults to the first warehouse that exists)."""
+    v = get_setting("retail_warehouse_code", "").strip()
+    if v:
+        return v
+    # Fallback: first warehouse in DB.
+    try:
+        whs = list_warehouses()
+        if whs:
+            return str(whs[0]["code"])
+    except Exception:
+        pass
+    return "MAIN"
 
 
 # ── Sessions ──────────────────────────────────────────────────────────────────

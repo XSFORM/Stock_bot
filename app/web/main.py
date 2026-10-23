@@ -204,6 +204,25 @@ from app.db.sqlite import (
     get_sale_default_markup,
     get_pocket_price_tmt_rate,
     get_pocket_price_show_tmt,
+    # retail module settings
+    get_retail_enabled,
+    get_retail_tmt_rate,
+    get_retail_partner_pct,
+    get_retail_partner_name,
+    get_retail_shop_name,
+    get_retail_summary_client_id,
+    # retail module CRUD
+    retail_get_active_session,
+    retail_start_session,
+    retail_list_lines,
+    retail_add_line,
+    retail_delete_line,
+    retail_session_totals,
+    retail_list_sessions,
+    retail_close_session_mark,
+    retail_cashout_add,
+    retail_cashout_list,
+    retail_cashout_delete,
     _ALLOWED_MARKUPS,
     create_session,
     is_valid_session,
@@ -459,6 +478,7 @@ def _render(request: Request, name: str, ctx: dict[str, Any]) -> HTMLResponse:
         "nav_total_suppliers_debt_usd": get_total_suppliers_debt(),
         "nav_stock_value_usd": get_total_stock_value(),
         "nav_loans_summary": get_loans_summary(),
+        "retail_enabled": get_retail_enabled(),
     }
     base.update(ctx)
     return templates.TemplateResponse(request, name, base)
@@ -1693,6 +1713,154 @@ def supplier_history_get(request: Request, supplier_id: int):
         "events": events,
         "balance": balance,
     })
+
+
+# ─── Retail (магазин 1416 — опциональный модуль) ──────────────────────────────
+#
+# Entire feature is gated by get_retail_enabled() which the admin toggles in
+# /admin/settings. When disabled, /retail redirects to settings.
+
+
+def _require_retail_enabled() -> Optional[RedirectResponse]:
+    """Return a redirect response when the module is off; None otherwise."""
+    if not get_retail_enabled():
+        return RedirectResponse(url="/admin/settings?msg=retail_disabled", status_code=303)
+    return None
+
+
+@app.get("/retail", response_class=HTMLResponse)
+def retail_get(request: Request, msg: str = ""):
+    gate = _require_retail_enabled()
+    if gate:
+        return gate
+    active = retail_get_active_session()
+    lines = retail_list_lines(active["id"]) if active else []
+    totals = retail_session_totals(active["id"]) if active else None
+    history = retail_list_sessions(limit=15)
+    return _render(request, "retail.html", {
+        "message": msg,
+        "retail_tmt_rate": get_retail_tmt_rate(),
+        "retail_partner_pct": get_retail_partner_pct(),
+        "retail_partner_name": get_retail_partner_name(),
+        "retail_shop_name": get_retail_shop_name(),
+        "retail_summary_client_id": get_retail_summary_client_id(),
+        "active_session": active,
+        "lines": lines,
+        "totals": totals,
+        "history": history,
+        "products": list_products(),  # for the add-line form search
+    })
+
+
+@app.post("/retail/start")
+def retail_start_post(request: Request):
+    gate = _require_retail_enabled()
+    if gate:
+        return gate
+    sid, err = retail_start_session()
+    msg = "retail_session_opened" if sid else f"retail_session_error:{err}"
+    return RedirectResponse(url=f"/retail?msg={quote(msg)}", status_code=303)
+
+
+@app.post("/retail/line/add")
+async def retail_line_add_post(request: Request):
+    gate = _require_retail_enabled()
+    if gate:
+        return gate
+    form = await request.form()
+    active = retail_get_active_session()
+    if not active:
+        return RedirectResponse(url="/retail?msg=retail_no_active", status_code=303)
+    try:
+        product_id = int(form.get("product_id", "0") or 0)
+        qty = float(form.get("qty", "1") or 1)
+    except (ValueError, TypeError):
+        return RedirectResponse(url="/retail?msg=retail_bad_input", status_code=303)
+    kind = str(form.get("kind", "RETAIL"))
+    note = str(form.get("note", "")).strip()
+    # Kind-specific fields; empty → None
+    tmt = form.get("tmt_price")
+    rate = form.get("exchange_rate")
+    usd_override = form.get("unit_sale_usd")
+    tmt_f = float(tmt) if tmt not in (None, "") else None
+    rate_f = float(rate) if rate not in (None, "") else None
+    usd_f = float(usd_override) if usd_override not in (None, "") else None
+    # For RETAIL — fall back to current admin rate if the user didn't type one.
+    if kind == "RETAIL" and (not rate_f or rate_f <= 0):
+        rate_f = get_retail_tmt_rate()
+    lid, err = retail_add_line(
+        active["id"], product_id, qty, kind,
+        tmt_price=tmt_f, exchange_rate=rate_f,
+        unit_sale_usd_override=usd_f,
+        partner_pct=get_retail_partner_pct(),
+        note=note,
+    )
+    msg = "retail_line_added" if lid else f"retail_line_error:{err}"
+    return RedirectResponse(url=f"/retail?msg={quote(msg)}", status_code=303)
+
+
+@app.post("/retail/line/{line_id}/delete")
+def retail_line_delete_post(line_id: int):
+    gate = _require_retail_enabled()
+    if gate:
+        return gate
+    ok, err = retail_delete_line(int(line_id))
+    msg = "retail_line_deleted" if ok else f"retail_line_del_error:{err}"
+    return RedirectResponse(url=f"/retail?msg={quote(msg)}", status_code=303)
+
+
+@app.post("/retail/close")
+def retail_close_post(request: Request):
+    gate = _require_retail_enabled()
+    if gate:
+        return gate
+    active = retail_get_active_session()
+    if not active:
+        return RedirectResponse(url="/retail?msg=retail_no_active", status_code=303)
+    from app.db.sqlite import retail_close_session_full
+    ok, err, inv_num = retail_close_session_full(int(active["id"]))
+    if ok:
+        msg = f"retail_week_closed:{inv_num:06d}"
+    else:
+        msg = f"retail_close_error:{err}"
+    return RedirectResponse(url=f"/retail?msg={quote(msg)}", status_code=303)
+
+
+@app.get("/retail/cards", response_class=HTMLResponse)
+def retail_cards_get(request: Request, msg: str = ""):
+    gate = _require_retail_enabled()
+    if gate:
+        return gate
+    cashouts = retail_cashout_list(limit=200)
+    total_tmt = sum(float(c.get("amount_tmt") or 0) for c in cashouts)
+    return _render(request, "retail_cards.html", {
+        "cashouts": cashouts,
+        "total_tmt": round(total_tmt, 2),
+        "message": msg,
+    })
+
+
+@app.post("/retail/cards/add")
+def retail_cards_add_post(
+    amount_tmt: float = Form(...),
+    note: str = Form(""),
+):
+    gate = _require_retail_enabled()
+    if gate:
+        return gate
+    ok, err = retail_cashout_add(float(amount_tmt), note)
+    msg = "retail_cashout_added" if ok else f"retail_cashout_error:{err}"
+    return RedirectResponse(url=f"/retail/cards?msg={quote(msg)}", status_code=303)
+
+
+@app.post("/retail/cards/{cashout_id}/delete")
+def retail_cards_delete_post(cashout_id: int):
+    gate = _require_retail_enabled()
+    if gate:
+        return gate
+    ok, err = retail_cashout_delete(int(cashout_id))
+    msg = "retail_cashout_deleted" if ok else f"retail_cashout_del_error:{err}"
+    return RedirectResponse(url=f"/retail/cards?msg={quote(msg)}", status_code=303)
 
 
 # ─── Personal loans (/loans) ──────────────────────────────────────────────────
@@ -3178,6 +3346,7 @@ def reports_profit_page(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     warehouses: Optional[list[str]] = Query(default=None),
+    channel: str = "all",   # all / retail / opt — hidden tab when retail disabled
 ):
     """Phase 2: gross profit report (revenue - cost of goods sold + returns)."""
     from datetime import date as _date, timedelta as _td
@@ -3191,8 +3360,14 @@ def reports_profit_page(
     warehouse_options = list_warehouses()
     warehouse_codes_all = [w["code"] for w in warehouse_options]
     selected_wh = _reports_warehouse_filter(warehouses, warehouse_codes_all)
+    if channel not in ("all", "retail", "opt"):
+        channel = "all"
 
-    report = get_profit_report(date_from, date_to, warehouse_codes=selected_wh)
+    report = get_profit_report(
+        date_from, date_to,
+        warehouse_codes=selected_wh,
+        channel=channel,
+    )
 
     return _render(
         request,
@@ -3204,6 +3379,8 @@ def reports_profit_page(
             "warehouse_options":   warehouse_options,
             "selected_warehouses": selected_wh,
             "all_warehouses_selected": not selected_wh,
+            "channel":             channel,
+            "channel_options":     ["all", "opt", "retail"] if get_retail_enabled() else ["all"],
         },
     )
 
@@ -3435,6 +3612,7 @@ def admin_settings_get(request: Request, saved: str = "", msg: str = ""):
     from app.services.stamp_asset import get_stamp_path
     _sig_path = get_signature_path()
     _stamp_path = get_stamp_path()
+    _clients_for_retail = list_clients()
     return _render(
         request,
         "admin_settings.html",
@@ -3459,8 +3637,47 @@ def admin_settings_get(request: Request, saved: str = "", msg: str = ""):
             # Company stamp overlay (same pattern).
             "stamp_present": _stamp_path is not None,
             "stamp_ts": int(_stamp_path.stat().st_mtime) if _stamp_path else 0,
+            # Retail (shop) module settings — hidden by default; enable to show /retail nav.
+            "retail_enabled": get_retail_enabled(),
+            "retail_tmt_rate": get_retail_tmt_rate(),
+            "retail_partner_pct": get_retail_partner_pct(),
+            "retail_partner_name": get_retail_partner_name(),
+            "retail_shop_name": get_retail_shop_name(),
+            "retail_summary_client_id": get_retail_summary_client_id(),
+            "retail_clients_choices": _clients_for_retail,
         },
     )
+
+
+@app.post("/admin/settings/retail")
+async def admin_settings_retail(request: Request):
+    """Save all retail-module settings in one POST."""
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
+    form = await request.form()
+    set_setting("retail_enabled",
+                "1" if form.get("retail_enabled") == "1" else "0")
+
+    def _clean_float(key: str, default: float, lo: float, hi: float) -> float:
+        try:
+            v = float(form.get(key, ""))
+            if lo <= v <= hi:
+                return v
+        except (ValueError, TypeError):
+            pass
+        return default
+
+    set_setting("retail_tmt_rate", f"{_clean_float('retail_tmt_rate', 18.20, 0.01, 1000):.4f}")
+    set_setting("retail_partner_pct", f"{int(_clean_float('retail_partner_pct', 50, 0, 100))}")
+    set_setting("retail_partner_name", str(form.get("retail_partner_name", "")).strip() or "Начальник")
+    set_setting("retail_shop_name", str(form.get("retail_shop_name", "")).strip() or "Магазин")
+    try:
+        cid = int(form.get("retail_summary_client_id", "0") or 0)
+    except (ValueError, TypeError):
+        cid = 0
+    set_setting("retail_summary_client_id", str(cid))
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
 
 
 @app.post("/admin/settings/signature/upload")

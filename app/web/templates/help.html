@@ -30,6 +30,7 @@
           <li><a href="#ru-sale-sort">Сортировка и дубли</a></li>
         </ul>
       </li>
+      <li><a href="#ru-retail">🏪 Розница (магазин 50/50)</a></li>
       <li><a href="#ru-return">Возврат</a></li>
       <li><a href="#ru-reports">Отчёты</a>
         <ul class="mt-1">
@@ -256,6 +257,40 @@
     чистого XLSX/PDF — в накладной каждое поле попадает в свою колонку,
     как у обычных товаров.
   </p>
+
+  {# 7b. Retail module (added 2026-10) #}
+  <h4 id="ru-retail" class="mt-4">🏪 Розница (магазин с партнёром 50/50)</h4>
+  <p>
+    Опциональный модуль для магазинов, где владелец делит прибыль с партнёром
+    (например, аренда с условием 50/50). <strong>По умолчанию выключен.</strong>
+    Включается в <code>/admin/settings → 🏪 Розничный магазин</code>.
+    После включения в навбаре появляется пункт <strong>«Розница»</strong>.
+  </p>
+  <p><strong>Настройки:</strong></p>
+  <ul>
+    <li><strong>Курс TMT→USD</strong> — для пересчёта TMT в USD (обновляй вручную; отдельно от Pocket Price курса, который для стабильности витрины держишь на фикс 19.0)</li>
+    <li><strong>Доля партнёра</strong> — обычно 50%, можно поменять</li>
+    <li><strong>Имя партнёра</strong> — попадёт в инвойс как «Доля партнёра (Начальник)»</li>
+    <li><strong>Клиент для сводной накладной</strong> — обычно NAGT SATYSH</li>
+  </ul>
+  <p><strong>Как работает журнал:</strong></p>
+  <ol>
+    <li>Жмёшь <strong>«Открыть новую неделю»</strong></li>
+    <li>За неделю добавляешь строки: выбираешь модель + тип:
+      <ul>
+        <li>🏪 <strong>Розница (TMT)</strong> — вводишь цену в TMT и курс. Прибыль = TMT/курс − приход.</li>
+        <li>🤝 <strong>Опт (USD)</strong> — вводишь цену в USD. Прибыль = цена − приход.</li>
+        <li>🎁 <strong>По приходной</strong> — продажа без прибыли (домой/подарок/начальнику), товар всё равно списывается.</li>
+      </ul>
+    </li>
+    <li>Live-калькулятор справа сразу показывает твою долю и долю партнёра</li>
+    <li>В конце недели жмёшь <strong>«Закрыть неделю»</strong> — создаётся одна сводная накладная на NAGT SATYSH со всеми строками, автоматическая оплата на всю сумму (баланс клиента 0), а в PDF/XLSX появляется блок:
+      <code>Приход · Прибыль · Доля партнёра · Моя доля</code>.
+      Этот PDF можешь прямо отправлять партнёру.
+    </li>
+  </ol>
+  <p><strong>Обнал картой (/retail/cards):</strong> отдельный простой журнал для памяти — операции обналивания карточных платежей через твой счёт. В прибыль и в накладные НЕ входит.</p>
+  <p><strong>Разделение отчётов:</strong> в <code>/reports/profit</code> появится фильтр <em>Общий / 🤝 Опт / 🏪 Розница</em> — можно смотреть прибыль магазина отдельно от оптовых продаж.</p>
 
   {# 8. Return #}
   <h4 id="ru-return" class="mt-4">8. Возврат (Return)</h4>
@@ -989,6 +1024,7 @@
       <li><a href="#tm-sale">Satyş</a>
         <ul class="mt-1"><li><a href="#tm-free-item">Ammardan daşary erkin pozisiýa</a></li></ul>
       </li>
+      <li><a href="#tm-retail">🏪 Bölek satuw</a></li>
       <li><a href="#tm-return">Yzyna gaýtarmak</a></li>
       <li><a href="#tm-reports">Hasabatlar</a>
         <ul class="mt-1">
@@ -1186,6 +1222,21 @@
     <strong>Brend / Model / Ady / Ştrih-kod</strong>. Her meýdança hasap-fakturada
     öz sütünine düşýär — adaty harytlar ýaly arassa görünýär.
   </p>
+
+  {# 7b. Retail (added 2026-10) #}
+  <h4 id="tm-retail" class="mt-4">🏪 Bölek satuw (hyzmatdaş 50/50 bilen dükan)</h4>
+  <p>
+    Hyzmatdaşlyk paýy bilen işleýän dükanlar üçin saýlanyp alynýan modul.
+    <strong>Deslapky — öçürülen.</strong>
+    <code>/admin/settings → 🏪 Bölek satuw dükany</code>-de açylýar.
+  </p>
+  <ul>
+    <li>🏪 <strong>Bölek (TMT)</strong> — TMT baha we kurs ýaz.</li>
+    <li>🤝 <strong>Opt (USD)</strong> — USD baha ýaz.</li>
+    <li>🎁 <strong>Satyn alyş bahasyndan</strong> — peýdasyz (öýe / sowgat), ammar barybir azalýar.</li>
+  </ul>
+  <p><strong>Hepdäni ýapmak</strong> → bir jemleýji hasap-faktura NAGT SATYSH-e döredilýär, PDF-de «Peýda / Hyzmatdaşa / Meniňki» bölegi görünýär.</p>
+  <p><code>/reports/profit</code>-de <em>Umumy / Opt / Bölek satuw</em> süzgüji peýda bolýar.</p>
 
   {# 8. Return #}
   <h4 id="tm-return" class="mt-4">8. Yzyna gaýtarmak</h4>
@@ -1761,6 +1812,7 @@
       <li><a href="#en-sale">Sale</a>
         <ul class="mt-1"><li><a href="#en-free-item">Free position (non-stock item)</a></li></ul>
       </li>
+      <li><a href="#en-retail">🏪 Retail module</a></li>
       <li><a href="#en-return">Return</a></li>
       <li><a href="#en-reports">Reports</a>
         <ul class="mt-1">
@@ -1973,6 +2025,23 @@
     <strong>Brand / Model / Name / Barcode</strong>. Each one maps to its
     own invoice column so a free line prints as cleanly as a regular item.
   </p>
+
+  {# 7b. Retail (added 2026-10) #}
+  <h4 id="en-retail" class="mt-4">🏪 Retail module (shop with 50/50 partnership)</h4>
+  <p>
+    Optional module for shops where the owner splits profit with a partner
+    (e.g. 50/50 rent-share). <strong>Off by default.</strong>
+    Enable it in <code>/admin/settings → 🏪 Retail shop</code>.
+  </p>
+  <p><strong>Three line kinds:</strong></p>
+  <ul>
+    <li>🏪 <strong>Retail (TMT)</strong> — enter TMT price and rate; profit = TMT/rate − cost.</li>
+    <li>🤝 <strong>Wholesale (USD)</strong> — enter USD price; profit = price − cost.</li>
+    <li>🎁 <strong>At cost</strong> — zero profit (home/gift/boss); stock is still decremented.</li>
+  </ul>
+  <p>At end of week click <strong>Close week</strong> — one aggregate invoice is written to the summary client, auto-paid in full. The PDF/XLSX includes a <em>Cost · Profit · Partner share · My share</em> block for sending to the partner.</p>
+  <p><strong>Card cashouts</strong> at <code>/retail/cards</code> — simple memory log, not counted in profit.</p>
+  <p><strong>Reports split:</strong> <code>/reports/profit</code> gets a <em>All / Wholesale / Retail</em> filter.</p>
 
   {# 8. Return #}
   <h4 id="en-return" class="mt-4">8. Return</h4>
