@@ -47,16 +47,30 @@
           <a class="nav-link" href="/products">{{ t.nav_products if t is defined else 'Products' }}</a>
           <a class="nav-link" href="/stock">{{ t.nav_stock if t is defined else 'Stock' }}</a>
           <a class="nav-link" href="/receive">{{ t.nav_receive if t is defined else 'Receive' }}</a>
-          <a class="nav-link" href="/move">{{ t.nav_move if t is defined else 'Move' }}</a>
-          <a class="nav-link" href="/move-all">{{ t.nav_move_all if t is defined else 'Move all' }}</a>
+          <div class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              {{ t.nav_move if t is defined else 'Move' }}
+            </a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="/move">{{ t.nav_move_single if t is defined else 'Move' }}</a></li>
+              <li><a class="dropdown-item" href="/move-all">{{ t.nav_move_all if t is defined else 'Move all' }}</a></li>
+            </ul>
+          </div>
           <a class="nav-link" href="/sale">{{ t.nav_sale if t is defined else 'Sale' }}</a>
           {% if retail_enabled is defined and retail_enabled %}
-          <a class="nav-link" href="/retail">🏪 {{ t.nav_retail if t is defined else 'Retail' }}</a>
+          <a class="nav-link" href="/retail">{{ t.nav_retail if t is defined else 'Retail' }}</a>
           {% endif %}
           <a class="nav-link" href="/return">{{ t.nav_return if t is defined else 'Return' }}</a>
           <a class="nav-link" href="/inventory">{{ t.nav_inventory if t is defined else 'Inventory' }}</a>
-          <a class="nav-link" href="/expenses">{{ t.nav_expenses if t is defined else 'Expenses' }}</a>
-          <a class="nav-link" href="/incomes">{{ t.nav_incomes if t is defined else 'Incomes' }}</a>
+          <div class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              {{ t.nav_money if t is defined else 'Money' }}
+            </a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="/expenses">{{ t.nav_expenses if t is defined else 'Expenses' }}</a></li>
+              <li><a class="dropdown-item" href="/incomes">{{ t.nav_incomes if t is defined else 'Incomes' }}</a></li>
+            </ul>
+          </div>
           <a class="nav-link" href="/reports">{{ t.nav_reports if t is defined else 'Reports' }}</a>
           <div class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
