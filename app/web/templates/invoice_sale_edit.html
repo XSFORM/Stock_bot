@@ -248,20 +248,33 @@ document.querySelectorAll('#itemsBody .item-row').forEach(attachRowListeners);
 // Form validation: ensure stock rows have a product selected; free rows have a name
 document.getElementById('editForm').addEventListener('submit', function(e) {
   let valid = true;
+  // A row is "free" (off-stock) when it carries the `table-warning` class —
+  // that's set both on server-rendered rows and on rows added via
+  // addFreeRow(). The old check for `.free-name-field` never matched any
+  // actual DOM element, so every free row was treated as a stock row and
+  // got rejected with "Выберите товар".
   document.querySelectorAll('#itemsBody .item-row').forEach(row => {
-    const pidField = row.querySelector('.product-id-field');
-    const freeNameField = row.querySelector('.free-name-field');
-    const isFree = !!freeNameField;
+    const isFree = row.classList.contains('table-warning');
     if (isFree) {
-      if (!freeNameField.value.trim()) {
+      const freeInputs = row.querySelectorAll(
+        'input[name="free_brand"], input[name="free_model"], ' +
+        'input[name="free_name"], input[name="free_barcode"]'
+      );
+      // Require at least ONE of the four fields filled, so the invoice line
+      // can describe itself. Matches the server-side validation.
+      const anyFilled = [...freeInputs].some(inp => inp.value.trim() !== '');
+      if (!anyFilled) {
         valid = false;
-        freeNameField.setCustomValidity('{{ t.sale_free_item_label | e }} required.');
-        freeNameField.reportValidity();
+        if (freeInputs.length) {
+          freeInputs[0].setCustomValidity('{{ t.sale_free_item_label | e }} required.');
+          freeInputs[0].reportValidity();
+        }
       } else {
-        freeNameField.setCustomValidity('');
+        freeInputs.forEach(inp => inp.setCustomValidity(''));
       }
     } else {
-      if (!pidField.value) {
+      const pidField = row.querySelector('.product-id-field');
+      if (!pidField || !pidField.value) {
         valid = false;
       }
     }
@@ -269,7 +282,9 @@ document.getElementById('editForm').addEventListener('submit', function(e) {
   if (!valid) {
     e.preventDefault();
     const missingProduct = [...document.querySelectorAll('#itemsBody .item-row')].some(row => {
-      return !row.querySelector('.free-name-field') && !row.querySelector('.product-id-field').value;
+      if (row.classList.contains('table-warning')) return false;
+      const pid = row.querySelector('.product-id-field');
+      return !pid || !pid.value;
     });
     if (missingProduct) alert('{{ t.invoice_edit_select_product | e }}');
   }
