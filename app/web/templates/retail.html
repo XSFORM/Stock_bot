@@ -263,6 +263,10 @@
   var selectedProduct = null;
   var searchTimer;
   var WAREHOUSE = {{ retail_warehouse_code | tojson }};
+  var DEFAULT_MARKUP = {{ default_markup | int }};
+  // User-set USD price → remember so autofill doesn't overwrite a manual edit.
+  var usdInput = document.querySelector('[name=unit_sale_usd]');
+  var usdWasManuallyEdited = false;
 
   // ── Kind-driven field visibility ─────────────────────────────────
   function toggleFields() {
@@ -270,9 +274,24 @@
     tmtField.classList.toggle('d-none',  k !== 'RETAIL');
     rateField.classList.toggle('d-none', k !== 'RETAIL');
     usdField.classList.toggle('d-none',  k !== 'WHOLESALE');
+    // On switching INTO wholesale, pre-fill USD if we have a product.
+    if (k === 'WHOLESALE' && !usdWasManuallyEdited) autofillWholesaleUsd();
     recomputePreview();
   }
   kindSel.addEventListener('change', toggleFields);
+
+  function autofillWholesaleUsd() {
+    if (!selectedProduct) return;
+    var cost = parseFloat(selectedProduct.wh_price || 0);
+    if (cost <= 0) return;
+    var suggested = cost * (1 + DEFAULT_MARKUP / 100);
+    // Round to 2 decimals.
+    usdInput.value = (Math.round(suggested * 100) / 100).toFixed(2);
+  }
+
+  // Track manual edits so a subsequent product change / kind flip doesn't
+  // clobber the number the user typed.
+  usdInput.addEventListener('input', function() { usdWasManuallyEdited = true; });
 
   // ── Product search (same pattern as /sale) ───────────────────────
   function hideSuggestions() { suggestions.style.display = 'none'; }
@@ -319,6 +338,9 @@
     searchInput.value = item.brand + ' ' + item.model + ' — ' + (item.name || '');
     searchInput.setCustomValidity('');
     hideSuggestions();
+    // A fresh product reset the "manually edited" lock so autofill can run.
+    usdWasManuallyEdited = false;
+    if (kindSel.value === 'WHOLESALE') autofillWholesaleUsd();
     recomputePreview();
   }
 
@@ -327,6 +349,7 @@
     // Any edit after a selection invalidates it — must pick again.
     selectedProduct = null;
     pidInput.value = '';
+    usdWasManuallyEdited = false;
     recomputePreview();
     var q = this.value.trim();
     if (q.length < 1) { hideSuggestions(); return; }

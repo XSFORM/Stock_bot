@@ -1746,6 +1746,9 @@ def retail_get(request: Request, msg: str = ""):
         "retail_shop_name": get_retail_shop_name(),
         "retail_summary_client_id": get_retail_summary_client_id(),
         "retail_warehouse_code": get_retail_warehouse_code(),
+        # Default markup from Admin → used to auto-suggest wholesale USD price
+        # when kind=WHOLESALE; user can still override before adding.
+        "default_markup": get_sale_default_markup(),
         "active_session": active,
         "lines": lines,
         "totals": totals,
