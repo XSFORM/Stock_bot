@@ -82,6 +82,19 @@
             {{ t.retail_split_partner | default('Партнёру:') }} {{ retail_partner_pct|int }}%
           </div>
           <div class="fw-semibold text-warning">{{ "%.2f"|format(totals.partner_share_usd) }} $</div>
+          {% if totals.partner_adjustment_usd and totals.partner_adjustment_usd != 0 %}
+          <div class="small {% if totals.partner_adjustment_usd < 0 %}text-danger{% else %}text-success{% endif %}">
+            {{ t.retail_adj_label | default('Корректировка:') }}
+            {{ "%+.2f"|format(totals.partner_adjustment_usd) }} $
+            {% if totals.partner_adjustment_note %}
+              <span class="text-muted">({{ totals.partner_adjustment_note }})</span>
+            {% endif %}
+          </div>
+          <div class="small fw-semibold text-warning">
+            {{ t.retail_payout_label | default('К выдаче:') }}
+            {{ "%.2f"|format(totals.partner_payout_usd) }} $
+          </div>
+          {% endif %}
           <div class="small text-muted">
             {{ t.retail_split_me | default('Моё:') }}
             <strong>{{ "%.2f"|format(totals.my_share_usd) }} $</strong>
@@ -227,7 +240,38 @@
       </table>
     </div>
 
-    {# ── Close week — placeholder for Э4 ────────────────── #}
+    {# ── Partner-share adjustment (deposit, carry-over, etc.) ─── #}
+    {% if lines %}
+    <div class="border rounded p-3 mb-3 bg-light-subtle">
+      <h6 class="small mb-2">
+        ⚖️ {{ t.retail_adj_heading | default('Корректировка доли партнёра') }}
+        <span class="text-muted" style="font-weight:normal">
+          — {{ t.retail_adj_hint | default('минус = снять (депозит прошлой недели), плюс = добавить сверху') }}
+        </span>
+      </h6>
+      <form method="post" action="/retail/adjustment" class="row g-2 align-items-end">
+        <div class="col-sm-3">
+          <label class="form-label small mb-1">{{ t.retail_adj_amount | default('Сумма USD (±)') }}</label>
+          <input type="number" step="0.01" name="amount"
+                 value="{{ "%.2f"|format(totals.partner_adjustment_usd) }}"
+                 class="form-control form-control-sm">
+        </div>
+        <div class="col-sm-7">
+          <label class="form-label small mb-1">{{ t.retail_adj_note | default('Пояснение') }}</label>
+          <input type="text" name="note" value="{{ totals.partner_adjustment_note }}"
+                 placeholder="{{ t.retail_adj_note_ph | default('напр. депозит прошлой недели') }}"
+                 class="form-control form-control-sm">
+        </div>
+        <div class="col-sm-2">
+          <button type="submit" class="btn btn-outline-primary btn-sm w-100">
+            {{ t.btn_save | default('Сохранить') }}
+          </button>
+        </div>
+      </form>
+    </div>
+    {% endif %}
+
+    {# ── Close week ───────────────────────────────────── #}
     {% if lines %}
     <div class="d-flex gap-2 mt-3">
       <a href="/retail/cards" class="btn btn-outline-secondary btn-sm">
@@ -237,7 +281,8 @@
             onsubmit="return confirm('{{ t.retail_confirm_close | default('Закрыть неделю и создать сводную накладную?') }}');">
         <button type="submit" class="btn btn-success">
           🔒 {{ t.retail_close_week | default('Закрыть неделю') }}
-          ({{ "%.2f"|format(totals.total_sold_usd) }} $)
+          · {{ t.retail_close_payout | default('партнёру') }}
+          <strong>{{ "%.2f"|format(totals.partner_payout_usd) }} $</strong>
         </button>
       </form>
     </div>

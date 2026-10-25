@@ -1828,6 +1828,23 @@ def retail_line_delete_post(line_id: int):
     return RedirectResponse(url=f"/retail?msg={quote(msg)}", status_code=303)
 
 
+@app.post("/retail/adjustment")
+def retail_adjustment_post(
+    amount: float = Form(0.0),
+    note: str = Form(""),
+):
+    gate = _require_retail_enabled()
+    if gate:
+        return gate
+    active = retail_get_active_session()
+    if not active:
+        return RedirectResponse(url="/retail?msg=retail_no_active", status_code=303)
+    from app.db.sqlite import retail_set_partner_adjustment
+    ok, err = retail_set_partner_adjustment(int(active["id"]), float(amount), note)
+    msg = "retail_adj_saved" if ok else f"retail_adj_error:{err}"
+    return RedirectResponse(url=f"/retail?msg={quote(msg)}", status_code=303)
+
+
 @app.post("/retail/close")
 def retail_close_post(request: Request):
     gate = _require_retail_enabled()

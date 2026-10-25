@@ -156,6 +156,8 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
         partner_name = str(invoice.get("retail_partner_name") or "").strip() or "Партнёр"
         shop_name = str(invoice.get("retail_shop_name") or "").strip() or "Магазин"
         external_profit = float(invoice.get("retail_external_profit") or 0)
+        partner_adj = float(invoice.get("retail_partner_adjustment") or 0)
+        partner_adj_note = str(invoice.get("retail_partner_adjustment_note") or "").strip()
         total_cost = 0.0
         for it in items:
             cp = it.get("cost_price")
@@ -166,6 +168,7 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
         total_profit = round(shop_profit + external_profit, 2)
         partner_share = round(total_profit * partner_pct / 100.0, 2)
         my_share = round(total_profit - partner_share, 2)
+        partner_payout = round(partner_share + partner_adj, 2)
 
         heading_row = total_row_idx + 2
         ws.cell(row=heading_row, column=1,
@@ -190,7 +193,15 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
             _retail_pair(r, "Прибыль из опт-инвойсов:", external_profit);              r += 1
             _retail_pair(r, "Общая прибыль:", total_profit, bold=True);                r += 1
         _retail_pair(r, f"Доля партнёра ({partner_name}, {int(partner_pct)}%):", partner_share); r += 1
-        _retail_pair(r, f"Моя доля ({int(100 - partner_pct)}%):", my_share, bold=True)
+        _retail_pair(r, f"Моя доля ({int(100 - partner_pct)}%):", my_share)
+        if partner_adj != 0:
+            r += 1
+            adj_label = "Корректировка"
+            if partner_adj_note:
+                adj_label += f" ({partner_adj_note})"
+            adj_label += ":"
+            _retail_pair(r, adj_label, partner_adj);                                   r += 1
+            _retail_pair(r, f"К выдаче партнёру ({partner_name}):", partner_payout, bold=True)
         extra_row = r
 
     # --- Signature block (two side-by-side signatures) ---

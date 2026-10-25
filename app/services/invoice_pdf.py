@@ -339,6 +339,8 @@ def generate_invoice_pdf(invoice: dict[str, Any],
         partner_name = str(invoice.get("retail_partner_name") or "").strip() or "Партнёр"
         shop_name = str(invoice.get("retail_shop_name") or "").strip() or "Магазин"
         external_profit = float(invoice.get("retail_external_profit") or 0)
+        partner_adj = float(invoice.get("retail_partner_adjustment") or 0)
+        partner_adj_note = str(invoice.get("retail_partner_adjustment_note") or "").strip()
         total_cost = 0.0
         for it in items:
             cp = it.get("cost_price")
@@ -349,6 +351,7 @@ def generate_invoice_pdf(invoice: dict[str, Any],
         total_profit = round(shop_profit + external_profit, 2)
         partner_share = round(total_profit * partner_pct / 100.0, 2)
         my_share = round(total_profit - partner_share, 2)
+        partner_payout = round(partner_share + partner_adj, 2)
 
         story.append(Spacer(1, 6 * mm))
         story.append(Paragraph(
@@ -370,6 +373,16 @@ def generate_invoice_pdf(invoice: dict[str, Any],
             f"Моя доля ({int(100 - partner_pct)}%):",
             f"{my_share:.2f}",
         ])
+        if partner_adj != 0:
+            adj_label = "Корректировка"
+            if partner_adj_note:
+                adj_label += f" ({_esc(partner_adj_note)})"
+            adj_label += ":"
+            retail_rows.append([adj_label, f"{partner_adj:+.2f}"])
+            retail_rows.append([
+                f"К выдаче партнёру ({_esc(partner_name)}):",
+                f"{partner_payout:.2f}",
+            ])
         retail_tbl = Table(retail_rows, colWidths=[130 * mm, 40 * mm])
         last = len(retail_rows) - 1
         style_ops = [
@@ -377,16 +390,18 @@ def generate_invoice_pdf(invoice: dict[str, Any],
             ("ALIGN",        (1, 0), (1, -1),  "RIGHT"),
             ("TOPPADDING",   (0, 0), (-1, -1), 1),
             ("BOTTOMPADDING",(0, 0), (-1, -1), 1),
-            # Bold on the shop profit line AND the "my share" line.
             ("FONT",         (0, 1), (-1, 1),  FONT_BOLD, 10),
             ("FONT",         (0, last), (-1, last), FONT_BOLD, 10),
-            # Divider above "Доля партнёра"
-            ("LINEABOVE",    (0, last - 1), (-1, last - 1), 0.3, colors.grey),
         ]
         if external_profit != 0:
-            # Divider above "Общая прибыль" — index 3 in the extended layout.
             style_ops.append(("LINEABOVE", (0, 3), (-1, 3), 0.3, colors.grey))
             style_ops.append(("FONT",      (0, 3), (-1, 3), FONT_BOLD, 10))
+        if partner_adj != 0:
+            # Divider above the two adjustment rows and bold on the final payout.
+            style_ops.append(("LINEABOVE", (0, last - 1), (-1, last - 1), 0.3, colors.grey))
+        else:
+            # No adjustment: divider sits above "Доля партнёра" as before.
+            style_ops.append(("LINEABOVE", (0, last - 1), (-1, last - 1), 0.3, colors.grey))
         retail_tbl.setStyle(TableStyle(style_ops))
         story.append(retail_tbl)
 

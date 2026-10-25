@@ -372,6 +372,38 @@ def _ensure_invoice_retail_external_profit(conn: sqlite3.Connection) -> None:
         )
 
 
+def _ensure_retail_session_partner_adjustment(conn: sqlite3.Connection) -> None:
+    """One-off correction to the partner's share for a given week.
+
+    Positive value = give the partner EXTRA on top of calculated share.
+    Negative value = subtract (common: last-week overpayment deposit).
+    Stored as a session-level amount (max one per session) with a note.
+    """
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(retail_sessions)")}
+    if "partner_adjustment" not in cols:
+        conn.execute(
+            "ALTER TABLE retail_sessions ADD COLUMN partner_adjustment REAL NOT NULL DEFAULT 0"
+        )
+    if "partner_adjustment_note" not in cols:
+        conn.execute(
+            "ALTER TABLE retail_sessions ADD COLUMN partner_adjustment_note TEXT NOT NULL DEFAULT ''"
+        )
+
+
+def _ensure_invoice_retail_partner_adjustment(conn: sqlite3.Connection) -> None:
+    """Snapshot of the week-close adjustment onto the invoice itself, so
+    the printed PDF/XLSX summary is reproducible later."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(invoices)")}
+    if "retail_partner_adjustment" not in cols:
+        conn.execute(
+            "ALTER TABLE invoices ADD COLUMN retail_partner_adjustment REAL NOT NULL DEFAULT 0"
+        )
+    if "retail_partner_adjustment_note" not in cols:
+        conn.execute(
+            "ALTER TABLE invoices ADD COLUMN retail_partner_adjustment_note TEXT NOT NULL DEFAULT ''"
+        )
+
+
 def _ensure_supplier_ledger_table(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -1074,6 +1106,8 @@ def init_db() -> None:
         _ensure_invoice_retail_columns(conn)
         _ensure_retail_lines_v2_external(conn)
         _ensure_invoice_retail_external_profit(conn)
+        _ensure_retail_session_partner_adjustment(conn)
+        _ensure_invoice_retail_partner_adjustment(conn)
         conn.commit()
 
 
@@ -4601,6 +4635,19 @@ def retail_session_totals(session_id: int) -> dict[str, float]:
     totals = _row_to_dict(row) if row else {}
     tot_profit = float(totals.get("total_profit_usd") or 0)
     partner = float(totals.get("partner_share_usd") or 0)
+    # Load session-level adjustment so the UI/close logic can show the
+    # final payout (= partner_share + adjustment) alongside the raw share.
+    adj = 0.0
+    adj_note = ""
+    with _connect() as conn:
+        sess = conn.execute(
+            "SELECT partner_adjustment, partner_adjustment_note "
+            "FROM retail_sessions WHERE id = ?", (int(session_id),)
+        ).fetchone()
+        if sess:
+            adj = float(sess["partner_adjustment"] or 0)
+            adj_note = str(sess["partner_adjustment_note"] or "")
+    final_partner = round(partner + adj, 2)
     return {
         "total_tmt": round(float(totals.get("total_tmt") or 0), 2),
         "total_sold_usd": round(float(totals.get("total_sold_usd") or 0), 2),
@@ -4609,9 +4656,38 @@ def retail_session_totals(session_id: int) -> dict[str, float]:
         "partner_share_usd": round(partner, 2),
         "my_share_usd": round(tot_profit - partner, 2),
         "external_profit_usd": round(float(totals.get("external_profit_usd") or 0), 2),
+        "partner_adjustment_usd": round(adj, 2),
+        "partner_adjustment_note": adj_note,
+        "partner_payout_usd": final_partner,
         "line_count": int(totals.get("line_count") or 0),
         "total_qty": round(float(totals.get("shop_qty") or 0), 2),
     }
+
+
+def retail_set_partner_adjustment(
+    session_id: int, amount: float, note: str = ""
+) -> tuple[bool, str]:
+    """Set (or update) the single partner-share adjustment for a session.
+
+    Pass amount=0 and note="" to clear.
+    """
+    try:
+        amt = float(amount)
+    except (ValueError, TypeError):
+        return False, "bad_amount"
+    try:
+        with _connect() as conn:
+            cur = conn.execute(
+                "UPDATE retail_sessions SET partner_adjustment = ?, "
+                "partner_adjustment_note = ? WHERE id = ? AND closed_at IS NULL",
+                (round(amt, 2), (note or "").strip(), int(session_id)),
+            )
+            conn.commit()
+            if cur.rowcount == 0:
+                return False, "session_not_found_or_closed"
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
 
 
 def retail_close_session_mark(
@@ -4662,6 +4738,8 @@ def retail_close_session_full(
     partner_pct = float(session.get("partner_pct") or get_retail_partner_pct())
     partner_name = session.get("partner_name") or get_retail_partner_name()
     shop_name = session.get("shop_name") or get_retail_shop_name()
+    partner_adj = float(session.get("partner_adjustment") or 0)
+    partner_adj_note = str(session.get("partner_adjustment_note") or "")
     rate = get_retail_tmt_rate()
 
     with _connect() as conn:
@@ -4749,10 +4827,12 @@ def retail_close_session_full(
                 "INSERT INTO invoices "
                 "(cart_id, number, total, discount_pct, "
                 " is_retail, retail_partner_pct, retail_partner_name, retail_shop_name, "
-                " retail_external_profit) "
-                "VALUES (?, ?, ?, 0, 1, ?, ?, ?, ?)",
+                " retail_external_profit, retail_partner_adjustment, "
+                " retail_partner_adjustment_note) "
+                "VALUES (?, ?, ?, 0, 1, ?, ?, ?, ?, ?, ?)",
                 (cart_id, int(next_num), total,
-                 partner_pct, partner_name, shop_name, external_profit),
+                 partner_pct, partner_name, shop_name,
+                 external_profit, partner_adj, partner_adj_note),
             )
 
             # 7. ledger payment (balance back to 0)
