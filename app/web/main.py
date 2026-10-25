@@ -3611,9 +3611,11 @@ def set_theme(theme: str = Form(...), next: str = Form("/")):
 def admin_settings_get(request: Request, saved: str = "", msg: str = ""):
     from app.services.signature_asset import get_signature_path
     from app.services.stamp_asset import get_stamp_path
+    from app.db.sqlite import get_retail_warehouse_code
     _sig_path = get_signature_path()
     _stamp_path = get_stamp_path()
     _clients_for_retail = list_clients()
+    _warehouses_for_retail = list_warehouses()
     return _render(
         request,
         "admin_settings.html",
@@ -3646,6 +3648,8 @@ def admin_settings_get(request: Request, saved: str = "", msg: str = ""):
             "retail_shop_name": get_retail_shop_name(),
             "retail_summary_client_id": get_retail_summary_client_id(),
             "retail_clients_choices": _clients_for_retail,
+            "retail_warehouse_code": get_retail_warehouse_code(),
+            "retail_warehouses_choices": _warehouses_for_retail,
         },
     )
 
@@ -3678,6 +3682,9 @@ async def admin_settings_retail(request: Request):
     except (ValueError, TypeError):
         cid = 0
     set_setting("retail_summary_client_id", str(cid))
+    # Warehouse code — upper-cased to match how add_warehouse stores it.
+    wh_raw = str(form.get("retail_warehouse_code", "") or "").strip().upper()
+    set_setting("retail_warehouse_code", wh_raw)
     return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
 
 

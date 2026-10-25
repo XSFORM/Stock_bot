@@ -234,6 +234,21 @@
         </select>
         <div class="form-text">{{ t.settings_retail_summary_hint | default('На этого клиента будет оформляться еженедельная сводная накладная (обычно это ваш «NAGT SATYSH» или аналог).') }}</div>
       </div>
+      <div class="col-sm-12 col-md-6">
+        <label class="form-label small mb-1">
+          {{ t.settings_retail_warehouse | default('Склад розницы') }}
+        </label>
+        <select name="retail_warehouse_code" class="form-select form-select-sm">
+          <option value="">— {{ t.settings_retail_pick_warehouse | default('выберите склад') }} —</option>
+          {% for w in retail_warehouses_choices %}
+          <option value="{{ w.code }}"
+            {% if w.code == retail_warehouse_code %}selected{% endif %}>
+            {{ w.title }} ({{ w.code }})
+          </option>
+          {% endfor %}
+        </select>
+        <div class="form-text">{{ t.settings_retail_warehouse_hint | default('Склад, с которого списываются товары при закрытии недели и по которому ищется наличие в поиске.') }}</div>
+      </div>
     </div>
     <button type="submit" class="btn btn-sm btn-primary mt-3">
       {{ t.settings_retail_save | default('Сохранить настройки розницы') }}
