@@ -1775,21 +1775,36 @@ async def retail_line_add_post(request: Request):
     active = retail_get_active_session()
     if not active:
         return RedirectResponse(url="/retail?msg=retail_no_active", status_code=303)
+    kind = str(form.get("kind", "RETAIL"))
+    note = str(form.get("note", "")).strip()
+
+    # EXTERNAL branch — profit-only line for opt clients.
+    if kind == "EXTERNAL":
+        ext_label = str(form.get("external_label", "")).strip()
+        try:
+            ext_profit = float(form.get("external_profit", "") or 0)
+        except (ValueError, TypeError):
+            return RedirectResponse(url="/retail?msg=retail_bad_input", status_code=303)
+        lid, err = retail_add_line(
+            active["id"], None, 0, "EXTERNAL",
+            external_label=ext_label, external_profit=ext_profit,
+            partner_pct=get_retail_partner_pct(), note=note,
+        )
+        msg = "retail_line_added" if lid else f"retail_line_error:{err}"
+        return RedirectResponse(url=f"/retail?msg={quote(msg)}", status_code=303)
+
+    # Normal (stock-linked) branches
     try:
         product_id = int(form.get("product_id", "0") or 0)
         qty = float(form.get("qty", "1") or 1)
     except (ValueError, TypeError):
         return RedirectResponse(url="/retail?msg=retail_bad_input", status_code=303)
-    kind = str(form.get("kind", "RETAIL"))
-    note = str(form.get("note", "")).strip()
-    # Kind-specific fields; empty → None
     tmt = form.get("tmt_price")
     rate = form.get("exchange_rate")
     usd_override = form.get("unit_sale_usd")
     tmt_f = float(tmt) if tmt not in (None, "") else None
     rate_f = float(rate) if rate not in (None, "") else None
     usd_f = float(usd_override) if usd_override not in (None, "") else None
-    # For RETAIL — fall back to current admin rate if the user didn't type one.
     if kind == "RETAIL" and (not rate_f or rate_f <= 0):
         rate_f = get_retail_tmt_rate()
     lid, err = retail_add_line(

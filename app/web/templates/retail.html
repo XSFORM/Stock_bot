@@ -68,6 +68,12 @@
         <div class="border rounded p-2 h-100">
           <div class="text-muted">{{ t.retail_profit_total | default('Прибыль') }}</div>
           <div class="fw-semibold fs-5 text-success">{{ "%.2f"|format(totals.total_profit_usd) }} $</div>
+          {% if totals.external_profit_usd and totals.external_profit_usd != 0 %}
+          <div class="small text-info">
+            🧾 {{ t.retail_external_tile | default('из опт-инвойсов:') }}
+            {{ "%+.2f"|format(totals.external_profit_usd) }} $
+          </div>
+          {% endif %}
         </div>
       </div>
       <div class="col-md-3">
@@ -88,17 +94,23 @@
     <h6>{{ t.retail_add_line | default('Добавить строку') }}</h6>
     <form method="post" action="/retail/line/add" class="border rounded p-3 mb-3" id="retailAddForm">
       <div class="row g-2 align-items-end">
-        <div class="col-md-4" style="position:relative;">
+        <div class="col-md-4" style="position:relative;" id="retailProductField">
           <label class="form-label small mb-1">{{ t.retail_product | default('Товар') }} *</label>
           <input type="text" class="form-control form-control-sm" id="retailProductSearch"
-                 autocomplete="off" required
+                 autocomplete="off"
                  placeholder="{{ t.retail_pick_product | default('напиши модель, напр. sf-8207') }}">
           <input type="hidden" name="product_id" id="retailProductId" value="">
           <div id="retailProductSuggestions"
                class="list-group position-absolute shadow-sm"
                style="display:none;z-index:200;min-width:280px;max-height:280px;overflow-y:auto;"></div>
         </div>
-        <div class="col-md-1">
+        {# EXTERNAL-only fields; hidden by default #}
+        <div class="col-md-4 d-none" id="retailExternalLabelField">
+          <label class="form-label small mb-1">{{ t.retail_external_label | default('Имя опт-клиента') }} *</label>
+          <input type="text" name="external_label" class="form-control form-control-sm"
+                 placeholder="{{ t.retail_external_label_ph | default('напр. Eziz Candbil') }}">
+        </div>
+        <div class="col-md-1" id="retailQtyField">
           <label class="form-label small mb-1">{{ t.retail_qty_label | default('Шт.') }}</label>
           <input type="number" step="1" min="1" value="1" name="qty" class="form-control form-control-sm">
         </div>
@@ -108,6 +120,7 @@
             <option value="RETAIL">🏪 {{ t.retail_kind_retail | default('Розница (TMT)') }}</option>
             <option value="WHOLESALE">🤝 {{ t.retail_kind_wholesale | default('Опт (USD)') }}</option>
             <option value="COST_PRICE">🎁 {{ t.retail_kind_cost | default('По приходной') }}</option>
+            <option value="EXTERNAL">🧾 {{ t.retail_kind_external | default('Внешняя прибыль (от опт-инвойса)') }}</option>
           </select>
         </div>
         <div class="col-md-2" id="retailTmtField">
@@ -123,6 +136,14 @@
         <div class="col-md-2 d-none" id="retailUsdField">
           <label class="form-label small mb-1">{{ t.retail_usd_price | default('Цена USD') }}</label>
           <input type="number" step="0.01" min="0" name="unit_sale_usd" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2 d-none" id="retailExternalProfitField">
+          <label class="form-label small mb-1">{{ t.retail_external_partner_share | default('Доля партнёра USD') }} *</label>
+          <input type="number" step="0.01" name="external_profit" class="form-control form-control-sm"
+                 placeholder="{{ t.retail_external_partner_share_ph | default('напр. 32.98') }}">
+          <div class="form-text small" style="font-size:.7rem">
+            {{ t.retail_external_partner_share_hint | default('то же число, что в твоей тетради — уже половина') }}
+          </div>
         </div>
         <div class="col-md-12 col-lg-3">
           <label class="form-label small mb-1">{{ t.retail_note | default('Заметка') }}</label>
@@ -161,22 +182,30 @@
           {% for l in lines %}
           <tr>
             <td class="small text-muted">{{ (l.created_at or '')[11:16] }}</td>
-            <td>{{ l.brand }} {{ l.model }}
-              <div class="small text-muted">{{ l.name }}</div>
+            <td>
+              {% if l.kind == 'EXTERNAL' %}
+                <strong>{{ l.external_label }}</strong>
+                <div class="small text-muted">{{ t.retail_external_hint | default('опт-клиент, инвойс оформлен отдельно') }}</div>
+              {% else %}
+                {{ l.brand }} {{ l.model }}
+                <div class="small text-muted">{{ l.name }}</div>
+              {% endif %}
             </td>
-            <td class="text-end">{{ "%.0f"|format(l.qty) }}</td>
+            <td class="text-end">{% if l.kind == 'EXTERNAL' %}—{% else %}{{ "%.0f"|format(l.qty) }}{% endif %}</td>
             <td>
               {% if l.kind == 'RETAIL' %}
                 <span class="badge bg-primary-subtle text-primary-emphasis">🏪 {{ t.retail_kind_retail | default('Розница') }}</span>
               {% elif l.kind == 'WHOLESALE' %}
                 <span class="badge bg-warning-subtle text-warning-emphasis">🤝 {{ t.retail_kind_wholesale | default('Опт') }}</span>
+              {% elif l.kind == 'EXTERNAL' %}
+                <span class="badge bg-info-subtle text-info-emphasis">🧾 {{ t.retail_kind_external_short | default('Внешняя') }}</span>
               {% else %}
                 <span class="badge bg-secondary-subtle text-secondary-emphasis">🎁 {{ t.retail_kind_cost | default('По приходной') }}</span>
               {% endif %}
             </td>
             <td class="text-end">{% if l.tmt_price %}{{ "%.0f"|format(l.tmt_price) }}{% else %}—{% endif %}</td>
-            <td class="text-end">{{ "%.2f"|format(l.unit_sale_usd * l.qty) }}</td>
-            <td class="text-end text-muted">{{ "%.2f"|format(l.unit_cost_usd * l.qty) }}</td>
+            <td class="text-end">{% if l.kind == 'EXTERNAL' %}—{% else %}{{ "%.2f"|format(l.unit_sale_usd * l.qty) }}{% endif %}</td>
+            <td class="text-end text-muted">{% if l.kind == 'EXTERNAL' %}—{% else %}{{ "%.2f"|format(l.unit_cost_usd * l.qty) }}{% endif %}</td>
             <td class="text-end {% if l.line_profit_usd > 0 %}text-success{% elif l.line_profit_usd < 0 %}text-danger{% else %}text-muted{% endif %}">
               {{ "%.2f"|format(l.line_profit_usd) }}
             </td>
@@ -269,12 +298,22 @@
   var usdWasManuallyEdited = false;
 
   // ── Kind-driven field visibility ─────────────────────────────────
+  var productField   = document.getElementById('retailProductField');
+  var qtyField       = document.getElementById('retailQtyField');
+  var extLabelField  = document.getElementById('retailExternalLabelField');
+  var extProfitField = document.getElementById('retailExternalProfitField');
+
   function toggleFields() {
     var k = kindSel.value;
+    var isExt = (k === 'EXTERNAL');
     tmtField.classList.toggle('d-none',  k !== 'RETAIL');
     rateField.classList.toggle('d-none', k !== 'RETAIL');
     usdField.classList.toggle('d-none',  k !== 'WHOLESALE');
-    // On switching INTO wholesale, pre-fill USD if we have a product.
+    // EXTERNAL hides product search + qty; shows label + profit.
+    productField.classList.toggle('d-none',    isExt);
+    qtyField.classList.toggle('d-none',        isExt);
+    extLabelField.classList.toggle('d-none',  !isExt);
+    extProfitField.classList.toggle('d-none', !isExt);
     if (k === 'WHOLESALE' && !usdWasManuallyEdited) autofillWholesaleUsd();
     recomputePreview();
   }
@@ -366,23 +405,59 @@
     }
   });
 
-  // Reject submit until a product is selected (hidden input filled).
+  // Submit validation differs by kind: EXTERNAL needs name + profit;
+  // all other kinds need a product selected.
   addForm.addEventListener('submit', function(e) {
-    if (!pidInput.value) {
-      e.preventDefault();
-      searchInput.setCustomValidity('{{ t.retail_pick_product | default("выбери модель") }}');
-      searchInput.reportValidity();
+    var k = kindSel.value;
+    if (k === 'EXTERNAL') {
+      var labelInput = document.querySelector('[name=external_label]');
+      var profitInput = document.querySelector('[name=external_profit]');
+      if (!labelInput.value.trim()) {
+        e.preventDefault();
+        labelInput.setCustomValidity('{{ t.retail_external_label | default("Имя опт-клиента") }}');
+        labelInput.reportValidity();
+        return;
+      }
+      labelInput.setCustomValidity('');
+      var pv = parseFloat(profitInput.value);
+      if (!pv || pv === 0) {
+        e.preventDefault();
+        profitInput.setCustomValidity('{{ t.retail_external_profit | default("Прибыль USD") }}');
+        profitInput.reportValidity();
+        return;
+      }
+      profitInput.setCustomValidity('');
     } else {
-      searchInput.setCustomValidity('');
+      if (!pidInput.value) {
+        e.preventDefault();
+        searchInput.setCustomValidity('{{ t.retail_pick_product | default("выбери модель") }}');
+        searchInput.reportValidity();
+      } else {
+        searchInput.setCustomValidity('');
+      }
     }
   });
 
   // ── Live calculator ───────────────────────────────────────────────
   function recomputePreview() {
+    var k = kindSel.value;
+    // EXTERNAL: user enters PARTNER'S SHARE (that's how he writes in the
+    // tetrad), full profit is back-calculated for display.
+    if (k === 'EXTERNAL') {
+      var ps = parseFloat(document.querySelector('[name=external_profit]').value || '0');
+      if (!ps) { preview.textContent = ''; return; }
+      var pct = {{ retail_partner_pct }};
+      var fullProfit = pct > 0 ? ps * 100 / pct : ps;
+      var myShare = fullProfit - ps;
+      preview.innerHTML =
+        '🧾 ' + '{{ t.retail_live_partner | default("партнёру") }}: <strong>' + ps.toFixed(2) + ' $</strong>' +
+        ' · ' + '{{ t.retail_live_me | default("моё") }} ' + myShare.toFixed(2) +
+        ' · ' + '{{ t.retail_live_from_profit | default("от прибыли") }} ' + fullProfit.toFixed(2) + ' $';
+      return;
+    }
     if (!selectedProduct) { preview.textContent = ''; return; }
     var cost = parseFloat(selectedProduct.wh_price || 0);
     var qty  = parseFloat(document.querySelector('[name=qty]').value || '1');
-    var k    = kindSel.value;
     var saleUsd = 0;
     if (k === 'RETAIL') {
       var tmt  = parseFloat(document.querySelector('[name=tmt_price]').value || '0');
@@ -406,8 +481,9 @@
       ' → ' + '{{ t.retail_live_partner | default("партнёру") }} ' + partner.toFixed(2) +
       ' / ' + '{{ t.retail_live_me | default("моё") }} ' + me.toFixed(2);
   }
-  document.querySelectorAll('[name=tmt_price],[name=exchange_rate],[name=unit_sale_usd],[name=qty]')
-    .forEach(function(el) { el.addEventListener('input', recomputePreview); });
+  document.querySelectorAll(
+    '[name=tmt_price],[name=exchange_rate],[name=unit_sale_usd],[name=qty],[name=external_profit]'
+  ).forEach(function(el) { el.addEventListener('input', recomputePreview); });
 
   toggleFields();
 })();

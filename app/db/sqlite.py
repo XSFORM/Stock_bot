@@ -312,6 +312,66 @@ def _ensure_invoice_retail_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE invoices ADD COLUMN retail_shop_name TEXT")
 
 
+def _ensure_retail_lines_v2_external(conn: sqlite3.Connection) -> None:
+    """Phase 2 of retail_lines: allow kind='EXTERNAL' (profit-only lines for
+    opt clients who already have their own full invoices; here we just
+    account for the shop's partner share of that profit).
+
+    Changes:
+      - product_id is now nullable (external lines don't link to stock)
+      - kind CHECK includes 'EXTERNAL'
+      - new column `external_label` stores the opt client's display name
+
+    SQLite's CHECK can't be ALTERed in-place, so we rebuild the table.
+    Idempotent via a presence check on the new column.
+    """
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(retail_lines)")}
+    if "external_label" in cols:
+        return
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS retail_lines_v2 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            product_id INTEGER,
+            qty REAL NOT NULL,
+            kind TEXT NOT NULL CHECK(kind IN ('RETAIL','WHOLESALE','COST_PRICE','EXTERNAL')),
+            tmt_price REAL,
+            exchange_rate REAL,
+            unit_cost_usd REAL NOT NULL,
+            unit_sale_usd REAL NOT NULL,
+            line_profit_usd REAL NOT NULL,
+            partner_share_usd REAL NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            external_label TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY (session_id) REFERENCES retail_sessions(id) ON DELETE CASCADE,
+            FOREIGN KEY (product_id) REFERENCES products(id)
+        )
+    """)
+    conn.execute("""
+        INSERT INTO retail_lines_v2
+          (id, session_id, created_at, product_id, qty, kind, tmt_price, exchange_rate,
+           unit_cost_usd, unit_sale_usd, line_profit_usd, partner_share_usd, note, external_label)
+        SELECT id, session_id, created_at, product_id, qty, kind, tmt_price, exchange_rate,
+               unit_cost_usd, unit_sale_usd, line_profit_usd, partner_share_usd, note, ''
+        FROM retail_lines
+    """)
+    conn.execute("DROP TABLE retail_lines")
+    conn.execute("ALTER TABLE retail_lines_v2 RENAME TO retail_lines")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_retail_lines_session ON retail_lines(session_id)"
+    )
+
+
+def _ensure_invoice_retail_external_profit(conn: sqlite3.Connection) -> None:
+    """Snapshot of external profit at week-close, used by invoice PDF/XLSX."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(invoices)")}
+    if "retail_external_profit" not in cols:
+        conn.execute(
+            "ALTER TABLE invoices ADD COLUMN retail_external_profit REAL NOT NULL DEFAULT 0"
+        )
+
+
 def _ensure_supplier_ledger_table(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -1012,6 +1072,8 @@ def init_db() -> None:
         _ensure_retail_lines_table(conn)
         _ensure_retail_card_cashouts_table(conn)
         _ensure_invoice_retail_columns(conn)
+        _ensure_retail_lines_v2_external(conn)
+        _ensure_invoice_retail_external_profit(conn)
         conn.commit()
 
 
@@ -4290,7 +4352,13 @@ def get_loans_summary() -> dict[str, float]:
 # ─── Retail CRUD (opt-in module) ──────────────────────────────────────────────
 
 # Allowed line kinds.
-_RETAIL_KINDS = ("RETAIL", "WHOLESALE", "COST_PRICE")
+#   RETAIL     — walk-in shop sale (TMT price + rate → USD)
+#   WHOLESALE  — opt-priced sale through the shop (USD price)
+#   COST_PRICE — gift / home / boss, zero profit, stock decrements
+#   EXTERNAL   — profit-only line for opt clients who already have their
+#                own full invoice; no product, no stock movement, only
+#                adds to total profit so partner's share is accurate.
+_RETAIL_KINDS = ("RETAIL", "WHOLESALE", "COST_PRICE", "EXTERNAL")
 
 
 def _compute_retail_line_usd(
@@ -4398,7 +4466,7 @@ def retail_list_lines(session_id: int) -> list[dict[str, Any]]:
 
 def retail_add_line(
     session_id: int,
-    product_id: int,
+    product_id: Optional[int],
     qty: float,
     kind: str,
     tmt_price: Optional[float] = None,
@@ -4406,17 +4474,65 @@ def retail_add_line(
     unit_sale_usd_override: Optional[float] = None,
     partner_pct: Optional[float] = None,
     note: str = "",
+    external_label: str = "",
+    external_profit: Optional[float] = None,
 ) -> tuple[Optional[int], str]:
     if kind not in _RETAIL_KINDS:
         return None, "bad_kind"
+    pct = float(partner_pct) if partner_pct is not None else get_retail_partner_pct()
+
+    # ── EXTERNAL branch: profit-only line for opt clients ────────────────
+    #
+    # IMPORTANT: `external_profit` here is the **PARTNER'S SHARE**, not the
+    # full profit of the opt sale — that's how the user writes it in his
+    # paper tetrad ("Eziz Candbil — 32.98" = 32.98 goes straight to the
+    # boss). The full line profit is back-calculated so weekly aggregates
+    # (total_profit, partner_share, my_share) stay consistent with the
+    # same 50/50 split rules the shop-sales use.
+    #
+    #   partner_share = user_entered
+    #   line_profit   = user_entered × (100 / partner_pct)   when pct > 0
+    #   my_share      = line_profit − partner_share  (equals user_entered
+    #                   again when the split is 50/50)
+    if kind == "EXTERNAL":
+        name = (external_label or "").strip()
+        if not name:
+            return None, "external_label_required"
+        try:
+            partner_share_input = float(external_profit) if external_profit is not None else 0.0
+        except (ValueError, TypeError):
+            return None, "bad_external_profit"
+        if partner_share_input == 0:
+            return None, "zero_external_profit"
+        if pct > 0:
+            full_profit = round(partner_share_input * 100.0 / pct, 2)
+        else:
+            # Degenerate split (partner_pct=0): keep the number as-is in
+            # both buckets so nothing crashes; the UI prevents 0% anyway.
+            full_profit = round(partner_share_input, 2)
+        with _connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO retail_lines "
+                "(session_id, product_id, qty, kind, tmt_price, exchange_rate, "
+                " unit_cost_usd, unit_sale_usd, line_profit_usd, partner_share_usd, "
+                " note, external_label) "
+                "VALUES (?, NULL, 1, 'EXTERNAL', NULL, NULL, 0, 0, ?, ?, ?, ?)",
+                (int(session_id), full_profit, round(partner_share_input, 2),
+                 (note or "").strip(), name),
+            )
+            conn.commit()
+            return int(cur.lastrowid), ""
+
+    # ── Normal stock-linked branches ─────────────────────────────────────
     try:
         q = float(qty)
         if q <= 0:
             return None, "non_positive_qty"
     except (ValueError, TypeError):
         return None, "bad_qty"
+    if not product_id:
+        return None, "product_required"
     with _connect() as conn:
-        # Verify product exists; fetch wh_price as unit cost snapshot.
         pr = conn.execute(
             "SELECT wh_price FROM products WHERE id = ?", (int(product_id),)
         ).fetchone()
@@ -4426,13 +4542,13 @@ def retail_add_line(
         unit_sale, line_profit = _compute_retail_line_usd(
             kind, q, unit_cost, tmt_price, exchange_rate, unit_sale_usd_override,
         )
-        pct = float(partner_pct) if partner_pct is not None else get_retail_partner_pct()
         partner_share = round(line_profit * pct / 100.0, 2)
         cur = conn.execute(
             "INSERT INTO retail_lines "
             "(session_id, product_id, qty, kind, tmt_price, exchange_rate, "
-            " unit_cost_usd, unit_sale_usd, line_profit_usd, partner_share_usd, note) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " unit_cost_usd, unit_sale_usd, line_profit_usd, partner_share_usd, "
+            " note, external_label) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')",
             (int(session_id), int(product_id), q, kind,
              (float(tmt_price) if tmt_price not in (None, "") else None),
              (float(exchange_rate) if exchange_rate not in (None, "") else None),
@@ -4454,7 +4570,16 @@ def retail_delete_line(line_id: int) -> tuple[bool, str]:
 
 
 def retail_session_totals(session_id: int) -> dict[str, float]:
-    """Aggregate totals for a session — used by UI and by close-week logic."""
+    """Aggregate totals for a session — used by UI and by close-week logic.
+
+    `external_profit_usd` is the sum of EXTERNAL-kind line profits (opt
+    clients whose own invoice already exists). It is reported SEPARATELY
+    so the UI / printed invoice can show it on its own line, but it IS
+    included in `total_profit_usd` and `partner_share_usd`.
+
+    `shop_qty` excludes EXTERNAL lines (qty=1 placeholder) so the
+    "Количество" counter in the UI only shows real sold items.
+    """
     with _connect() as conn:
         row = conn.execute(
             """
@@ -4464,8 +4589,11 @@ def retail_session_totals(session_id: int) -> dict[str, float]:
               COALESCE(SUM(unit_cost_usd * qty),       0) AS total_cost_usd,
               COALESCE(SUM(line_profit_usd),           0) AS total_profit_usd,
               COALESCE(SUM(partner_share_usd),         0) AS partner_share_usd,
+              COALESCE(SUM(CASE WHEN kind='EXTERNAL' THEN line_profit_usd ELSE 0 END), 0)
+                                                            AS external_profit_usd,
               COUNT(*)                                     AS line_count,
-              COALESCE(SUM(qty),                       0) AS total_qty
+              COALESCE(SUM(CASE WHEN kind='EXTERNAL' THEN 0 ELSE qty END), 0)
+                                                            AS shop_qty
             FROM retail_lines WHERE session_id = ?
             """,
             (int(session_id),),
@@ -4480,8 +4608,9 @@ def retail_session_totals(session_id: int) -> dict[str, float]:
         "total_profit_usd": round(tot_profit, 2),
         "partner_share_usd": round(partner, 2),
         "my_share_usd": round(tot_profit - partner, 2),
+        "external_profit_usd": round(float(totals.get("external_profit_usd") or 0), 2),
         "line_count": int(totals.get("line_count") or 0),
-        "total_qty": round(float(totals.get("total_qty") or 0), 2),
+        "total_qty": round(float(totals.get("shop_qty") or 0), 2),
     }
 
 
@@ -4543,9 +4672,19 @@ def retail_close_session_full(
             ).fetchall()
             if not lines:
                 return False, "empty_session", None
-            # Verify stock
+            # Split: stock-affecting lines go into cart_items, EXTERNAL lines
+            # only contribute to the profit summary (opt invoice is already
+            # elsewhere, don't double-count the goods).
+            stock_lines = [ln for ln in lines if ln["kind"] != "EXTERNAL"]
+            external_profit = round(sum(
+                float(ln["line_profit_usd"] or 0)
+                for ln in lines if ln["kind"] == "EXTERNAL"
+            ), 2)
+            if not stock_lines and external_profit == 0:
+                return False, "empty_session", None
+            # Verify stock (only for lines that actually move inventory)
             needed: dict[int, float] = {}
-            for ln in lines:
+            for ln in stock_lines:
                 pid = int(ln["product_id"])
                 needed[pid] = needed.get(pid, 0.0) + float(ln["qty"])
             for pid, qty_needed in needed.items():
@@ -4575,9 +4714,9 @@ def retail_close_session_full(
             )
             cart_id = int(cur.lastrowid)
 
-            # 4. cart_items + 5. stock + stock_ops
+            # 4. cart_items + 5. stock + stock_ops  (only stock_lines)
             total = 0.0
-            for ln in lines:
+            for ln in stock_lines:
                 qty = float(ln["qty"])
                 unit_price = float(ln["unit_sale_usd"])
                 line_total = round(unit_price * qty, 2)
@@ -4609,10 +4748,11 @@ def retail_close_session_full(
             conn.execute(
                 "INSERT INTO invoices "
                 "(cart_id, number, total, discount_pct, "
-                " is_retail, retail_partner_pct, retail_partner_name, retail_shop_name) "
-                "VALUES (?, ?, ?, 0, 1, ?, ?, ?)",
+                " is_retail, retail_partner_pct, retail_partner_name, retail_shop_name, "
+                " retail_external_profit) "
+                "VALUES (?, ?, ?, 0, 1, ?, ?, ?, ?)",
                 (cart_id, int(next_num), total,
-                 partner_pct, partner_name, shop_name),
+                 partner_pct, partner_name, shop_name, external_profit),
             )
 
             # 7. ledger payment (balance back to 0)
