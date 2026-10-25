@@ -1737,6 +1737,7 @@ def retail_get(request: Request, msg: str = ""):
     lines = retail_list_lines(active["id"]) if active else []
     totals = retail_session_totals(active["id"]) if active else None
     history = retail_list_sessions(limit=15)
+    from app.db.sqlite import get_retail_warehouse_code
     return _render(request, "retail.html", {
         "message": msg,
         "retail_tmt_rate": get_retail_tmt_rate(),
@@ -1744,11 +1745,11 @@ def retail_get(request: Request, msg: str = ""):
         "retail_partner_name": get_retail_partner_name(),
         "retail_shop_name": get_retail_shop_name(),
         "retail_summary_client_id": get_retail_summary_client_id(),
+        "retail_warehouse_code": get_retail_warehouse_code(),
         "active_session": active,
         "lines": lines,
         "totals": totals,
         "history": history,
-        "products": list_products(),  # for the add-line form search
     })
 
 

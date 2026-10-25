@@ -88,17 +88,15 @@
     <h6>{{ t.retail_add_line | default('Добавить строку') }}</h6>
     <form method="post" action="/retail/line/add" class="border rounded p-3 mb-3" id="retailAddForm">
       <div class="row g-2 align-items-end">
-        <div class="col-md-4">
+        <div class="col-md-4" style="position:relative;">
           <label class="form-label small mb-1">{{ t.retail_product | default('Товар') }} *</label>
-          <select name="product_id" required class="form-select form-select-sm" id="retailProductSelect">
-            <option value="">— {{ t.retail_pick_product | default('выбери модель') }} —</option>
-            {% for p in products %}
-            <option value="{{ p.id }}" data-cost="{{ "%.4f"|format(p.wh_price or 0) }}">
-              {{ p.brand }} {{ p.model }} — {{ p.name }}
-              ({{ "%.2f"|format(p.wh_price or 0) }}$)
-            </option>
-            {% endfor %}
-          </select>
+          <input type="text" class="form-control form-control-sm" id="retailProductSearch"
+                 autocomplete="off" required
+                 placeholder="{{ t.retail_pick_product | default('напиши модель, напр. sf-8207') }}">
+          <input type="hidden" name="product_id" id="retailProductId" value="">
+          <div id="retailProductSuggestions"
+               class="list-group position-absolute shadow-sm"
+               style="display:none;z-index:200;min-width:280px;max-height:280px;overflow-y:auto;"></div>
         </div>
         <div class="col-md-1">
           <label class="form-label small mb-1">{{ t.retail_qty_label | default('Шт.') }}</label>
@@ -251,33 +249,120 @@
 
 <script>
 (function() {
-  // Toggle fields for the add-line form by kind.
-  var kindSel = document.getElementById('retailKindSelect');
-  var tmtField = document.getElementById('retailTmtField');
-  var rateField = document.getElementById('retailRateField');
-  var usdField = document.getElementById('retailUsdField');
-  var preview = document.getElementById('retailLivePreview');
-  var productSel = document.getElementById('retailProductSelect');
-  if (!kindSel) return;
+  var kindSel      = document.getElementById('retailKindSelect');
+  var tmtField     = document.getElementById('retailTmtField');
+  var rateField    = document.getElementById('retailRateField');
+  var usdField     = document.getElementById('retailUsdField');
+  var preview      = document.getElementById('retailLivePreview');
+  var searchInput  = document.getElementById('retailProductSearch');
+  var pidInput     = document.getElementById('retailProductId');
+  var suggestions  = document.getElementById('retailProductSuggestions');
+  var addForm      = document.getElementById('retailAddForm');
+  if (!kindSel || !searchInput) return;
 
+  var selectedProduct = null;
+  var searchTimer;
+  var WAREHOUSE = {{ retail_warehouse_code | tojson }};
+
+  // ── Kind-driven field visibility ─────────────────────────────────
   function toggleFields() {
     var k = kindSel.value;
-    tmtField.classList.toggle('d-none', k !== 'RETAIL');
+    tmtField.classList.toggle('d-none',  k !== 'RETAIL');
     rateField.classList.toggle('d-none', k !== 'RETAIL');
-    usdField.classList.toggle('d-none', k !== 'WHOLESALE');
+    usdField.classList.toggle('d-none',  k !== 'WHOLESALE');
     recomputePreview();
   }
   kindSel.addEventListener('change', toggleFields);
 
+  // ── Product search (same pattern as /sale) ───────────────────────
+  function hideSuggestions() { suggestions.style.display = 'none'; }
+
+  function renderSuggestions(items) {
+    suggestions.innerHTML = '';
+    if (!items.length) {
+      suggestions.innerHTML =
+        '<div class="list-group-item small text-muted">' +
+        '{{ t.retail_search_empty | default("ничего не найдено на складе") }}' +
+        '</div>';
+      suggestions.style.display = 'block';
+      return;
+    }
+    items.forEach(function(item) {
+      var a = document.createElement('a');
+      a.href = '#';
+      a.className = 'list-group-item list-group-item-action py-1 small';
+      a.innerHTML =
+        '<strong>' + item.brand + ' ' + item.model + '</strong>' +
+        ' — ' + (item.name || '') +
+        ' <span class="text-muted">(' + item.qty + ' шт · ' +
+        parseFloat(item.wh_price || 0).toFixed(2) + '$)</span>';
+      a.addEventListener('click', function(e) {
+        e.preventDefault();
+        selectProduct(item);
+      });
+      suggestions.appendChild(a);
+    });
+    suggestions.style.display = 'block';
+  }
+
+  function fetchSuggestions(q) {
+    fetch('/api/stock-search?warehouse=' + encodeURIComponent(WAREHOUSE) +
+          '&q=' + encodeURIComponent(q))
+      .then(function(r) { return r.json(); })
+      .then(function(data) { renderSuggestions(data.results || []); })
+      .catch(function() { hideSuggestions(); });
+  }
+
+  function selectProduct(item) {
+    selectedProduct = item;
+    pidInput.value = item.product_id;
+    searchInput.value = item.brand + ' ' + item.model + ' — ' + (item.name || '');
+    searchInput.setCustomValidity('');
+    hideSuggestions();
+    recomputePreview();
+  }
+
+  searchInput.addEventListener('input', function() {
+    clearTimeout(searchTimer);
+    // Any edit after a selection invalidates it — must pick again.
+    selectedProduct = null;
+    pidInput.value = '';
+    recomputePreview();
+    var q = this.value.trim();
+    if (q.length < 1) { hideSuggestions(); return; }
+    searchTimer = setTimeout(function() { fetchSuggestions(q); }, 220);
+  });
+
+  searchInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') hideSuggestions();
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!suggestions.contains(e.target) && e.target !== searchInput) {
+      hideSuggestions();
+    }
+  });
+
+  // Reject submit until a product is selected (hidden input filled).
+  addForm.addEventListener('submit', function(e) {
+    if (!pidInput.value) {
+      e.preventDefault();
+      searchInput.setCustomValidity('{{ t.retail_pick_product | default("выбери модель") }}');
+      searchInput.reportValidity();
+    } else {
+      searchInput.setCustomValidity('');
+    }
+  });
+
+  // ── Live calculator ───────────────────────────────────────────────
   function recomputePreview() {
-    if (!productSel.value) { preview.textContent = ''; return; }
-    var opt = productSel.options[productSel.selectedIndex];
-    var cost = parseFloat(opt.getAttribute('data-cost') || '0');
-    var qty = parseFloat(document.querySelector('[name=qty]').value || '1');
-    var k = kindSel.value;
+    if (!selectedProduct) { preview.textContent = ''; return; }
+    var cost = parseFloat(selectedProduct.wh_price || 0);
+    var qty  = parseFloat(document.querySelector('[name=qty]').value || '1');
+    var k    = kindSel.value;
     var saleUsd = 0;
     if (k === 'RETAIL') {
-      var tmt = parseFloat(document.querySelector('[name=tmt_price]').value || '0');
+      var tmt  = parseFloat(document.querySelector('[name=tmt_price]').value || '0');
       var rate = parseFloat(document.querySelector('[name=exchange_rate]').value || '0');
       if (tmt > 0 && rate > 0) saleUsd = tmt / rate;
     } else if (k === 'WHOLESALE') {
@@ -287,21 +372,20 @@
       saleUsd = cost * qty;
     }
     var totalCost = cost * qty;
-    var profit = saleUsd - totalCost;
-    var partner = profit * {{ retail_partner_pct }} / 100;
-    var me = profit - partner;
+    var profit    = saleUsd - totalCost;
+    var partner   = profit * {{ retail_partner_pct }} / 100;
+    var me        = profit - partner;
     preview.innerHTML =
       '💰 ' + '{{ t.retail_live_sold | default("Продано") }}' + ': <strong>' + saleUsd.toFixed(2) + ' $</strong>' +
       ' · ' + '{{ t.retail_live_cost | default("приход") }}' + ' ' + totalCost.toFixed(2) + ' $' +
       ' · {{ t.retail_live_profit | default("прибыль") }} ' +
-      '<span style="color:' + (profit>=0?'#2e8b57':'#d04444') + '">' + profit.toFixed(2) + ' $</span>' +
+      '<span style="color:' + (profit >= 0 ? '#2e8b57' : '#d04444') + '">' + profit.toFixed(2) + ' $</span>' +
       ' → ' + '{{ t.retail_live_partner | default("партнёру") }} ' + partner.toFixed(2) +
       ' / ' + '{{ t.retail_live_me | default("моё") }} ' + me.toFixed(2);
   }
-  document.querySelectorAll('[name=tmt_price],[name=exchange_rate],[name=unit_sale_usd],[name=qty]').forEach(function(el){
-    el.addEventListener('input', recomputePreview);
-  });
-  productSel.addEventListener('change', recomputePreview);
+  document.querySelectorAll('[name=tmt_price],[name=exchange_rate],[name=unit_sale_usd],[name=qty]')
+    .forEach(function(el) { el.addEventListener('input', recomputePreview); });
+
   toggleFields();
 })();
 </script>
