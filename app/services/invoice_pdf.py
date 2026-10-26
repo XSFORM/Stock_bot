@@ -338,7 +338,7 @@ def generate_invoice_pdf(invoice: dict[str, Any],
         partner_pct = float(invoice.get("retail_partner_pct") or 50)
         partner_name = str(invoice.get("retail_partner_name") or "").strip() or "Партнёр"
         shop_name = str(invoice.get("retail_shop_name") or "").strip() or "Магазин"
-        external_profit = float(invoice.get("retail_external_profit") or 0)
+        external_full = float(invoice.get("retail_external_profit") or 0)
         partner_adj = float(invoice.get("retail_partner_adjustment") or 0)
         partner_adj_note = str(invoice.get("retail_partner_adjustment_note") or "").strip()
         total_cost = 0.0
@@ -348,10 +348,13 @@ def generate_invoice_pdf(invoice: dict[str, Any],
                 continue
             total_cost += float(cp) * float(it.get("qty") or 0)
         shop_profit = round(grand_total - total_cost, 2)
-        total_profit = round(shop_profit + external_profit, 2)
-        partner_share = round(total_profit * partner_pct / 100.0, 2)
-        my_share = round(total_profit - partner_share, 2)
-        partner_payout = round(partner_share + partner_adj, 2)
+        shop_partner = round(shop_profit * partner_pct / 100.0, 2)
+        shop_me = round(shop_profit - shop_partner, 2)
+        ext_partner = round(external_full * partner_pct / 100.0, 2)
+        ext_me = round(external_full - ext_partner, 2)
+        partner_total = round(shop_partner + ext_partner, 2)
+        me_total = round(shop_me + ext_me, 2)
+        partner_payout = round(partner_total + partner_adj, 2)
 
         story.append(Spacer(1, 6 * mm))
         story.append(Paragraph(
@@ -359,20 +362,18 @@ def generate_invoice_pdf(invoice: dict[str, Any],
             ParagraphStyle("retail_h", fontName=FONT_BOLD, fontSize=11, spaceAfter=2 * mm),
         ))
         retail_rows = [
-            ["Приход (себестоимость):", f"{round(total_cost, 2):.2f}"],
-            ["Прибыль магазина:",       f"{shop_profit:.2f}"],
+            ["Приход (себестоимость):",                           f"{round(total_cost, 2):.2f}"],
+            ["Продано:",                                           f"{grand_total:.2f}"],
+            ["Прибыль магазина:",                                  f"{shop_profit:.2f}"],
+            [f"    Партнёру с магазина ({int(partner_pct)}%):",    f"{shop_partner:.2f}"],
         ]
-        if external_profit != 0:
-            retail_rows.append(["Прибыль из опт-инвойсов:", f"+{external_profit:.2f}"])
-            retail_rows.append(["Общая прибыль:",            f"{total_profit:.2f}"])
+        if ext_partner != 0:
+            retail_rows.append(["    Партнёру с опт-клиентов:", f"+{ext_partner:.2f}"])
         retail_rows.append([
-            f"Доля партнёра ({_esc(partner_name)}, {int(partner_pct)}%):",
-            f"{partner_share:.2f}",
+            f"Доля партнёра ({_esc(partner_name)}) всего:",
+            f"{partner_total:.2f}",
         ])
-        retail_rows.append([
-            f"Моя доля ({int(100 - partner_pct)}%):",
-            f"{my_share:.2f}",
-        ])
+        retail_rows.append(["Моя доля всего:",                     f"{me_total:.2f}"])
         if partner_adj != 0:
             adj_label = "Корректировка"
             if partner_adj_note:
@@ -385,23 +386,19 @@ def generate_invoice_pdf(invoice: dict[str, Any],
             ])
         retail_tbl = Table(retail_rows, colWidths=[130 * mm, 40 * mm])
         last = len(retail_rows) - 1
+        partner_total_idx = 5 if ext_partner != 0 else 4
         style_ops = [
             ("FONT",         (0, 0), (-1, -1), FONT, 10),
             ("ALIGN",        (1, 0), (1, -1),  "RIGHT"),
             ("TOPPADDING",   (0, 0), (-1, -1), 1),
             ("BOTTOMPADDING",(0, 0), (-1, -1), 1),
-            ("FONT",         (0, 1), (-1, 1),  FONT_BOLD, 10),
-            ("FONT",         (0, last), (-1, last), FONT_BOLD, 10),
+            ("FONT",         (0, 2), (-1, 2),                       FONT_BOLD, 10),
+            ("FONT",         (0, partner_total_idx), (-1, partner_total_idx), FONT_BOLD, 10),
+            ("FONT",         (0, last), (-1, last),                 FONT_BOLD, 10),
+            ("LINEABOVE",    (0, partner_total_idx), (-1, partner_total_idx), 0.5, colors.grey),
         ]
-        if external_profit != 0:
-            style_ops.append(("LINEABOVE", (0, 3), (-1, 3), 0.3, colors.grey))
-            style_ops.append(("FONT",      (0, 3), (-1, 3), FONT_BOLD, 10))
         if partner_adj != 0:
-            # Divider above the two adjustment rows and bold on the final payout.
-            style_ops.append(("LINEABOVE", (0, last - 1), (-1, last - 1), 0.3, colors.grey))
-        else:
-            # No adjustment: divider sits above "Доля партнёра" as before.
-            style_ops.append(("LINEABOVE", (0, last - 1), (-1, last - 1), 0.3, colors.grey))
+            style_ops.append(("LINEABOVE", (0, last), (-1, last), 0.5, colors.grey))
         retail_tbl.setStyle(TableStyle(style_ops))
         story.append(retail_tbl)
 

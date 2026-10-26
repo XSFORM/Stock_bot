@@ -155,7 +155,7 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
         partner_pct = float(invoice.get("retail_partner_pct") or 50)
         partner_name = str(invoice.get("retail_partner_name") or "").strip() or "Партнёр"
         shop_name = str(invoice.get("retail_shop_name") or "").strip() or "Магазин"
-        external_profit = float(invoice.get("retail_external_profit") or 0)
+        external_full = float(invoice.get("retail_external_profit") or 0)
         partner_adj = float(invoice.get("retail_partner_adjustment") or 0)
         partner_adj_note = str(invoice.get("retail_partner_adjustment_note") or "").strip()
         total_cost = 0.0
@@ -165,10 +165,13 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
                 continue
             total_cost += float(cp) * float(it.get("qty") or 0)
         shop_profit = round(grand_total - total_cost, 2)
-        total_profit = round(shop_profit + external_profit, 2)
-        partner_share = round(total_profit * partner_pct / 100.0, 2)
-        my_share = round(total_profit - partner_share, 2)
-        partner_payout = round(partner_share + partner_adj, 2)
+        shop_partner = round(shop_profit * partner_pct / 100.0, 2)
+        shop_me = round(shop_profit - shop_partner, 2)
+        ext_partner = round(external_full * partner_pct / 100.0, 2)
+        ext_me = round(external_full - ext_partner, 2)
+        partner_total = round(shop_partner + ext_partner, 2)
+        me_total = round(shop_me + ext_me, 2)
+        partner_payout = round(partner_total + partner_adj, 2)
 
         heading_row = total_row_idx + 2
         ws.cell(row=heading_row, column=1,
@@ -187,20 +190,21 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
                 c_val.font = Font(bold=True)
 
         r = heading_row + 1
-        _retail_pair(r, "Приход (себестоимость):", round(total_cost, 2));              r += 1
-        _retail_pair(r, "Прибыль магазина:", shop_profit, bold=True);                  r += 1
-        if external_profit != 0:
-            _retail_pair(r, "Прибыль из опт-инвойсов:", external_profit);              r += 1
-            _retail_pair(r, "Общая прибыль:", total_profit, bold=True);                r += 1
-        _retail_pair(r, f"Доля партнёра ({partner_name}, {int(partner_pct)}%):", partner_share); r += 1
-        _retail_pair(r, f"Моя доля ({int(100 - partner_pct)}%):", my_share)
+        _retail_pair(r, "Приход (себестоимость):",             round(total_cost, 2)); r += 1
+        _retail_pair(r, "Продано:",                            grand_total);           r += 1
+        _retail_pair(r, "Прибыль магазина:",                   shop_profit, bold=True); r += 1
+        _retail_pair(r, f"    Партнёру с магазина ({int(partner_pct)}%):", shop_partner); r += 1
+        if ext_partner != 0:
+            _retail_pair(r, "    Партнёру с опт-клиентов:",   ext_partner);          r += 1
+        _retail_pair(r, f"Доля партнёра ({partner_name}) всего:", partner_total, bold=True); r += 1
+        _retail_pair(r, "Моя доля всего:",                     me_total)
         if partner_adj != 0:
             r += 1
             adj_label = "Корректировка"
             if partner_adj_note:
                 adj_label += f" ({partner_adj_note})"
             adj_label += ":"
-            _retail_pair(r, adj_label, partner_adj);                                   r += 1
+            _retail_pair(r, adj_label,                          partner_adj);          r += 1
             _retail_pair(r, f"К выдаче партнёру ({partner_name}):", partner_payout, bold=True)
         extra_row = r
 

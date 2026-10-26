@@ -143,41 +143,51 @@
     </div>
   {% endif %}
 
-  {# ── Retail 50/50 profit block — only for /retail invoices (is_retail=1) ── #}
+  {# ── Retail profit summary — only for /retail invoices (is_retail=1) ─── #}
   {% if invoice.is_retail %}
     {% set _pct = invoice.retail_partner_pct | default(50) | float %}
     {% set _pname = invoice.retail_partner_name or 'Партнёр' %}
     {% set _shop = invoice.retail_shop_name or 'Магазин' %}
-    {% set _ext = invoice.retail_external_profit | default(0) | float %}
+    {% set _ext_full = invoice.retail_external_profit | default(0) | float %}
+    {# Partner's share from EXTERNAL lines = ext_full × pct/100 (same split rule). #}
+    {% set _ext_partner = _ext_full * _pct / 100.0 %}
+    {% set _ext_me = _ext_full - _ext_partner %}
     {% set _adj = invoice.retail_partner_adjustment | default(0) | float %}
     {% set _adj_note = invoice.retail_partner_adjustment_note or '' %}
-    {% set _cost = 0.0 %}
+    {# ns.cost: Jinja's {% set %} inside {% for %} does NOT persist outside the
+       loop (scoping bug) — use a namespace to accumulate properly. #}
+    {% set ns = namespace(cost=0.0) %}
     {% for it in items %}
       {% if it.cost_price %}
-        {% set _cost = _cost + (it.cost_price|float) * (it.qty|float) %}
+        {% set ns.cost = ns.cost + (it.cost_price|float) * (it.qty|float) %}
       {% endif %}
     {% endfor %}
+    {% set _cost = ns.cost %}
     {% set _shop_profit = _grand - _cost %}
-    {% set _total_profit = _shop_profit + _ext %}
-    {% set _partner = _total_profit * _pct / 100.0 %}
-    {% set _me = _total_profit - _partner %}
-    {% set _payout = _partner + _adj %}
-    <div class="mt-4 p-3 border rounded bg-light-subtle" style="max-width: 560px;">
+    {% set _shop_partner = _shop_profit * _pct / 100.0 %}
+    {% set _shop_me = _shop_profit - _shop_partner %}
+    {% set _partner_total = _shop_partner + _ext_partner %}
+    {% set _me_total = _shop_me + _ext_me %}
+    {% set _payout = _partner_total + _adj %}
+    <div class="mt-4 p-3 border rounded bg-light-subtle" style="max-width: 620px;">
       <h6 class="mb-2">🏪 {{ _shop }} — отчёт о прибыли:</h6>
       <table class="table table-sm mb-0">
         <tr><td>Приход (себестоимость):</td><td class="text-end">{{ "%.2f"|format(_cost) }}</td></tr>
+        <tr><td>Продано:</td><td class="text-end">{{ "%.2f"|format(_grand) }}</td></tr>
         <tr><td><strong>Прибыль магазина:</strong></td><td class="text-end"><strong>{{ "%.2f"|format(_shop_profit) }}</strong></td></tr>
-        {% if _ext != 0 %}
-          <tr><td>Прибыль из опт-инвойсов:</td><td class="text-end">+{{ "%.2f"|format(_ext) }}</td></tr>
-          <tr><td><strong>Общая прибыль:</strong></td><td class="text-end"><strong>{{ "%.2f"|format(_total_profit) }}</strong></td></tr>
+        <tr><td class="ps-4">Партнёру с магазина ({{ _pct|int }}%):</td>
+            <td class="text-end text-warning">{{ "%.2f"|format(_shop_partner) }}</td></tr>
+        {% if _ext_partner != 0 %}
+          <tr><td class="ps-4">Партнёру с опт-клиентов:</td>
+              <td class="text-end text-warning">+{{ "%.2f"|format(_ext_partner) }}</td></tr>
         {% endif %}
         <tr style="border-top: 2px solid #999;">
-          <td>Доля партнёра ({{ _pname }}, {{ _pct|int }}%):</td>
-          <td class="text-end">{{ "%.2f"|format(_partner) }}</td>
+          <td><strong>Доля партнёра ({{ _pname }}) всего:</strong></td>
+          <td class="text-end"><strong>{{ "%.2f"|format(_partner_total) }}</strong></td>
         </tr>
         <tr>
-          <td>Моя доля ({{ (100 - _pct)|int }}%):</td>
-          <td class="text-end">{{ "%.2f"|format(_me) }}</td>
+          <td class="text-muted">Моя доля всего:</td>
+          <td class="text-end text-muted">{{ "%.2f"|format(_me_total) }}</td>
         </tr>
         {% if _adj != 0 %}
           <tr>
