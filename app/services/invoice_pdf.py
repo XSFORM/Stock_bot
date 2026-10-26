@@ -406,7 +406,7 @@ def generate_invoice_pdf(invoice: dict[str, Any],
             f"{t['r_ptotal']} ({_esc(partner_name)}) {t['r_total_sfx']}:",
             f"{partner_total:.2f}",
         ])
-        retail_rows.append([f"{t['r_me']}:",                           f"{me_total:.2f}"])
+        # "My share total" row removed — 50/50 split is obvious, less noise.
         if partner_adj != 0:
             adj_label = t['r_adj']
             if partner_adj_note:

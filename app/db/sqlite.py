@@ -404,6 +404,23 @@ def _ensure_invoice_retail_partner_adjustment(conn: sqlite3.Connection) -> None:
         )
 
 
+def _ensure_invoice_retail_actual_payout(conn: sqlite3.Connection) -> None:
+    """Actual amount handed to the partner (may differ from planned payout).
+
+    NULL means "not yet recorded". The difference between planned and
+    actual auto-carries into the next week's partner_adjustment.
+    """
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(invoices)")}
+    if "retail_actual_payout" not in cols:
+        conn.execute(
+            "ALTER TABLE invoices ADD COLUMN retail_actual_payout REAL"
+        )
+    if "retail_actual_payout_note" not in cols:
+        conn.execute(
+            "ALTER TABLE invoices ADD COLUMN retail_actual_payout_note TEXT NOT NULL DEFAULT ''"
+        )
+
+
 def _ensure_supplier_ledger_table(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -1108,6 +1125,7 @@ def init_db() -> None:
         _ensure_invoice_retail_external_profit(conn)
         _ensure_retail_session_partner_adjustment(conn)
         _ensure_invoice_retail_partner_adjustment(conn)
+        _ensure_invoice_retail_actual_payout(conn)
         conn.commit()
 
 
@@ -4437,25 +4455,106 @@ def retail_get_active_session() -> Optional[dict[str, Any]]:
         return _row_to_dict(row) if row else None
 
 
+def _retail_last_carry_over() -> tuple[float, str]:
+    """Compute the carry-over from the most recently closed retail session.
+
+    Returns (adjustment_amount, note). 0 if no previous session or no actual
+    payout recorded. The sign convention matches session.partner_adjustment:
+      actual > planned  → negative (deduct from partner's next share)
+      actual < planned  → positive (add to partner's next share)
+    """
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT rs.invoice_number, i.retail_partner_pct, i.retail_external_profit,
+                   i.retail_partner_adjustment, i.retail_actual_payout, i.total,
+                   (SELECT COALESCE(SUM(ci.cost_price * ci.qty), 0)
+                      FROM cart_items ci WHERE ci.cart_id = i.cart_id) AS cost_sum
+            FROM retail_sessions rs
+            JOIN invoices i ON i.number = rs.invoice_number
+            WHERE rs.closed_at IS NOT NULL AND i.retail_actual_payout IS NOT NULL
+            ORDER BY rs.closed_at DESC LIMIT 1
+            """
+        ).fetchone()
+        if row is None:
+            return 0.0, ""
+        pct = float(row["retail_partner_pct"] or 50)
+        ext = float(row["retail_external_profit"] or 0)
+        adj = float(row["retail_partner_adjustment"] or 0)
+        actual = float(row["retail_actual_payout"] or 0)
+        total = float(row["total"] or 0)
+        cost = float(row["cost_sum"] or 0)
+        shop_profit = total - cost
+        partner_total = (shop_profit + ext) * pct / 100.0
+        planned_payout = round(partner_total + adj, 2)
+        carry = round(planned_payout - actual, 2)
+        if carry == 0:
+            return 0.0, ""
+        note = f"остаток от #{int(row['invoice_number']):06d}"
+        return carry, note
+
+
 def retail_start_session() -> tuple[Optional[int], str]:
-    """Open a new retail session; refuses if one is already active."""
+    """Open a new retail session; refuses if one is already active.
+
+    If the previous closed session has an "actual payout" recorded that
+    differs from planned, the carry-over is pre-filled into this new
+    session's partner_adjustment with an auto-note (user can override).
+    """
     active = retail_get_active_session()
     if active:
         return None, "already_open"
     partner_pct = get_retail_partner_pct()
     partner_name = get_retail_partner_name()
     shop_name = get_retail_shop_name()
+    carry, carry_note = _retail_last_carry_over()
     try:
         with _connect() as conn:
             cur = conn.execute(
-                "INSERT INTO retail_sessions (partner_pct, partner_name, shop_name) "
-                "VALUES (?, ?, ?)",
-                (partner_pct, partner_name, shop_name),
+                "INSERT INTO retail_sessions "
+                "(partner_pct, partner_name, shop_name, "
+                " partner_adjustment, partner_adjustment_note) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (partner_pct, partner_name, shop_name, carry, carry_note),
             )
             conn.commit()
             return int(cur.lastrowid), ""
     except Exception as exc:
         return None, str(exc)
+
+
+def retail_set_actual_payout(
+    invoice_number: int, amount: Optional[float], note: str = ""
+) -> tuple[bool, str]:
+    """Record (or clear) the actual amount handed to the partner for a closed
+    retail invoice. Pass amount=None to clear.
+
+    Having this value triggers the carry-over logic on the NEXT week-open.
+    """
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT is_retail FROM invoices WHERE number = ?", (int(invoice_number),)
+        ).fetchone()
+        if row is None or not row["is_retail"]:
+            return False, "not_retail_invoice"
+        if amount is None or amount == "":
+            conn.execute(
+                "UPDATE invoices SET retail_actual_payout = NULL, "
+                "retail_actual_payout_note = '' WHERE number = ?",
+                (int(invoice_number),),
+            )
+        else:
+            try:
+                amt = float(amount)
+            except (ValueError, TypeError):
+                return False, "bad_amount"
+            conn.execute(
+                "UPDATE invoices SET retail_actual_payout = ?, "
+                "retail_actual_payout_note = ? WHERE number = ?",
+                (round(amt, 2), (note or "").strip(), int(invoice_number)),
+            )
+        conn.commit()
+    return True, ""
 
 
 def retail_get_session(session_id: int) -> Optional[dict[str, Any]]:

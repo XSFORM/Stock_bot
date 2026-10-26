@@ -223,8 +223,8 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]],
         _retail_pair(r, f"    {rt['p_shop']} ({int(partner_pct)}%):",  shop_partner);         r += 1
         if ext_partner != 0:
             _retail_pair(r, f"    {rt['p_ext']}:",                     ext_partner);          r += 1
-        _retail_pair(r, f"{rt['p_total']} ({partner_name}) {rt['total_sfx']}:", partner_total, bold=True); r += 1
-        _retail_pair(r, f"{rt['me']}:",                                me_total)
+        _retail_pair(r, f"{rt['p_total']} ({partner_name}) {rt['total_sfx']}:", partner_total, bold=True)
+        # "My share total" row removed — 50/50 split is obvious.
         if partner_adj != 0:
             r += 1
             adj_label = rt['adj']

@@ -2300,6 +2300,31 @@ def retail_invoice_external_delete_post(number: int, line_id: int):
     )
 
 
+@app.post("/invoices/sale/{number}/retail-actual-payout")
+def retail_invoice_actual_payout_post(
+    number: int,
+    amount: str = Form(""),
+    note: str = Form(""),
+):
+    from app.db.sqlite import retail_set_actual_payout
+    val: Optional[float]
+    if amount.strip() == "":
+        val = None
+    else:
+        try:
+            val = float(amount)
+        except (ValueError, TypeError):
+            return RedirectResponse(
+                url=f"/sale/xlsx/view?n={int(number)}&msg=retail_payout_bad",
+                status_code=303,
+            )
+    ok, err = retail_set_actual_payout(int(number), val, note)
+    msg = "retail_payout_saved" if ok else f"retail_payout_error:{err}"
+    return RedirectResponse(
+        url=f"/sale/xlsx/view?n={int(number)}&msg={quote(msg)}", status_code=303,
+    )
+
+
 @app.get("/sale/done", response_class=HTMLResponse)
 def sale_done(request: Request, pdf: str, backup: str, n: str = ""):
     return _render(
