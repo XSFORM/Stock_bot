@@ -190,6 +190,7 @@ from app.db.sqlite import (
 )
 from app.services.invoice_pdf import generate_invoice_pdf
 from app.services.invoice_xlsx import generate_invoice_xlsx, generate_invoice_xlsx_bytes
+from app.services.invoice_jpeg import generate_invoice_jpeg_bytes
 from app.services.receive_xlsx import generate_receive_xlsx_bytes
 from app.services.return_xlsx import generate_return_xlsx_bytes
 from app.services.stock_xlsx import generate_stock_xlsx_bytes
@@ -2232,6 +2233,28 @@ def sale_xlsx(request: Request, n: int):
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/sale/jpeg")
+def sale_jpeg(request: Request, n: int):
+    """Download sale invoice as JPEG — convenient for IMO / WhatsApp forwarding."""
+    invoice = get_invoice_by_number(int(n))
+    if not invoice:
+        return RedirectResponse(url="/sale?msg=invoice_not_found", status_code=303)
+    items = get_invoice_items_by_number(int(n))
+    try:
+        data = generate_invoice_jpeg_bytes(invoice, items, lang=_get_ui_lang(request))
+    except Exception:
+        logger.exception("Failed to generate JPEG for invoice #%s", n)
+        return RedirectResponse(
+            url=f"/sale/xlsx/view?n={int(n)}&msg=jpeg_error", status_code=303,
+        )
+    filename = f"invoice_{int(invoice['number']):06d}.jpg"
+    return Response(
+        content=data,
+        media_type="image/jpeg",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
