@@ -1995,19 +1995,24 @@ def get_client_balance(client_id: int) -> float:
     """
     Balance = total from done sale invoices - sum(client_ledger.amount).
     Positive balance means client owes money.
+
+    IMPORTANT: Uses `invoices.total` (the stored grand_total AFTER any
+    invoice-level discount) — not the raw sum of cart_items.unit_price.
+    Earlier versions summed cart items which ignored discount_pct, so a
+    10% discount still charged the client the full subtotal in their
+    debt. Fixed 2026-10-26.
     """
     with _connect() as conn:
-        inv_items = conn.execute(
+        inv_row = conn.execute(
             """
-            SELECT ci.unit_price, ci.qty
+            SELECT COALESCE(SUM(i.total), 0) AS inv_total
             FROM invoices i
             JOIN carts c ON c.id = i.cart_id
-            JOIN cart_items ci ON ci.cart_id = c.id
             WHERE c.client_id = ? AND c.status = 'CLOSED'
             """,
             (client_id,),
-        ).fetchall()
-        inv_total = calc_document_total(list(inv_items), "unit_price")
+        ).fetchone()
+        inv_total = float(inv_row["inv_total"]) if inv_row else 0.0
 
         ledger_row = conn.execute(
             "SELECT COALESCE(SUM(amount), 0) AS paid FROM client_ledger WHERE client_id = ?",
@@ -3851,7 +3856,7 @@ def get_client_history(client_id: int) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
         rows = conn.execute(
             """
-            SELECT i.number, i.created_at, i.currency, c.id AS cart_id
+            SELECT i.number, i.created_at, i.currency, i.total, c.id AS cart_id
             FROM invoices i
             JOIN carts c ON c.id = i.cart_id
             WHERE c.client_id = ? AND c.status = 'CLOSED'
@@ -3861,16 +3866,15 @@ def get_client_history(client_id: int) -> list[dict[str, Any]]:
         ).fetchall()
         for r in rows:
             row = _row_to_dict(r)
-            items = conn.execute(
-                "SELECT unit_price, qty FROM cart_items WHERE cart_id = ?",
-                (r["cart_id"],),
-            ).fetchall()
+            # Use invoices.total (grand_total AFTER discount) — not the raw
+            # sum of cart_items.unit_price, which ignores invoice-level
+            # discounts and inflated the client's debt. Fixed 2026-10-26.
             events.append({
                 "kind": "INVOICE",
                 "dt": row.get("created_at", ""),
                 "created_at": row.get("created_at", ""),
                 "ref": str(row.get("number", "")),
-                "amount": calc_document_total(list(items), "unit_price"),
+                "amount": float(row.get("total") or 0),
                 "note": "",
                 "view_url": f"/sale/xlsx/view?n={row.get('number')}",
                 "download_url": f"/sale/xlsx?n={row.get('number')}",
@@ -3937,17 +3941,21 @@ def get_client_history(client_id: int) -> list[dict[str, Any]]:
 
 
 def get_total_clients_debt() -> float:
+    """Total debt across all clients.
+
+    Uses invoices.total (grand_total after discount), not sum of cart_items,
+    so invoice-level discounts don't inflate the DEB bar. Fixed 2026-10-26.
+    """
     with _connect() as conn:
-        inv_items = conn.execute(
+        inv_row = conn.execute(
             """
-            SELECT ci.unit_price, ci.qty
+            SELECT COALESCE(SUM(i.total), 0) AS inv_total
             FROM invoices i
             JOIN carts c ON c.id = i.cart_id
-            JOIN cart_items ci ON ci.cart_id = c.id
             WHERE c.status = 'CLOSED'
             """
-        ).fetchall()
-        inv_total = calc_document_total(list(inv_items), "unit_price")
+        ).fetchone()
+        inv_total = float(inv_row["inv_total"]) if inv_row else 0.0
 
         ledger_row = conn.execute(
             "SELECT COALESCE(SUM(amount), 0) AS paid FROM client_ledger"
