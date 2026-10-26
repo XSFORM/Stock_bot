@@ -4664,6 +4664,122 @@ def retail_session_totals(session_id: int) -> dict[str, float]:
     }
 
 
+def retail_get_session_by_invoice(invoice_number: int) -> Optional[dict[str, Any]]:
+    """Find the retail session that was closed into the given invoice."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM retail_sessions WHERE invoice_number = ? LIMIT 1",
+            (int(invoice_number),),
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+
+
+def retail_list_external_lines_by_invoice(invoice_number: int) -> list[dict[str, Any]]:
+    """List EXTERNAL (opt-profit) lines for the closed session behind this invoice."""
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT rl.*
+            FROM retail_lines rl
+            JOIN retail_sessions rs ON rs.id = rl.session_id
+            WHERE rs.invoice_number = ? AND rl.kind = 'EXTERNAL'
+            ORDER BY rl.id ASC
+            """,
+            (int(invoice_number),),
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
+def _recompute_invoice_external_profit(conn: sqlite3.Connection,
+                                        invoice_number: int) -> None:
+    """Sum current EXTERNAL line_profit values into invoices.retail_external_profit."""
+    row = conn.execute(
+        """
+        SELECT COALESCE(SUM(rl.line_profit_usd), 0) AS tot
+        FROM retail_lines rl
+        JOIN retail_sessions rs ON rs.id = rl.session_id
+        WHERE rs.invoice_number = ? AND rl.kind = 'EXTERNAL'
+        """,
+        (int(invoice_number),),
+    ).fetchone()
+    tot = round(float(row["tot"] or 0), 2)
+    conn.execute(
+        "UPDATE invoices SET retail_external_profit = ? WHERE number = ?",
+        (tot, int(invoice_number)),
+    )
+
+
+def retail_invoice_add_external_line(
+    invoice_number: int,
+    external_label: str,
+    partner_share: float,
+) -> tuple[bool, str]:
+    """Add a new EXTERNAL opt-profit line to a CLOSED retail invoice.
+
+    `partner_share` is the number the user writes in the tetrad (already
+    the partner's share, not the full profit — same semantics as
+    retail_add_line's EXTERNAL branch).
+    """
+    name = (external_label or "").strip()
+    if not name:
+        return False, "label_required"
+    try:
+        ps = float(partner_share)
+    except (ValueError, TypeError):
+        return False, "bad_amount"
+    if ps == 0:
+        return False, "zero_amount"
+    session = retail_get_session_by_invoice(int(invoice_number))
+    if not session:
+        return False, "session_not_found"
+    pct = float(session.get("partner_pct") or 50)
+    full_profit = round(ps * 100.0 / pct, 2) if pct > 0 else round(ps, 2)
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "INSERT INTO retail_lines "
+                "(session_id, product_id, qty, kind, tmt_price, exchange_rate, "
+                " unit_cost_usd, unit_sale_usd, line_profit_usd, partner_share_usd, "
+                " note, external_label) "
+                "VALUES (?, NULL, 1, 'EXTERNAL', NULL, NULL, 0, 0, ?, ?, '', ?)",
+                (int(session["id"]), full_profit, round(ps, 2), name),
+            )
+            _recompute_invoice_external_profit(conn, int(invoice_number))
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def retail_invoice_delete_external_line(
+    invoice_number: int, line_id: int
+) -> tuple[bool, str]:
+    """Delete one EXTERNAL line from the closed session + recompute invoice profit."""
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                """
+                SELECT rl.id, rl.kind, rs.invoice_number
+                FROM retail_lines rl
+                JOIN retail_sessions rs ON rs.id = rl.session_id
+                WHERE rl.id = ?
+                """,
+                (int(line_id),),
+            ).fetchone()
+            if row is None:
+                return False, "line_not_found"
+            if row["kind"] != "EXTERNAL":
+                return False, "not_external"
+            if int(row["invoice_number"] or 0) != int(invoice_number):
+                return False, "wrong_invoice"
+            conn.execute("DELETE FROM retail_lines WHERE id = ?", (int(line_id),))
+            _recompute_invoice_external_profit(conn, int(invoice_number))
+            conn.commit()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
 def retail_set_partner_adjustment(
     session_id: int, amount: float, note: str = ""
 ) -> tuple[bool, str]:

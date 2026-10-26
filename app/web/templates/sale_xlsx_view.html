@@ -76,6 +76,73 @@
     </tbody>
   </table>
 
+  {# ── Opt-client (EXTERNAL) entries — only on retail invoices ── #}
+  {% if invoice.is_retail %}
+    {% if request.query_params.get('msg') %}
+      {% set _m = request.query_params.get('msg') %}
+      {% if _m == 'retail_ext_added' %}
+        <div class="alert alert-success py-2 mt-3 small">Опт-клиент добавлен.</div>
+      {% elif _m == 'retail_ext_deleted' %}
+        <div class="alert alert-info py-2 mt-3 small">Опт-клиент удалён.</div>
+      {% elif _m.startswith('retail_ext_') %}
+        <div class="alert alert-danger py-2 mt-3 small">{{ _m }}</div>
+      {% endif %}
+    {% endif %}
+
+    <div class="mt-4" style="max-width: 720px;">
+      <h6 class="mb-2">🧾 Опт-клиенты (внешняя прибыль)</h6>
+      <table class="table table-sm table-bordered mb-2">
+        <thead class="table-light">
+          <tr>
+            <th>Имя клиента</th>
+            <th class="text-end" style="width:140px">Доля партнёра USD</th>
+            <th class="text-end" style="width:140px">Полная прибыль USD</th>
+            <th style="width:60px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in retail_externals %}
+          <tr>
+            <td>{{ e.external_label }}</td>
+            <td class="text-end text-warning">{{ "%.2f"|format(e.partner_share_usd) }}</td>
+            <td class="text-end text-muted">{{ "%.2f"|format(e.line_profit_usd) }}</td>
+            <td class="text-center">
+              <form method="post"
+                    action="/invoices/sale/{{ invoice.number }}/retail-external/{{ e.id }}/delete"
+                    class="d-inline"
+                    onsubmit="return confirm('Удалить этого опт-клиента?');">
+                <button type="submit" class="btn btn-sm btn-outline-danger py-0">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-muted text-center small">Пока ни одного опт-клиента.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <form method="post"
+            action="/invoices/sale/{{ invoice.number }}/retail-external/add"
+            class="row g-2 align-items-end border rounded p-2 bg-light-subtle">
+        <div class="col-sm-6">
+          <label class="form-label small mb-1">Имя опт-клиента *</label>
+          <input type="text" name="external_label" required class="form-control form-control-sm"
+                 placeholder="напр. Eziz Candbil">
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label small mb-1">Доля партнёра USD *</label>
+          <input type="number" step="0.01" name="partner_share" required class="form-control form-control-sm"
+                 placeholder="напр. 32.98">
+        </div>
+        <div class="col-sm-2">
+          <button type="submit" class="btn btn-primary btn-sm w-100">➕ Добавить</button>
+        </div>
+        <div class="col-12 small text-muted">
+          то же число, что в твоей тетради — уже половина полной прибыли
+        </div>
+      </form>
+    </div>
+  {% endif %}
+
   {# ── Retail 50/50 profit block — only for /retail invoices (is_retail=1) ── #}
   {% if invoice.is_retail %}
     {% set _pct = invoice.retail_partner_pct | default(50) | float %}

@@ -2262,10 +2262,41 @@ def sale_xlsx_view(request: Request, n: int):
         return RedirectResponse(url="/sale?msg=invoice_not_found", status_code=303)
     items = get_invoice_items_by_number(int(n))
     cart_total = calc_document_total(items, "unit_price")
+    externals = []
+    if invoice.get("is_retail"):
+        from app.db.sqlite import retail_list_external_lines_by_invoice
+        externals = retail_list_external_lines_by_invoice(int(n))
     return _render(
         request,
         "sale_xlsx_view.html",
-        {"invoice": invoice, "items": items, "cart_total": cart_total},
+        {"invoice": invoice, "items": items, "cart_total": cart_total,
+         "retail_externals": externals},
+    )
+
+
+@app.post("/invoices/sale/{number}/retail-external/add")
+def retail_invoice_external_add_post(
+    request: Request,
+    number: int,
+    external_label: str = Form(...),
+    partner_share: float = Form(...),
+):
+    from app.db.sqlite import retail_invoice_add_external_line
+    ok, err = retail_invoice_add_external_line(int(number),
+                                                external_label, float(partner_share))
+    msg = "retail_ext_added" if ok else f"retail_ext_error:{err}"
+    return RedirectResponse(
+        url=f"/sale/xlsx/view?n={int(number)}&msg={quote(msg)}", status_code=303,
+    )
+
+
+@app.post("/invoices/sale/{number}/retail-external/{line_id}/delete")
+def retail_invoice_external_delete_post(number: int, line_id: int):
+    from app.db.sqlite import retail_invoice_delete_external_line
+    ok, err = retail_invoice_delete_external_line(int(number), int(line_id))
+    msg = "retail_ext_deleted" if ok else f"retail_ext_del_error:{err}"
+    return RedirectResponse(
+        url=f"/sale/xlsx/view?n={int(number)}&msg={quote(msg)}", status_code=303,
     )
 
 
