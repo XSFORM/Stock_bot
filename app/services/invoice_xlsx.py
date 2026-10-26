@@ -35,6 +35,9 @@ _XLSX_RETAIL_STRINGS = {
         "p_ext": "Partner from opt clients", "p_total": "Partner share",
         "total_sfx": "total", "me": "My share (total)",
         "adj": "Adjustment", "payout": "To pay partner",
+        "a_plan": "By calculation", "a_give": "Actually given",
+        "a_over": "Overpaid — difference", "a_under": "Underpaid — difference",
+        "a_hint": "This difference auto-carries into next week's partner adjustment.",
     },
     "ru": {
         "report": "отчёт о прибыли", "cost": "Приход (себестоимость)", "sold": "Продано",
@@ -42,6 +45,9 @@ _XLSX_RETAIL_STRINGS = {
         "p_ext": "Партнёру с опт-клиентов", "p_total": "Доля партнёра",
         "total_sfx": "всего", "me": "Моя доля всего",
         "adj": "Корректировка", "payout": "К выдаче партнёру",
+        "a_plan": "По расчёту", "a_give": "Отдано фактически",
+        "a_over": "Переплачено — разница", "a_under": "Недодано — разница",
+        "a_hint": "Эта разница автоматически переносится в корректировку следующей недели.",
     },
     "tm": {
         "report": "peýda hasabaty", "cost": "Satyn alyş bahasy", "sold": "Satyldy",
@@ -49,6 +55,9 @@ _XLSX_RETAIL_STRINGS = {
         "p_ext": "Opt müşderilerden hyzmatdaşa", "p_total": "Hyzmatdaşyň paýy",
         "total_sfx": "jemi", "me": "Meniň paýym jemi",
         "adj": "Düzediş", "payout": "Hyzmatdaşa töleg",
+        "a_plan": "Hasap boýunça", "a_give": "Hakyky berlen",
+        "a_over": "Artyk — tapawut", "a_under": "Kem — tapawut",
+        "a_hint": "Bu tapawut indiki hepdäniň düzedişine awtomatik geçýär.",
     },
 }
 
@@ -233,6 +242,31 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]],
             adj_label += ":"
             _retail_pair(r, adj_label,                                  partner_adj);          r += 1
             _retail_pair(r, f"{rt['payout']} ({partner_name}):",       partner_payout, bold=True)
+        # Actual payout block
+        actual_val = invoice.get("retail_actual_payout")
+        actual_note = str(invoice.get("retail_actual_payout_note") or "").strip()
+        if actual_val is not None:
+            try:
+                actual_f = float(actual_val)
+            except (ValueError, TypeError):
+                actual_f = None
+            if actual_f is not None:
+                planned_payout = partner_payout if partner_adj != 0 else partner_total
+                diff = round(actual_f - planned_payout, 2)
+                r += 1
+                _retail_pair(r, f"{rt['a_plan']}:", planned_payout);                           r += 1
+                given_label = rt['a_give']
+                if actual_note:
+                    given_label += f" ({actual_note})"
+                given_label += ":"
+                _retail_pair(r, given_label, actual_f, bold=True);                              r += 1
+                if diff > 0:
+                    diff_label = rt['a_over']
+                elif diff < 0:
+                    diff_label = rt['a_under']
+                else:
+                    diff_label = rt['a_give']
+                _retail_pair(r, f"{diff_label}:", diff, bold=True)
         extra_row = r
 
     # --- Signature block (two side-by-side signatures) ---

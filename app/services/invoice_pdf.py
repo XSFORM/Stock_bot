@@ -67,6 +67,12 @@ _PDF_STRINGS = {
         "r_me":       "My share (total)",
         "r_adj":      "Adjustment",
         "r_payout":   "To pay partner",
+        "r_actual_h":    "Actually given",
+        "r_actual_plan": "By calculation",
+        "r_actual_give": "Actually given",
+        "r_actual_over": "Overpaid — difference",
+        "r_actual_under":"Underpaid — difference",
+        "r_actual_hint": "This difference auto-carries into next week's partner adjustment.",
     },
     "ru": {
         "invoice":    "НАКЛАДНАЯ",
@@ -95,6 +101,12 @@ _PDF_STRINGS = {
         "r_me":       "Моя доля всего",
         "r_adj":      "Корректировка",
         "r_payout":   "К выдаче партнёру",
+        "r_actual_h":    "Фактически передано",
+        "r_actual_plan": "По расчёту",
+        "r_actual_give": "Отдано фактически",
+        "r_actual_over": "Переплачено — разница",
+        "r_actual_under":"Недодано — разница",
+        "r_actual_hint": "Эта разница автоматически переносится в корректировку следующей недели.",
     },
     "tm": {
         "invoice":    "HASAP-FAKTURA",
@@ -123,6 +135,12 @@ _PDF_STRINGS = {
         "r_me":       "Meniň paýym jemi",
         "r_adj":      "Düzediş",
         "r_payout":   "Hyzmatdaşa töleg",
+        "r_actual_h":    "Hakyky berlen",
+        "r_actual_plan": "Hasap boýunça",
+        "r_actual_give": "Hakyky berlen",
+        "r_actual_over": "Artyk — tapawut",
+        "r_actual_under":"Kem — tapawut",
+        "r_actual_hint": "Bu tapawut indiki hepdäniň düzedişine awtomatik geçýär.",
     },
 }
 
@@ -417,9 +435,42 @@ def generate_invoice_pdf(invoice: dict[str, Any],
                 f"{t['r_payout']} ({_esc(partner_name)}):",
                 f"{partner_payout:.2f}",
             ])
+        # Actual payout block (only if admin recorded what was really given)
+        actual_payout = invoice.get("retail_actual_payout")
+        if actual_payout is not None:
+            try:
+                actual_val = float(actual_payout)
+            except (ValueError, TypeError):
+                actual_val = None
+        else:
+            actual_val = None
+        actual_note = str(invoice.get("retail_actual_payout_note") or "").strip()
+        if actual_val is not None:
+            planned_payout = partner_payout if partner_adj != 0 else partner_total
+            diff = round(actual_val - planned_payout, 2)
+            given_label = t['r_actual_give']
+            if actual_note:
+                given_label += f" ({_esc(actual_note)})"
+            given_label += ":"
+            retail_rows.append([f"{t['r_actual_plan']}:",  f"{planned_payout:.2f}"])
+            retail_rows.append([given_label,               f"{actual_val:.2f}"])
+            if diff > 0:
+                diff_label = t['r_actual_over']
+            elif diff < 0:
+                diff_label = t['r_actual_under']
+            else:
+                diff_label = t['r_actual_give']  # exact match
+            retail_rows.append([f"{diff_label}:",          f"{diff:+.2f}"])
         retail_tbl = Table(retail_rows, colWidths=[130 * mm, 40 * mm])
-        last = len(retail_rows) - 1
+        # Row indices (recomputed from offsets to stay valid when optional
+        # blocks are added or removed):
+        #   0 cost, 1 sold, 2 shop_profit (BOLD), 3 partner_from_shop,
+        #   [4 partner_from_ext] (if ext_partner != 0),
+        #   N partner_total (BOLD, LINEABOVE),
+        #   [N+1 adj, N+2 payout (BOLD, LINEABOVE)] (if partner_adj != 0),
+        #   [M planned, M+1 given, M+2 diff] (if actual_val is not None)
         partner_total_idx = 5 if ext_partner != 0 else 4
+        payout_idx = (partner_total_idx + 2) if partner_adj != 0 else None
         style_ops = [
             ("FONT",         (0, 0), (-1, -1), FONT, 10),
             ("ALIGN",        (1, 0), (1, -1),  "RIGHT"),
@@ -427,13 +478,33 @@ def generate_invoice_pdf(invoice: dict[str, Any],
             ("BOTTOMPADDING",(0, 0), (-1, -1), 1),
             ("FONT",         (0, 2), (-1, 2),                       FONT_BOLD, 10),
             ("FONT",         (0, partner_total_idx), (-1, partner_total_idx), FONT_BOLD, 10),
-            ("FONT",         (0, last), (-1, last),                 FONT_BOLD, 10),
             ("LINEABOVE",    (0, partner_total_idx), (-1, partner_total_idx), 0.5, colors.grey),
         ]
-        if partner_adj != 0:
-            style_ops.append(("LINEABOVE", (0, last), (-1, last), 0.5, colors.grey))
+        if payout_idx is not None:
+            style_ops.append(("FONT",     (0, payout_idx), (-1, payout_idx), FONT_BOLD, 10))
+            style_ops.append(("LINEABOVE",(0, payout_idx), (-1, payout_idx), 0.5, colors.grey))
+        if actual_val is not None:
+            # Divider above the "By calculation" row (first row of actual block)
+            actual_start = (payout_idx + 1) if payout_idx is not None else (partner_total_idx + 1)
+            style_ops.append(("LINEABOVE",(0, actual_start), (-1, actual_start), 0.5, colors.grey))
+            # Bold the "Actually given" row (middle of the 3-row actual block)
+            style_ops.append(("FONT",     (0, actual_start + 1), (-1, actual_start + 1), FONT_BOLD, 10))
+            # Diff row — colour by sign
+            diff_idx = actual_start + 2
+            diff_val = round(actual_val - (partner_payout if partner_adj != 0 else partner_total), 2)
+            if diff_val > 0:
+                style_ops.append(("TEXTCOLOR", (1, diff_idx), (1, diff_idx), colors.HexColor("#2e8b57")))
+            elif diff_val < 0:
+                style_ops.append(("TEXTCOLOR", (1, diff_idx), (1, diff_idx), colors.HexColor("#d04444")))
+            style_ops.append(("FONT",     (0, diff_idx), (-1, diff_idx), FONT_BOLD, 10))
         retail_tbl.setStyle(TableStyle(style_ops))
         story.append(retail_tbl)
+        if actual_val is not None:
+            story.append(Spacer(1, 1 * mm))
+            story.append(Paragraph(
+                f"<font color='#1e88a8'>ℹ {_esc(t['r_actual_hint'])}</font>",
+                ParagraphStyle("retail_hint", fontName=FONT, fontSize=8, leading=10),
+            ))
 
     # ── Signature block ─────────────────────────────────────────────────────
     # Two side-by-side columns: Seller on the left, Buyer on the right.
