@@ -258,6 +258,27 @@ def _render_invoice_jpeg(
     img = Image.new("RGB", (_W, int(total_h)), "white")
     d = ImageDraw.Draw(img)
 
+    # ── Stamp first (top-right) so we can push the table below its bottom.
+    stamp_bottom = _TOP_PAD
+    try:
+        from app.services.stamp_asset import get_stamp_path
+        stamp_png = get_stamp_path()
+        if stamp_png is not None:
+            with Image.open(stamp_png) as stamp_src:
+                stamp = stamp_src.convert("RGBA")
+            # Fit into 220×140 box, preserving aspect.
+            max_w, max_h = 220, 140
+            scale = min(max_w / stamp.width, max_h / stamp.height)
+            sw = max(1, int(stamp.width * scale))
+            sh = max(1, int(stamp.height * scale))
+            stamp = stamp.resize((sw, sh), Image.LANCZOS)
+            px = _W - _LEFT_PAD - sw
+            py = _TOP_PAD
+            img.paste(stamp, (px, py), stamp)
+            stamp_bottom = py + sh
+    except Exception:
+        pass
+
     # ── Title ────────────────────────────────────────────────────────────
     y = _TOP_PAD
     title = f"{t['invoice']} #{int(invoice['number']):06d}"
@@ -272,6 +293,9 @@ def _render_invoice_jpeg(
     y += info_h + 4
     d.text((_LEFT_PAD, y), f"{t['date']}: {date_s}", font=f_info, fill="#333")
     y += info_h + 12
+
+    # Push table below the stamp if it reaches lower than current text y.
+    y = max(y, stamp_bottom + 10)
 
     # ── Items table header ───────────────────────────────────────────────
     x_cols = [_LEFT_PAD]
@@ -355,7 +379,7 @@ def _render_invoice_jpeg(
     if is_retail:
         y += 20
         d.text((_LEFT_PAD, y),
-               f"🏪 {shop_name} — {t['r_report']}:",
+               f"{shop_name} — {t['r_report']}:",
                font=f_bold, fill="#1a1a1a")
         y += _RETAIL_H
 
@@ -434,24 +458,8 @@ def _render_invoice_jpeg(
     except Exception:
         pass
 
-    # ── Stamp top-right (if any) ─────────────────────────────────────────
-    try:
-        from app.services.stamp_asset import get_stamp_path
-        stamp_png = get_stamp_path()
-        if stamp_png is not None:
-            with Image.open(stamp_png) as stamp_src:
-                stamp = stamp_src.convert("RGBA")
-            sw = 200
-            sh = max(1, int(stamp.height * (sw / stamp.width)))
-            if sh > 90:
-                sh = 90
-                sw = max(1, int(stamp.width * (sh / stamp.height)))
-            stamp = stamp.resize((sw, sh), Image.LANCZOS)
-            px = _W - _LEFT_PAD - sw
-            py = _TOP_PAD
-            img.paste(stamp, (px, py), stamp)
-    except Exception:
-        pass
+    # Stamp was already pasted at the top (before the title) so the table
+    # starts below its bottom. See the start of this function.
 
     import io
     buf = io.BytesIO()
