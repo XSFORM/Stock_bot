@@ -2222,12 +2222,12 @@ def sale_item_delete(item_id: int = Form(...)):
 
 
 @app.get("/sale/xlsx")
-def sale_xlsx(n: int):
+def sale_xlsx(request: Request, n: int):
     invoice = get_invoice_by_number(int(n))
     if not invoice:
         return RedirectResponse(url="/sale?msg=invoice_not_found", status_code=303)
     items = get_invoice_items_by_number(int(n))
-    data = generate_invoice_xlsx_bytes(invoice, items)
+    data = generate_invoice_xlsx_bytes(invoice, items, lang=_get_ui_lang(request))
     filename = f"invoice_{invoice['number']:06d}.xlsx"
     return Response(
         content=data,

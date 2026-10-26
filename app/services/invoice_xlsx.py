@@ -28,7 +28,33 @@ _THIN = Side(style="thin")
 _BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
 
 
-def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> openpyxl.Workbook:
+_XLSX_RETAIL_STRINGS = {
+    "en": {
+        "report": "profit report", "cost": "Cost (purchase)", "sold": "Sold",
+        "shop": "Shop profit", "p_shop": "Partner from shop",
+        "p_ext": "Partner from opt clients", "p_total": "Partner share",
+        "total_sfx": "total", "me": "My share (total)",
+        "adj": "Adjustment", "payout": "To pay partner",
+    },
+    "ru": {
+        "report": "отчёт о прибыли", "cost": "Приход (себестоимость)", "sold": "Продано",
+        "shop": "Прибыль магазина", "p_shop": "Партнёру с магазина",
+        "p_ext": "Партнёру с опт-клиентов", "p_total": "Доля партнёра",
+        "total_sfx": "всего", "me": "Моя доля всего",
+        "adj": "Корректировка", "payout": "К выдаче партнёру",
+    },
+    "tm": {
+        "report": "peýda hasabaty", "cost": "Satyn alyş bahasy", "sold": "Satyldy",
+        "shop": "Dükanyň peýdasy", "p_shop": "Dükandan hyzmatdaşa",
+        "p_ext": "Opt müşderilerden hyzmatdaşa", "p_total": "Hyzmatdaşyň paýy",
+        "total_sfx": "jemi", "me": "Meniň paýym jemi",
+        "adj": "Düzediş", "payout": "Hyzmatdaşa töleg",
+    },
+}
+
+
+def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]],
+                    lang: str = "ru") -> openpyxl.Workbook:
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = f"Invoice {invoice['number']:06d}"
@@ -173,9 +199,10 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
         me_total = round(shop_me + ext_me, 2)
         partner_payout = round(partner_total + partner_adj, 2)
 
+        rt = _XLSX_RETAIL_STRINGS.get((lang or "").lower(), _XLSX_RETAIL_STRINGS["ru"])
         heading_row = total_row_idx + 2
         ws.cell(row=heading_row, column=1,
-                value=f"{shop_name} — отчёт о прибыли:").font = Font(bold=True)
+                value=f"{shop_name} — {rt['report']}:").font = Font(bold=True)
         ws.merge_cells(start_row=heading_row, start_column=1,
                        end_row=heading_row, end_column=7)
 
@@ -190,22 +217,22 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
                 c_val.font = Font(bold=True)
 
         r = heading_row + 1
-        _retail_pair(r, "Приход (себестоимость):",             round(total_cost, 2)); r += 1
-        _retail_pair(r, "Продано:",                            grand_total);           r += 1
-        _retail_pair(r, "Прибыль магазина:",                   shop_profit, bold=True); r += 1
-        _retail_pair(r, f"    Партнёру с магазина ({int(partner_pct)}%):", shop_partner); r += 1
+        _retail_pair(r, f"{rt['cost']}:",                              round(total_cost, 2)); r += 1
+        _retail_pair(r, f"{rt['sold']}:",                              grand_total);           r += 1
+        _retail_pair(r, f"{rt['shop']}:",                              shop_profit, bold=True); r += 1
+        _retail_pair(r, f"    {rt['p_shop']} ({int(partner_pct)}%):",  shop_partner);         r += 1
         if ext_partner != 0:
-            _retail_pair(r, "    Партнёру с опт-клиентов:",   ext_partner);          r += 1
-        _retail_pair(r, f"Доля партнёра ({partner_name}) всего:", partner_total, bold=True); r += 1
-        _retail_pair(r, "Моя доля всего:",                     me_total)
+            _retail_pair(r, f"    {rt['p_ext']}:",                     ext_partner);          r += 1
+        _retail_pair(r, f"{rt['p_total']} ({partner_name}) {rt['total_sfx']}:", partner_total, bold=True); r += 1
+        _retail_pair(r, f"{rt['me']}:",                                me_total)
         if partner_adj != 0:
             r += 1
-            adj_label = "Корректировка"
+            adj_label = rt['adj']
             if partner_adj_note:
                 adj_label += f" ({partner_adj_note})"
             adj_label += ":"
-            _retail_pair(r, adj_label,                          partner_adj);          r += 1
-            _retail_pair(r, f"К выдаче партнёру ({partner_name}):", partner_payout, bold=True)
+            _retail_pair(r, adj_label,                                  partner_adj);          r += 1
+            _retail_pair(r, f"{rt['payout']} ({partner_name}):",       partner_payout, bold=True)
         extra_row = r
 
     # --- Signature block (two side-by-side signatures) ---
@@ -260,19 +287,21 @@ def _make_workbook(invoice: dict[str, Any], items: list[dict[str, Any]]) -> open
     return wb
 
 
-def generate_invoice_xlsx(invoice: dict[str, Any], items: list[dict[str, Any]]) -> str:
+def generate_invoice_xlsx(invoice: dict[str, Any], items: list[dict[str, Any]],
+                            lang: str = "ru") -> str:
     """Write .xlsx to disk and return the file path."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     number = invoice["number"]
     filepath = OUT_DIR / f"invoice_{number:06d}.xlsx"
-    wb = _make_workbook(invoice, items)
+    wb = _make_workbook(invoice, items, lang=lang)
     wb.save(str(filepath))
     return str(filepath)
 
 
-def generate_invoice_xlsx_bytes(invoice: dict[str, Any], items: list[dict[str, Any]]) -> bytes:
+def generate_invoice_xlsx_bytes(invoice: dict[str, Any], items: list[dict[str, Any]],
+                                 lang: str = "ru") -> bytes:
     """Return .xlsx content as bytes (for streaming response)."""
-    wb = _make_workbook(invoice, items)
+    wb = _make_workbook(invoice, items, lang=lang)
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

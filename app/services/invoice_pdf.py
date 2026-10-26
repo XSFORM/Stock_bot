@@ -56,6 +56,17 @@ _PDF_STRINGS = {
         "total":      "TOTAL",
         "seller":     "Seller",
         "buyer":      "Buyer",
+        "r_report":   "profit report",
+        "r_cost":     "Cost (purchase)",
+        "r_sold":     "Sold",
+        "r_shop":     "Shop profit",
+        "r_pfrom_shop": "Partner from shop",
+        "r_pfrom_ext":  "Partner from opt clients",
+        "r_ptotal":   "Partner share",
+        "r_total_sfx":"total",
+        "r_me":       "My share (total)",
+        "r_adj":      "Adjustment",
+        "r_payout":   "To pay partner",
     },
     "ru": {
         "invoice":    "НАКЛАДНАЯ",
@@ -73,6 +84,17 @@ _PDF_STRINGS = {
         "total":      "ИТОГО",
         "seller":     "Продавец",
         "buyer":      "Покупатель",
+        "r_report":   "отчёт о прибыли",
+        "r_cost":     "Приход (себестоимость)",
+        "r_sold":     "Продано",
+        "r_shop":     "Прибыль магазина",
+        "r_pfrom_shop": "Партнёру с магазина",
+        "r_pfrom_ext":  "Партнёру с опт-клиентов",
+        "r_ptotal":   "Доля партнёра",
+        "r_total_sfx":"всего",
+        "r_me":       "Моя доля всего",
+        "r_adj":      "Корректировка",
+        "r_payout":   "К выдаче партнёру",
     },
     "tm": {
         "invoice":    "HASAP-FAKTURA",
@@ -90,6 +112,17 @@ _PDF_STRINGS = {
         "total":      "JEMI",
         "seller":     "Satyjy",
         "buyer":      "Alyjy",
+        "r_report":   "peýda hasabaty",
+        "r_cost":     "Satyn alyş bahasy",
+        "r_sold":     "Satyldy",
+        "r_shop":     "Dükanyň peýdasy",
+        "r_pfrom_shop": "Dükandan hyzmatdaşa",
+        "r_pfrom_ext":  "Opt müşderilerden hyzmatdaşa",
+        "r_ptotal":   "Hyzmatdaşyň paýy",
+        "r_total_sfx":"jemi",
+        "r_me":       "Meniň paýym jemi",
+        "r_adj":      "Düzediş",
+        "r_payout":   "Hyzmatdaşa töleg",
     },
 }
 
@@ -358,30 +391,30 @@ def generate_invoice_pdf(invoice: dict[str, Any],
 
         story.append(Spacer(1, 6 * mm))
         story.append(Paragraph(
-            f"<b>{_esc(shop_name)} — отчёт о прибыли:</b>",
+            f"<b>{_esc(shop_name)} — {t['r_report']}:</b>",
             ParagraphStyle("retail_h", fontName=FONT_BOLD, fontSize=11, spaceAfter=2 * mm),
         ))
         retail_rows = [
-            ["Приход (себестоимость):",                           f"{round(total_cost, 2):.2f}"],
-            ["Продано:",                                           f"{grand_total:.2f}"],
-            ["Прибыль магазина:",                                  f"{shop_profit:.2f}"],
-            [f"    Партнёру с магазина ({int(partner_pct)}%):",    f"{shop_partner:.2f}"],
+            [f"{t['r_cost']}:",                                        f"{round(total_cost, 2):.2f}"],
+            [f"{t['r_sold']}:",                                        f"{grand_total:.2f}"],
+            [f"{t['r_shop']}:",                                        f"{shop_profit:.2f}"],
+            [f"    {t['r_pfrom_shop']} ({int(partner_pct)}%):",        f"{shop_partner:.2f}"],
         ]
         if ext_partner != 0:
-            retail_rows.append(["    Партнёру с опт-клиентов:", f"+{ext_partner:.2f}"])
+            retail_rows.append([f"    {t['r_pfrom_ext']}:",            f"+{ext_partner:.2f}"])
         retail_rows.append([
-            f"Доля партнёра ({_esc(partner_name)}) всего:",
+            f"{t['r_ptotal']} ({_esc(partner_name)}) {t['r_total_sfx']}:",
             f"{partner_total:.2f}",
         ])
-        retail_rows.append(["Моя доля всего:",                     f"{me_total:.2f}"])
+        retail_rows.append([f"{t['r_me']}:",                           f"{me_total:.2f}"])
         if partner_adj != 0:
-            adj_label = "Корректировка"
+            adj_label = t['r_adj']
             if partner_adj_note:
                 adj_label += f" ({_esc(partner_adj_note)})"
             adj_label += ":"
             retail_rows.append([adj_label, f"{partner_adj:+.2f}"])
             retail_rows.append([
-                f"К выдаче партнёру ({_esc(partner_name)}):",
+                f"{t['r_payout']} ({_esc(partner_name)}):",
                 f"{partner_payout:.2f}",
             ])
         retail_tbl = Table(retail_rows, colWidths=[130 * mm, 40 * mm])
