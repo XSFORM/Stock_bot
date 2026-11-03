@@ -8,7 +8,7 @@ PYTHON_BIN="python3"
 echo "[1/9] Updating system packages..."
 sudo apt-get update -y
 sudo apt-get install -y git curl $PYTHON_BIN $PYTHON_BIN-venv $PYTHON_BIN-pip \
-  nginx certbot python3-certbot-nginx apache2-utils
+  nginx certbot python3-certbot-nginx apache2-utils fonts-dejavu
 
 echo "[2/9] Creating app directory: $APP_DIR"
 sudo mkdir -p "$APP_DIR"
