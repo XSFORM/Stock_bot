@@ -4466,10 +4466,18 @@ def retail_get_active_session() -> Optional[dict[str, Any]]:
 def _retail_last_carry_over() -> tuple[float, str]:
     """Compute the carry-over from the most recently closed retail session.
 
-    Returns (adjustment_amount, note). 0 if no previous session or no actual
-    payout recorded. The sign convention matches session.partner_adjustment:
+    Returns (adjustment_amount, note). 0 if no previous session.
+    The sign convention matches session.partner_adjustment:
       actual > planned  → negative (deduct from partner's next share)
       actual < planned  → positive (add to partner's next share)
+
+    IMPORTANT: Looks at the MOST RECENT closed session unconditionally.
+    If that session has no `retail_actual_payout` recorded yet, carry is 0
+    (we don't know the diff until the payout is logged). Earlier versions
+    skipped sessions with NULL actual_payout, which caused the previous-
+    previous session's carry to be applied twice (once to the next week
+    via its partner_adjustment, and again to the week after that when the
+    intermediate week had no payout recorded yet). Fixed 2026-11-09.
     """
     with _connect() as conn:
         row = conn.execute(
@@ -4480,11 +4488,16 @@ def _retail_last_carry_over() -> tuple[float, str]:
                       FROM cart_items ci WHERE ci.cart_id = i.cart_id) AS cost_sum
             FROM retail_sessions rs
             JOIN invoices i ON i.number = rs.invoice_number
-            WHERE rs.closed_at IS NOT NULL AND i.retail_actual_payout IS NOT NULL
+            WHERE rs.closed_at IS NOT NULL
             ORDER BY rs.closed_at DESC LIMIT 1
             """
         ).fetchone()
         if row is None:
+            return 0.0, ""
+        # If the most-recent closed session has no actual payout recorded,
+        # there is no known carry yet. Do NOT fall back to earlier sessions
+        # — that would double-apply their already-consumed carry.
+        if row["retail_actual_payout"] is None:
             return 0.0, ""
         pct = float(row["retail_partner_pct"] or 50)
         ext = float(row["retail_external_profit"] or 0)
