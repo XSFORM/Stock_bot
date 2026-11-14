@@ -138,6 +138,12 @@
             {% endif %}
           </td>
           <td>
+            <form method="post" action="/admin/price-tokens/rotate" class="d-inline"
+                  onsubmit="return confirm('{{ t.price_tokens_rotate_confirm }} #{{ tok.id }}?')">
+              <input type="hidden" name="token_id" value="{{ tok.id }}">
+              <button type="submit" class="btn btn-sm btn-outline-primary py-0"
+                      title="{{ t.price_tokens_rotate_title }}">{{ t.price_tokens_btn_rotate }}</button>
+            </form>
             {% if not tok.revoked %}
             <form method="post" action="/admin/price-tokens/revoke" class="d-inline">
               <input type="hidden" name="token_id" value="{{ tok.id }}">

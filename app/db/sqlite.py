@@ -7761,6 +7761,38 @@ def delete_price_token(token_id: int) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def rotate_price_token(token_id: int) -> tuple[str, str]:
+    """Regenerate the token value in-place without losing settings.
+
+    Keeps: label, mode, show_qty, show_buy_price, created_at.
+    Resets: token_hash + plain_token (new secret), device_id (so a new
+    device can bind), revoked (back to active), last_used_at.
+    Use case: your domain or IP got blocked and you want to hand out new
+    URLs to the same clients without reconfiguring their row.
+
+    Returns (new_plain_token, "") on success, ("", error_message) on failure.
+    """
+    try:
+        plain = secrets.token_urlsafe(32)
+        token_hash = _hash_token(plain)
+        with _connect() as conn:
+            _ensure_price_tokens_table(conn)
+            _ensure_price_tokens_plain_token_column(conn)
+            cur = conn.execute(
+                "UPDATE price_tokens"
+                " SET token_hash = ?, plain_token = ?,"
+                "     device_id = NULL, revoked = 0, last_used_at = NULL"
+                " WHERE id = ?",
+                (token_hash, plain, token_id),
+            )
+            if cur.rowcount == 0:
+                return "", "not_found"
+            conn.commit()
+        return plain, ""
+    except Exception as exc:
+        return "", str(exc)
+
+
 def get_product_total_qty(product_id: int) -> float:
     """Return the total stock quantity for a product summed across all warehouses."""
     with _connect() as conn:

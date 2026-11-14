@@ -235,6 +235,7 @@ from app.db.sqlite import (
     list_price_tokens,
     revoke_price_token,
     delete_price_token,
+    rotate_price_token,
     validate_price_token,
     touch_price_token,
     bind_price_token_device,
@@ -4307,6 +4308,24 @@ def admin_price_tokens_delete(request: Request, token_id: int = Form(...)):
     ok, err = delete_price_token(int(token_id))
     msg = "deleted" if ok else f"error:{quote(err, safe='')}"
     return RedirectResponse(url=f"/admin/price-tokens?msg={msg}", status_code=303)
+
+
+@app.post("/admin/price-tokens/rotate")
+def admin_price_tokens_rotate(request: Request, token_id: int = Form(...)):
+    """Regenerate token secret in-place; label/mode/flags stay, device unbinds."""
+    admin_check = _require_admin_session(request)
+    if admin_check:
+        return admin_check
+    plain, err = rotate_price_token(int(token_id))
+    if plain:
+        return RedirectResponse(
+            url=f"/admin/price-tokens?new_token={quote(plain, safe='')}",
+            status_code=303,
+        )
+    return RedirectResponse(
+        url=f"/admin/price-tokens?msg=error:{quote(err, safe='')}",
+        status_code=303,
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
